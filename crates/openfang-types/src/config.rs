@@ -2197,6 +2197,17 @@ impl Default for BlueskyConfig {
     }
 }
 
+/// Feishu inbound event receive mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum FeishuMode {
+    /// Receive events via HTTP webhook callback.
+    Webhook,
+    /// Receive events via WebSocket long connection.
+    #[default]
+    Websocket,
+}
+
 /// Feishu/Lark Open Platform channel adapter configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -2205,6 +2216,8 @@ pub struct FeishuConfig {
     pub app_id: String,
     /// Env var name holding the app secret.
     pub app_secret_env: String,
+    /// Inbound receive mode (`webhook` or `websocket`).
+    pub mode: FeishuMode,
     /// Port for the incoming webhook.
     pub webhook_port: u16,
     /// Default agent name to route messages to.
@@ -2219,6 +2232,7 @@ impl Default for FeishuConfig {
         Self {
             app_id: String::new(),
             app_secret_env: "FEISHU_APP_SECRET".to_string(),
+            mode: FeishuMode::Websocket,
             webhook_port: 8453,
             default_agent: None,
             overrides: ChannelOverrides::default(),
@@ -3586,5 +3600,30 @@ mod tests {
         assert_eq!(config.browser.max_sessions, browser_sessions);
         assert_eq!(config.web.fetch.max_response_bytes, fetch_bytes);
         assert_eq!(config.web.fetch.timeout_secs, fetch_timeout);
+    }
+
+    #[test]
+    fn test_feishu_mode_defaults_to_websocket() {
+        let toml_str = r#"
+            [channels.feishu]
+            app_id = "cli_test"
+            app_secret_env = "FEISHU_APP_SECRET"
+        "#;
+        let config: KernelConfig = toml::from_str(toml_str).unwrap();
+        let feishu = config.channels.feishu.unwrap();
+        assert_eq!(feishu.mode, FeishuMode::Websocket);
+    }
+
+    #[test]
+    fn test_feishu_mode_parses_websocket() {
+        let toml_str = r#"
+            [channels.feishu]
+            app_id = "cli_test"
+            app_secret_env = "FEISHU_APP_SECRET"
+            mode = "websocket"
+        "#;
+        let config: KernelConfig = toml::from_str(toml_str).unwrap();
+        let feishu = config.channels.feishu.unwrap();
+        assert_eq!(feishu.mode, FeishuMode::Websocket);
     }
 }
