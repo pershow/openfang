@@ -33,7 +33,7 @@ use crate::mcp::McpConnection;
 use crate::tool_runner;
 use crate::web_search::WebToolsContext;
 use openfang_skills::registry::SkillRegistry;
-use openfang_types::error::{OpenFangError, OpenFangResult};
+use openfang_types::error::OpenFangError;
 use openfang_types::message::ContentBlock;
 use openfang_types::tool::{ToolCall, ToolDefinition};
 use std::path::Path;
