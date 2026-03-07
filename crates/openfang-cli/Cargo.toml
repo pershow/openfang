@@ -31,5 +31,4 @@ openfang-runtime = { path = "../openfang-runtime" }
 uuid = { workspace = true }
 ratatui = { workspace = true }
 colored = { workspace = true }
-openssl = { version = "0.10", features = ["vendored"] }
 
