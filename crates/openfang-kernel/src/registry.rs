@@ -270,7 +270,7 @@ impl AgentRegistry {
 
     /// Update an agent's name (also updates the name index).
     pub fn update_name(&self, id: AgentId, new_name: String) -> OpenFangResult<()> {
-        let mut entry = self
+        let entry = self
             .agents
             .get_mut(&id)
             .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
