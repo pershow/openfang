@@ -35,6 +35,17 @@ impl OpenAIDriver {
         self.extra_headers = headers;
         self
     }
+
+    /// Moonshot/Kimi require `reasoning_content` on assistant tool-call messages.
+    /// Detect both canonical model names and Moonshot-compatible base URLs.
+    fn requires_reasoning_content(&self, model: &str) -> bool {
+        let m = model.to_lowercase();
+        let base = self.base_url.to_lowercase();
+        m.contains("moonshot")
+            || m.contains("kimi")
+            || base.contains("moonshot.cn")
+            || base.contains("moonshot.ai")
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -278,7 +289,10 @@ impl LlmDriver for OpenAIDriver {
                             _ => {}
                         }
                     }
-                    let reasoning_content = if request.thinking.is_some() && !tool_calls.is_empty() {
+                    // Moonshot/Kimi require reasoning_content on assistant tool-call messages when thinking is enabled
+                    let needs_reasoning =
+                        request.thinking.is_some() || self.requires_reasoning_content(&request.model);
+                    let reasoning_content = if needs_reasoning && !tool_calls.is_empty() {
                         Some(if reasoning_parts.is_empty() {
                             String::new()
                         } else {
@@ -621,7 +635,10 @@ impl LlmDriver for OpenAIDriver {
                             _ => {}
                         }
                     }
-                    let reasoning_content = if request.thinking.is_some() && !tool_calls_out.is_empty() {
+                    // Moonshot/Kimi require reasoning_content on assistant tool-call messages when thinking is enabled
+                    let needs_reasoning =
+                        request.thinking.is_some() || self.requires_reasoning_content(&request.model);
+                    let reasoning_content = if needs_reasoning && !tool_calls_out.is_empty() {
                         Some(if reasoning_parts.is_empty() {
                             String::new()
                         } else {
@@ -1089,6 +1106,20 @@ mod tests {
     fn test_openai_driver_creation() {
         let driver = OpenAIDriver::new("test-key".to_string(), "http://localhost".to_string());
         assert_eq!(driver.api_key.as_str(), "test-key");
+    }
+
+    #[test]
+    fn test_requires_reasoning_content_for_moonshot_compat() {
+        let moonshot = OpenAIDriver::new(
+            "test-key".to_string(),
+            "https://api.moonshot.cn/v1".to_string(),
+        );
+        assert!(moonshot.requires_reasoning_content("custom-model"));
+        assert!(moonshot.requires_reasoning_content("kimi-k2.5"));
+
+        let local = OpenAIDriver::new("test-key".to_string(), "http://localhost/v1".to_string());
+        assert!(!local.requires_reasoning_content("custom-model"));
+        assert!(local.requires_reasoning_content("kimi-k2.5"));
     }
 
     #[test]

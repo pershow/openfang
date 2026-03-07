@@ -1013,6 +1013,9 @@ pub async fn get_agent(
         }
     };
 
+    // Round temperature to 2 decimals for display (avoids 0.49999999 from float precision)
+    let temperature = (entry.manifest.model.temperature * 100.0).round() / 100.0;
+
     (
         StatusCode::OK,
         Json(serde_json::json!({
@@ -1028,7 +1031,7 @@ pub async fn get_agent(
                 "model": entry.manifest.model.model,
             },
             "system_prompt": entry.manifest.model.system_prompt,
-            "temperature": entry.manifest.model.temperature,
+            "temperature": temperature,
             "max_tokens": entry.manifest.model.max_tokens,
             "capabilities": {
                 "tools": entry.manifest.capabilities.tools,
@@ -7987,6 +7990,27 @@ pub async fn update_agent_identity(
 // Agent Config Hot-Update
 // ---------------------------------------------------------------------------
 
+/// Deserialize temperature as either number or string (e.g. "1.0") for frontend compatibility.
+fn deserialize_temperature_option<'de, D>(deserializer: D) -> Result<Option<f32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+    use serde::Deserialize;
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Temp {
+        F32(f32),
+        String(String),
+    }
+    let opt = Option::<Temp>::deserialize(deserializer)?;
+    match opt {
+        None => Ok(None),
+        Some(Temp::F32(f)) => Ok(Some(f)),
+        Some(Temp::String(s)) => Ok(Some(s.parse().map_err(D::Error::custom)?)),
+    }
+}
+
 /// Request body for patching agent config (name, description, prompt, identity, model).
 #[derive(serde::Deserialize)]
 pub struct PatchAgentConfigRequest {
@@ -8003,6 +8027,7 @@ pub struct PatchAgentConfigRequest {
     pub provider: Option<String>,
     pub api_key_env: Option<String>,
     pub base_url: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_temperature_option")]
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
     pub fallback_models: Option<Vec<openfang_types::agent::FallbackModel>>,
@@ -8214,6 +8239,8 @@ pub async fn patch_agent_config(
 
     if let Some(temperature) = req.temperature {
         if (0.0..=2.0).contains(&temperature) {
+            // Round to 2 decimal places to avoid 0.5 → 0.49999999 from frontend float precision
+            let temperature = (temperature * 100.0).round() / 100.0;
             if state
                 .kernel
                 .registry
