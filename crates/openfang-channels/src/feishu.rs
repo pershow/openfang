@@ -1163,6 +1163,10 @@ impl ChannelAdapter for FeishuAdapter {
             FeishuConnectionMode::Webhook => self.start_webhook(tx).await?,
             FeishuConnectionMode::WebSocket => self.start_websocket_loop(tx).await?,
         }
+
+        Ok(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx)))
+    }
+
     async fn send(
         &self,
         user: &ChannelUser,

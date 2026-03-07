@@ -248,8 +248,10 @@ impl AgentRegistry {
 
     /// Update an agent's name (also updates the name index).
     pub fn update_name(&self, id: AgentId, new_name: String) -> OpenFangResult<()> {
-        if self.name_index.contains_key(&new_name) {
-            return Err(OpenFangError::AgentAlreadyExists(new_name));
+        if let Some(existing_id) = self.name_index.get(&new_name) {
+            if *existing_id.value() != id {
+                return Err(OpenFangError::AgentAlreadyExists(new_name));
+            }
         }
         let mut entry = self
             .agents
@@ -395,6 +397,20 @@ mod tests {
         let registry = AgentRegistry::new();
         registry.register(test_entry("dup")).unwrap();
         assert!(registry.register(test_entry("dup")).is_err());
+    }
+
+    #[test]
+    fn test_update_name_allows_same_name_for_same_agent() {
+        let registry = AgentRegistry::new();
+        let entry = test_entry("assistant");
+        let id = entry.id;
+        registry.register(entry).unwrap();
+
+        registry.update_name(id, "assistant".to_string()).unwrap();
+
+        let updated = registry.get(id).unwrap();
+        assert_eq!(updated.name, "assistant");
+        assert!(registry.find_by_name("assistant").is_some());
     }
 
     #[test]
