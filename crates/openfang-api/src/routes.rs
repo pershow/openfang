@@ -1027,6 +1027,9 @@ pub async fn get_agent(
                 "provider": entry.manifest.model.provider,
                 "model": entry.manifest.model.model,
             },
+            "system_prompt": entry.manifest.model.system_prompt,
+            "temperature": entry.manifest.model.temperature,
+            "max_tokens": entry.manifest.model.max_tokens,
             "capabilities": {
                 "tools": entry.manifest.capabilities.tools,
                 "network": entry.manifest.capabilities.network,
@@ -8000,6 +8003,8 @@ pub struct PatchAgentConfigRequest {
     pub provider: Option<String>,
     pub api_key_env: Option<String>,
     pub base_url: Option<String>,
+    pub temperature: Option<f32>,
+    pub max_tokens: Option<u32>,
     pub fallback_models: Option<Vec<openfang_types::agent::FallbackModel>>,
 }
 
@@ -8197,6 +8202,37 @@ pub async fn patch_agent_config(
                 .kernel
                 .registry
                 .update_model(agent_id, new_model.clone())
+                .is_err()
+            {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({"error": "Agent not found"})),
+                );
+            }
+        }
+    }
+
+    if let Some(temperature) = req.temperature {
+        if (0.0..=2.0).contains(&temperature) {
+            if state
+                .kernel
+                .registry
+                .update_temperature(agent_id, temperature)
+                .is_err()
+            {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({"error": "Agent not found"})),
+                );
+            }
+        }
+    }
+    if let Some(max_tokens) = req.max_tokens {
+        if max_tokens > 0 && max_tokens <= 1_000_000 {
+            if state
+                .kernel
+                .registry
+                .update_max_tokens(agent_id, max_tokens)
                 .is_err()
             {
                 return (

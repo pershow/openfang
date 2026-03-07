@@ -251,6 +251,22 @@ function agentsPage() {
       });
     },
 
+    // All templates: builtin first, then custom from /api/templates (agents dir)
+    get allTemplates() {
+      var builtin = this.filteredBuiltins.map(function(t) { return { builtin: true, name: t.name, description: t.description, category: t.category || 'General' }; });
+      var custom = this.filteredCustom.map(function(t) { return { builtin: false, name: t.name, description: t.description || '', category: t.category || 'Custom' }; });
+      return builtin.concat(custom);
+    },
+
+    pickTemplate(item) {
+      if (item.builtin) {
+        var t = this.builtinTemplates.find(function(x) { return x.name === item.name; });
+        if (t) this.spawnBuiltin(t);
+      } else {
+        this.spawnFromTemplate(item.name);
+      }
+    },
+
     isProviderConfigured(providerName) {
       if (!providerName) return false;
       var p = this.tplProviders.find(function(pr) { return pr.id === providerName; });
@@ -263,6 +279,7 @@ function agentsPage() {
       this.loadError = '';
       try {
         await Alpine.store('app').refreshAgents();
+        this.loadTemplates();
       } catch(e) {
         this.loadError = e.message || 'Could not load agents. Is the daemon running?';
       }
@@ -334,13 +351,18 @@ function agentsPage() {
         emoji: (agent.identity && agent.identity.emoji) || '',
         color: (agent.identity && agent.identity.color) || '#FF5C00',
         archetype: (agent.identity && agent.identity.archetype) || '',
-        vibe: (agent.identity && agent.identity.vibe) || ''
+        vibe: (agent.identity && agent.identity.vibe) || '',
+        temperature: 0.7,
+        max_tokens: 4096
       };
       this.showDetailModal = true;
-      // Fetch full agent detail to get fallback_models
+      // Fetch full agent detail for fallback_models, system_prompt, temperature, max_tokens
       try {
         var full = await OpenFangAPI.get('/api/agents/' + agent.id);
         this.detailAgent._fallbacks = full.fallback_models || [];
+        if (full.system_prompt != null) this.configForm.system_prompt = full.system_prompt;
+        if (typeof full.temperature === 'number') this.configForm.temperature = full.temperature;
+        if (typeof full.max_tokens === 'number') this.configForm.max_tokens = full.max_tokens;
       } catch(e) { /* ignore */ }
     },
 
@@ -378,7 +400,7 @@ function agentsPage() {
     },
 
     // ── Multi-step wizard navigation ──
-    openSpawnWizard() {
+    async openSpawnWizard() {
       this.showSpawnModal = true;
       this.spawnStep = 1;
       this.spawnMode = 'wizard';
@@ -388,6 +410,12 @@ function agentsPage() {
       this.spawnForm.name = '';
       this.spawnForm.systemPrompt = 'You are a helpful assistant.';
       this.spawnForm.profile = 'full';
+      if (!this.tplProviders || !this.tplProviders.length) await this.loadTemplates();
+      try {
+        var status = await OpenFangAPI.get('/api/status');
+        if (status.default_provider) this.spawnForm.provider = status.default_provider;
+        if (status.default_model) this.spawnForm.model = status.default_model;
+      } catch (e) { /* keep hardcoded fallback */ }
     },
 
     nextStep() {
@@ -697,11 +725,18 @@ function agentsPage() {
     },
 
     async spawnBuiltin(t) {
+      var provider = t.provider;
+      var model = t.model;
+      try {
+        var status = await OpenFangAPI.get('/api/status');
+        if (status.default_provider) provider = status.default_provider;
+        if (status.default_model) model = status.default_model;
+      } catch (e) { /* use template fallback */ }
       var toml = 'name = "' + t.name + '"\n';
       toml += 'description = "' + t.description.replace(/"/g, '\\"') + '"\n';
       toml += 'module = "builtin:chat"\n';
       toml += 'profile = "' + t.profile + '"\n\n';
-      toml += '[model]\nprovider = "' + t.provider + '"\nmodel = "' + t.model + '"\n';
+      toml += '[model]\nprovider = "' + provider + '"\nmodel = "' + model + '"\n';
       toml += 'system_prompt = """\n' + t.system_prompt + '\n"""\n';
 
       try {
@@ -709,7 +744,7 @@ function agentsPage() {
         if (res.agent_id) {
           OpenFangToast.success('Agent "' + t.name + '" spawned');
           await Alpine.store('app').refreshAgents();
-          this.chatWithAgent({ id: res.agent_id, name: t.name, model_provider: t.provider, model_name: t.model });
+          this.chatWithAgent({ id: res.agent_id, name: t.name, model_provider: provider, model_name: model });
         }
       } catch(e) {
         OpenFangToast.error('Failed to spawn agent: ' + e.message);

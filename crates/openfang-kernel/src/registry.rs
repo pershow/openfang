@@ -177,6 +177,28 @@ impl AgentRegistry {
         Ok(())
     }
 
+    /// Update an agent's model temperature (0.0–2.0, takes effect on next message).
+    pub fn update_temperature(&self, id: AgentId, temperature: f32) -> OpenFangResult<()> {
+        let mut entry = self
+            .agents
+            .get_mut(&id)
+            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+        entry.manifest.model.temperature = temperature;
+        entry.last_active = chrono::Utc::now();
+        Ok(())
+    }
+
+    /// Update an agent's model max_tokens (takes effect on next message).
+    pub fn update_max_tokens(&self, id: AgentId, max_tokens: u32) -> OpenFangResult<()> {
+        let mut entry = self
+            .agents
+            .get_mut(&id)
+            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+        entry.manifest.model.max_tokens = max_tokens;
+        entry.last_active = chrono::Utc::now();
+        Ok(())
+    }
+
     /// Update an agent's fallback model chain.
     pub fn update_fallback_models(
         &self,
@@ -248,6 +270,14 @@ impl AgentRegistry {
 
     /// Update an agent's name (also updates the name index).
     pub fn update_name(&self, id: AgentId, new_name: String) -> OpenFangResult<()> {
+        let mut entry = self
+            .agents
+            .get_mut(&id)
+            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+        if entry.name == new_name {
+            return Ok(());
+        }
+        drop(entry);
         if let Some(existing_id) = self.name_index.get(&new_name) {
             if *existing_id.value() != id {
                 return Err(OpenFangError::AgentAlreadyExists(new_name));
