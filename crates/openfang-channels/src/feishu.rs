@@ -309,6 +309,98 @@ impl FeishuAdapter {
         Ok(())
     }
 
+    /// Send an interactive card with approve/reject buttons.
+    async fn api_send_card(
+        &self,
+        receive_id: &str,
+        request_id: &str,
+        agent_id: &str,
+        tool_name: &str,
+        action_summary: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let token = self.get_token().await?;
+        let url = format!("{}?receive_id_type=chat_id", FEISHU_SEND_URL);
+
+        // Build interactive card JSON
+        let card = serde_json::json!({
+            "config": {
+                "wide_screen_mode": true
+            },
+            "header": {
+                "title": { "tag": "plain_text", "content": "⏳ 待审批请求" },
+                "template": "blue"
+            },
+            "elements": [
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "plain_text",
+                        "content": format!("Agent: {}\n操作: {} — {}", agent_id, tool_name, action_summary)
+                    }
+                },
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "plain_text",
+                        "content": format!("ID: `{}`", &request_id[..8.min(request_id.len())]),
+                        "language": "markdown"
+                    }
+                },
+                {
+                    "tag": "action",
+                    "actions": [
+                        {
+                            "tag": "button",
+                            "text": { "tag": "plain_text", "content": "✅ 批准" },
+                            "type": "primary",
+                            "value": { "action": "approve", "request_id": request_id }
+                        },
+                        {
+                            "tag": "button",
+                            "text": { "tag": "plain_text", "content": "❌ 拒绝" },
+                            "type": "danger",
+                            "value": { "action": "reject", "request_id": request_id }
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let body = serde_json::json!({
+            "receive_id": receive_id,
+            "msg_type": "interactive",
+            "content": card.to_string(),
+        });
+
+        let resp = self
+            .client
+            .post(&url)
+            .bearer_auth(&token)
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let resp_body = resp.text().await.unwrap_or_default();
+            warn!("Feishu card send error {status}: {resp_body}");
+            // Fall back to text message
+            return self.api_send_message(
+                receive_id,
+                "chat_id",
+                &format!("待审批请求 [{}]\nAgent: {}\n操作: {} — {}\n\n回复 /approve {} 或 /reject {}",
+                    &request_id[..8.min(request_id.len())],
+                    agent_id,
+                    tool_name,
+                    action_summary,
+                    &request_id[..8.min(request_id.len())],
+                    &request_id[..8.min(request_id.len())]
+                )
+            ).await;
+        }
+        Ok(())
+    }
+
     /// Start webhook server (Webhook mode).
     async fn start_webhook(
         &self,
@@ -350,11 +442,16 @@ impl FeishuAdapter {
                                 );
                             }
 
-                            if let Some(schema) = body.0["schema"].as_str() {
+                            let parsed = if let Some(schema) = body.0["schema"].as_str() {
                                 if schema == "2.0" {
                                     if let Some(msg) = parse_feishu_event(&body.0) {
                                         let _ = tx.send(msg).await;
+                                        true
+                                    } else {
+                                        false
                                     }
+                                } else {
+                                    false
                                 }
                             } else {
                                 let event_type = body.0["event"]["type"].as_str().unwrap_or("");
@@ -409,13 +506,18 @@ impl FeishuAdapter {
                                         };
 
                                         let _ = tx.send(channel_msg).await;
+                                        true
+                                    } else {
+                                        false
                                     }
+                                } else {
+                                    false
                                 }
-                            }
+                            };
 
                             (
                                 axum::http::StatusCode::OK,
-                                axum::Json(serde_json::json!({})),
+                                axum::Json(build_feishu_webhook_response(&body.0, parsed)),
                             )
                         }
                     }
@@ -604,7 +706,7 @@ impl FeishuAdapter {
         <S as futures::Sink<Message>>::Error: std::error::Error + Send + Sync + 'static,
     {
         let frame_type = ws_header(&frame.headers, "type").unwrap_or_default();
-        if frame_type != "event" {
+        if frame_type != "event" && frame_type != "card" {
             return Ok(());
         }
 
@@ -819,9 +921,11 @@ fn build_ack_frame(request: &FeishuWsFrame, code: u16) -> FeishuWsFrame {
 }
 
 /// Parse a Feishu webhook event into a `ChannelMessage`.
-///
-/// Handles `im.message.receive_v1` events with text message type.
 fn parse_feishu_event(event: &serde_json::Value) -> Option<ChannelMessage> {
+    parse_feishu_text_message_event(event).or_else(|| parse_feishu_card_action_event(event))
+}
+
+fn parse_feishu_text_message_event(event: &serde_json::Value) -> Option<ChannelMessage> {
     let header = event.get("header")?;
     let event_type = header["event_type"].as_str().unwrap_or("");
 
@@ -917,6 +1021,125 @@ fn parse_feishu_event(event: &serde_json::Value) -> Option<ChannelMessage> {
     })
 }
 
+fn parse_feishu_card_action_event(event: &serde_json::Value) -> Option<ChannelMessage> {
+    let event_type = event
+        .get("header")
+        .and_then(|h| h.get("event_type"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    if event_type != "application.bot.menu_v6" && event_type != "card.action.trigger" {
+        return None;
+    }
+
+    let action_value = event
+        .get("event")?
+        .get("action")?
+        .get("value")?;
+
+    let action = action_value.get("action")?.as_str()?;
+    if action != "approve" && action != "reject" {
+        return None;
+    }
+
+    let request_id = action_value.get("request_id")?.as_str()?;
+    if request_id.is_empty() {
+        return None;
+    }
+
+    let event_data = event.get("event")?;
+    let context = event_data.get("context");
+
+    let chat_id = event_data
+        .get("open_chat_id")
+        .or_else(|| context.and_then(|c| c.get("open_chat_id")))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let message_id = event_data
+        .get("open_message_id")
+        .or_else(|| context.and_then(|c| c.get("open_message_id")))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let operator_id = event_data
+        .get("operator")
+        .and_then(|v| {
+            // card.action.trigger: operator.open_id
+            // application.bot.menu_v6: operator.operator_id.open_id
+            v.get("open_id")
+                .or_else(|| v.get("operator_id").and_then(|oid| oid.get("open_id")))
+        })
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let mut metadata = HashMap::new();
+    metadata.insert(
+        "event_source".to_string(),
+        serde_json::Value::String("feishu_card_action".to_string()),
+    );
+    if !message_id.is_empty() {
+        metadata.insert(
+            "open_message_id".to_string(),
+            serde_json::Value::String(message_id.clone()),
+        );
+    }
+    if !operator_id.is_empty() {
+        metadata.insert(
+            "sender_id".to_string(),
+            serde_json::Value::String(operator_id.clone()),
+        );
+    }
+    if !chat_id.is_empty() {
+        metadata.insert(
+            "chat_id".to_string(),
+            serde_json::Value::String(chat_id.clone()),
+        );
+    }
+
+    Some(ChannelMessage {
+        channel: ChannelType::Custom("feishu".to_string()),
+        platform_message_id: if message_id.is_empty() {
+            format!("card-action-{action}-{request_id}")
+        } else {
+            message_id
+        },
+        sender: ChannelUser {
+            platform_id: chat_id,
+            display_name: operator_id,
+            openfang_user: None,
+        },
+        content: ChannelContent::Command {
+            name: action.to_string(),
+            args: vec![request_id.to_string()],
+        },
+        target_agent: None,
+        timestamp: Utc::now(),
+        is_group: true,
+        thread_id: None,
+        metadata,
+    })
+}
+
+fn build_feishu_webhook_response(body: &serde_json::Value, parsed: bool) -> serde_json::Value {
+    if !parsed {
+        return serde_json::json!({});
+    }
+
+    let event_type = body
+        .get("header")
+        .and_then(|h| h.get("event_type"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    if event_type == "application.bot.menu_v6" || event_type == "card.action.trigger" {
+        serde_json::json!({ "code": 0 })
+    } else {
+        serde_json::json!({})
+    }
+}
+
 #[async_trait]
 impl ChannelAdapter for FeishuAdapter {
     fn name(&self) -> &str {
@@ -940,10 +1163,6 @@ impl ChannelAdapter for FeishuAdapter {
             FeishuConnectionMode::Webhook => self.start_webhook(tx).await?,
             FeishuConnectionMode::WebSocket => self.start_websocket_loop(tx).await?,
         }
-
-        Ok(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx)))
-    }
-
     async fn send(
         &self,
         user: &ChannelUser,
@@ -953,6 +1172,21 @@ impl ChannelAdapter for FeishuAdapter {
             ChannelContent::Text(text) => {
                 self.api_send_message(&user.platform_id, "chat_id", &text)
                     .await?;
+            }
+            ChannelContent::ApprovalRequest {
+                request_id,
+                agent_id,
+                tool_name,
+                action_summary,
+            } => {
+                self.api_send_card(
+                    &user.platform_id,
+                    &request_id,
+                    &agent_id,
+                    &tool_name,
+                    &action_summary,
+                )
+                .await?;
             }
             _ => {
                 self.api_send_message(&user.platform_id, "chat_id", "(Unsupported content type)")
@@ -1290,5 +1524,395 @@ mod tests {
 
         let msg = parse_feishu_event(&event).unwrap();
         assert_eq!(msg.thread_id, Some("om_root1".to_string()));
+    }
+
+    #[test]
+    fn test_parse_feishu_event_text_command_message() {
+        let event = serde_json::json!({
+            "header": { "event_type": "im.message.receive_v1" },
+            "event": {
+                "message": {
+                    "message_type": "text",
+                    "message_id": "om_x",
+                    "chat_id": "oc_x",
+                    "chat_type": "group",
+                    "content": "{\"text\":\"/approve abc123\"}"
+                },
+                "sender": {
+                    "sender_id": { "open_id": "ou_x" },
+                    "sender_type": "user"
+                }
+            }
+        });
+
+        let msg = parse_feishu_event(&event).expect("message parsed");
+        match msg.content {
+            ChannelContent::Command { name, args } => {
+                assert_eq!(name, "approve");
+                assert_eq!(args, vec!["abc123"]);
+            }
+            other => panic!("unexpected content: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_feishu_event_card_approve_action() {
+        let event = serde_json::json!({
+            "schema": "2.0",
+            "header": { "event_type": "application.bot.menu_v6" },
+            "event": {
+                "operator": {
+                    "operator_id": { "open_id": "ou_operator" }
+                },
+                "token": "card_callback_token",
+                "open_message_id": "om_card",
+                "open_chat_id": "oc_group",
+                "action": {
+                    "value": {
+                        "action": "approve",
+                        "request_id": "550e8400-e29b-41d4-a716-446655440000"
+                    }
+                }
+            }
+        });
+
+        let msg = parse_feishu_event(&event).expect("card callback parsed");
+        match msg.content {
+            ChannelContent::Command { name, args } => {
+                assert_eq!(name, "approve");
+                assert_eq!(args, vec!["550e8400-e29b-41d4-a716-446655440000"]);
+            }
+            other => panic!("unexpected content: {other:?}"),
+        }
+        assert_eq!(msg.sender.platform_id, "oc_group");
+    }
+
+    #[test]
+    fn test_parse_feishu_event_card_reject_action() {
+        let event = serde_json::json!({
+            "schema": "2.0",
+            "header": { "event_type": "application.bot.menu_v6" },
+            "event": {
+                "operator": {
+                    "operator_id": { "open_id": "ou_operator" }
+                },
+                "open_message_id": "om_card",
+                "open_chat_id": "oc_group",
+                "action": {
+                    "value": {
+                        "action": "reject",
+                        "request_id": "deadbeef"
+                    }
+                }
+            }
+        });
+
+        let msg = parse_feishu_event(&event).expect("card callback parsed");
+        match msg.content {
+            ChannelContent::Command { name, args } => {
+                assert_eq!(name, "reject");
+                assert_eq!(args, vec!["deadbeef"]);
+            }
+            other => panic!("unexpected content: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_feishu_event_card_action_preserves_metadata() {
+        let event = serde_json::json!({
+            "schema": "2.0",
+            "header": { "event_type": "application.bot.menu_v6" },
+            "event": {
+                "operator": {
+                    "operator_id": { "open_id": "ou_operator" }
+                },
+                "open_message_id": "om_card",
+                "open_chat_id": "oc_group",
+                "action": {
+                    "value": {
+                        "action": "reject",
+                        "request_id": "deadbeef"
+                    }
+                }
+            }
+        });
+
+        let msg = parse_feishu_event(&event).expect("callback parsed");
+        assert_eq!(msg.metadata["open_message_id"], "om_card");
+        assert_eq!(msg.metadata["event_source"], "feishu_card_action");
+    }
+
+    #[test]
+    fn test_parse_feishu_event_card_action_invalid_payload() {
+        let event = serde_json::json!({
+            "schema": "2.0",
+            "header": { "event_type": "application.bot.menu_v6" },
+            "event": {
+                "operator": {
+                    "operator_id": { "open_id": "ou_operator" }
+                },
+                "open_chat_id": "oc_group",
+                "action": {
+                    "value": {
+                        "action": "approve"
+                    }
+                }
+            }
+        });
+
+        assert!(parse_feishu_event(&event).is_none());
+    }
+
+    #[test]
+    fn test_feishu_webhook_response_for_card_action_acknowledges_success() {
+        let event = serde_json::json!({
+            "schema": "2.0",
+            "header": { "event_type": "application.bot.menu_v6" },
+            "event": {
+                "action": { "value": { "action": "approve", "request_id": "abc123" } },
+                "open_chat_id": "oc_group"
+            }
+        });
+
+        let response = build_feishu_webhook_response(&event, true);
+        assert_eq!(response["code"], 0);
+    }
+
+    #[test]
+    fn test_feishu_webhook_response_for_text_event_is_empty() {
+        let event = serde_json::json!({
+            "schema": "2.0",
+            "header": { "event_type": "im.message.receive_v1" },
+            "event": {
+                "message": {
+                    "message_type": "text",
+                    "message_id": "om_x",
+                    "chat_id": "oc_x",
+                    "chat_type": "group",
+                    "content": "{\"text\":\"hello\"}"
+                },
+                "sender": {
+                    "sender_id": { "open_id": "ou_x" },
+                    "sender_type": "user"
+                }
+            }
+        });
+
+        let response = build_feishu_webhook_response(&event, true);
+        assert_eq!(response, serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_parse_feishu_event_card_action_trigger_approve() {
+        let event = serde_json::json!({
+            "schema": "2.0",
+            "header": { "event_type": "card.action.trigger" },
+            "event": {
+                "operator": {
+                    "operator_id": { "open_id": "ou_operator" }
+                },
+                "open_message_id": "om_card",
+                "open_chat_id": "oc_group",
+                "action": {
+                    "value": {
+                        "action": "approve",
+                        "request_id": "abc123"
+                    }
+                }
+            }
+        });
+
+        let msg = parse_feishu_event(&event).expect("callback parsed");
+        match msg.content {
+            ChannelContent::Command { name, args } => {
+                assert_eq!(name, "approve");
+                assert_eq!(args, vec!["abc123"]);
+            }
+            other => panic!("unexpected content: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_feishu_event_card_action_trigger_preserves_metadata() {
+        let event = serde_json::json!({
+            "schema": "2.0",
+            "header": { "event_type": "card.action.trigger" },
+            "event": {
+                "operator": {
+                    "operator_id": { "open_id": "ou_operator" }
+                },
+                "open_message_id": "om_card",
+                "open_chat_id": "oc_group",
+                "action": {
+                    "value": {
+                        "action": "reject",
+                        "request_id": "deadbeef"
+                    }
+                }
+            }
+        });
+
+        let msg = parse_feishu_event(&event).expect("callback parsed");
+        assert_eq!(msg.metadata["event_source"], "feishu_card_action");
+        assert_eq!(msg.metadata["open_message_id"], "om_card");
+    }
+
+    #[test]
+    fn test_parse_feishu_event_ignores_unknown_card_callback_type() {
+        let event = serde_json::json!({
+            "schema": "2.0",
+            "header": { "event_type": "card.action.unknown" },
+            "event": {
+                "action": {
+                    "value": {
+                        "action": "approve",
+                        "request_id": "abc123"
+                    }
+                }
+            }
+        });
+
+        assert!(parse_feishu_event(&event).is_none());
+    }
+
+    #[test]
+    fn test_feishu_webhook_response_for_card_action_trigger() {
+        let event = serde_json::json!({
+            "schema": "2.0",
+            "header": { "event_type": "card.action.trigger" },
+            "event": {
+                "action": { "value": { "action": "approve", "request_id": "abc123" } },
+                "open_chat_id": "oc_group"
+            }
+        });
+
+        let response = build_feishu_webhook_response(&event, true);
+        assert_eq!(response["code"], 0);
+    }
+
+    #[test]
+    fn test_build_ack_frame_returns_empty_success_payload() {
+        let request = FeishuWsFrame {
+            seq_id: 1,
+            log_id: 2,
+            service: 3,
+            method: 1,
+            headers: vec![header("type", "event")],
+            payload_encoding: None,
+            payload_type: None,
+            payload: None,
+            log_id_new: None,
+        };
+
+        let frame = build_ack_frame(&request, 200);
+        let payload: serde_json::Value =
+            serde_json::from_slice(frame.payload.as_ref().unwrap()).unwrap();
+        assert_eq!(payload["code"], 200);
+        assert_eq!(payload["data"], serde_json::json!([]));
+    }
+
+    #[tokio::test]
+    async fn test_handle_data_frame_dispatches_card_action_trigger() {
+        use prost::Message as ProstMessage;
+
+        let card_event = serde_json::json!({
+            "schema": "2.0",
+            "header": { "event_type": "card.action.trigger" },
+            "event": {
+                "operator": { "operator_id": { "open_id": "ou_op" } },
+                "open_message_id": "om_card",
+                "open_chat_id": "oc_chat",
+                "action": {
+                    "value": {
+                        "action": "approve",
+                        "request_id": "req_ws_1"
+                    }
+                }
+            }
+        });
+        let payload_bytes = serde_json::to_vec(&card_event).unwrap();
+
+        let frame = FeishuWsFrame {
+            seq_id: 10,
+            log_id: 20,
+            service: 1,
+            method: 0,
+            headers: vec![header("type", "card")],
+            payload_encoding: None,
+            payload_type: None,
+            payload: Some(payload_bytes),
+            log_id_new: None,
+        };
+
+        let (tx, mut rx) = mpsc::channel::<ChannelMessage>(16);
+        let mut frame_parts = HashMap::new();
+
+        // Use futures unbounded channel as sink for ACK frames
+        let (mut ws_tx, mut ws_rx) =
+            futures::channel::mpsc::unbounded::<tokio_tungstenite::tungstenite::Message>();
+
+        FeishuAdapter::handle_data_frame(frame, &mut ws_tx, &tx, &mut frame_parts)
+            .await
+            .expect("handle_data_frame should succeed");
+
+        // Verify: message dispatched to channel
+        let msg = rx.try_recv().expect("should have received a channel message");
+        match msg.content {
+            ChannelContent::Command { name, args } => {
+                assert_eq!(name, "approve");
+                assert_eq!(args, vec!["req_ws_1"]);
+            }
+            other => panic!("unexpected content: {other:?}"),
+        }
+
+        // Verify: ACK frame was sent back
+        let ack_msg = ws_rx.try_recv().expect("should have ACK frame");
+        if let tokio_tungstenite::tungstenite::Message::Binary(data) = ack_msg {
+            let ack_frame = FeishuWsFrame::decode(data.as_ref()).unwrap();
+            let ack_payload: serde_json::Value =
+                serde_json::from_slice(ack_frame.payload.as_ref().unwrap()).unwrap();
+            assert_eq!(ack_payload["code"], 200);
+        } else {
+            panic!("expected binary ACK message");
+        }
+    }
+
+    #[test]
+    fn test_parse_feishu_event_card_action_trigger_context_nested() {
+        // Real card.action.trigger events nest open_chat_id under event.context
+        let event = serde_json::json!({
+            "schema": "2.0",
+            "header": { "event_type": "card.action.trigger" },
+            "event": {
+                "operator": {
+                    "open_id": "ou_operator"
+                },
+                "action": {
+                    "value": {
+                        "action": "approve",
+                        "request_id": "real_req_1"
+                    },
+                    "tag": "button"
+                },
+                "host": "im_message",
+                "context": {
+                    "open_message_id": "om_real_card",
+                    "open_chat_id": "oc_real_chat"
+                }
+            }
+        });
+
+        let msg = parse_feishu_event(&event).expect("callback parsed");
+        match msg.content {
+            ChannelContent::Command { name, args } => {
+                assert_eq!(name, "approve");
+                assert_eq!(args, vec!["real_req_1"]);
+            }
+            other => panic!("unexpected content: {other:?}"),
+        }
+        // sender.platform_id must be the chat_id for send() to work
+        assert_eq!(msg.sender.platform_id, "oc_real_chat");
+        assert_eq!(msg.metadata["open_message_id"], "om_real_card");
+        assert_eq!(msg.metadata["event_source"], "feishu_card_action");
     }
 }
