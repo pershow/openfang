@@ -420,9 +420,10 @@ function chatPage() {
         case '/model':
           if (self.currentAgent) {
             if (cmdArgs) {
-              OpenFangAPI.put('/api/agents/' + self.currentAgent.id + '/model', { model: cmdArgs }).then(function() {
+              OpenFangAPI.put('/api/agents/' + self.currentAgent.id + '/model', { model: cmdArgs }).then(function(resp) {
                 self.currentAgent.model_name = cmdArgs;
-                self.messages.push({ id: ++msgId, role: 'system', text: 'Model switched to: `' + cmdArgs + '`', meta: '', tools: [] });
+                if (resp && resp.provider) { self.currentAgent.model_provider = resp.provider; }
+                self.messages.push({ id: ++msgId, role: 'system', text: 'Model switched to: `' + cmdArgs + '`' + (resp && resp.provider ? ' (provider: `' + resp.provider + '`)' : ''), meta: '', tools: [] });
                 self.scrollToBottom();
               }).catch(function(e) { OpenFangToast.error('Model switch failed: ' + e.message); });
             } else {
@@ -531,7 +532,10 @@ function chatPage() {
                 is_error: !!t.is_error
               };
             });
-            return { id: ++msgId, role: role, text: text, meta: '', tools: tools };
+            var images = (m.images || []).map(function(img) {
+              return { file_id: img.file_id, filename: img.filename || 'image' };
+            });
+            return { id: ++msgId, role: role, text: text, meta: '', tools: tools, images: images };
           });
           self.$nextTick(function() { self.scrollToBottom(); });
         }

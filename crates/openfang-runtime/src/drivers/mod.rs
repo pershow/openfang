@@ -155,7 +155,7 @@ fn provider_defaults(provider: &str) -> Option<ProviderDefaults> {
             api_key_env: "MOONSHOT_API_KEY",
             key_required: true,
         }),
-        "qwen" | "dashscope" => Some(ProviderDefaults {
+        "qwen" | "dashscope" | "model_studio" => Some(ProviderDefaults {
             base_url: QWEN_BASE_URL,
             api_key_env: "DASHSCOPE_API_KEY",
             key_required: true,
@@ -360,6 +360,38 @@ pub fn create_driver(config: &DriverConfig) -> Result<Arc<dyn LlmDriver>, LlmErr
             provider
         ),
     })
+}
+
+/// Detect the first available provider by scanning environment variables.
+///
+/// Returns `(provider, model, api_key_env)` for the first provider that has a
+/// configured API key, checked in a user-friendly priority order.
+pub fn detect_available_provider() -> Option<(&'static str, &'static str, &'static str)> {
+    // Priority: popular cloud providers first, then niche, then local
+    const PROBE_ORDER: &[(&str, &str, &str)] = &[
+        ("openai", "gpt-4o", "OPENAI_API_KEY"),
+        ("anthropic", "claude-sonnet-4-20250514", "ANTHROPIC_API_KEY"),
+        ("gemini", "gemini-2.5-flash", "GEMINI_API_KEY"),
+        ("groq", "llama-3.3-70b-versatile", "GROQ_API_KEY"),
+        ("deepseek", "deepseek-chat", "DEEPSEEK_API_KEY"),
+        ("openrouter", "openrouter/anthropic/claude-sonnet-4", "OPENROUTER_API_KEY"),
+        ("mistral", "mistral-large-latest", "MISTRAL_API_KEY"),
+        ("together", "meta-llama/Llama-3-70b-chat-hf", "TOGETHER_API_KEY"),
+        ("fireworks", "accounts/fireworks/models/llama-v3p1-70b-instruct", "FIREWORKS_API_KEY"),
+        ("xai", "grok-2", "XAI_API_KEY"),
+        ("perplexity", "llama-3.1-sonar-large-128k-online", "PERPLEXITY_API_KEY"),
+        ("cohere", "command-r-plus", "COHERE_API_KEY"),
+    ];
+    for &(provider, model, env_var) in PROBE_ORDER {
+        if std::env::var(env_var).ok().filter(|v| !v.is_empty()).is_some() {
+            return Some((provider, model, env_var));
+        }
+    }
+    // Also check GOOGLE_API_KEY as alias for Gemini
+    if std::env::var("GOOGLE_API_KEY").ok().filter(|v| !v.is_empty()).is_some() {
+        return Some(("gemini", "gemini-2.5-flash", "GOOGLE_API_KEY"));
+    }
+    None
 }
 
 /// List all known provider names.
