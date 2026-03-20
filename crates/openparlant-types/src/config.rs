@@ -1261,7 +1261,7 @@ fn default_thread_ttl() -> u64 {
 
 impl Default for KernelConfig {
     fn default() -> Self {
-        let home_dir = openfang_home_dir();
+        let home_dir = openparlant_home_dir();
         Self {
             data_dir: home_dir.join("data"),
             home_dir,
@@ -1433,7 +1433,7 @@ impl std::fmt::Debug for KernelConfig {
 /// Resolve the OpenParlant home directory.
 ///
 /// Priority: `OPENFANG_HOME` env var > `~/.openparlant`.
-fn openfang_home_dir() -> PathBuf {
+fn openparlant_home_dir() -> PathBuf {
     if let Ok(home) = std::env::var("OPENFANG_HOME") {
         return PathBuf::from(home);
     }

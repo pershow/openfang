@@ -27,7 +27,7 @@ pub fn default_client_ids() -> HashMap<&'static str, &'static str> {
 }
 
 /// Resolve OAuth client IDs with config overrides applied on top of defaults.
-pub fn resolve_client_ids(config: &openfang_types::config::OAuthConfig) -> HashMap<String, String> {
+pub fn resolve_client_ids(config: &openparlant_types::config::OAuthConfig) -> HashMap<String, String> {
     let defaults = default_client_ids();
     let mut resolved: HashMap<String, String> = defaults
         .into_iter()
@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     fn resolve_client_ids_uses_defaults() {
-        let config = openfang_types::config::OAuthConfig::default();
+        let config = openparlant_types::config::OAuthConfig::default();
         let ids = resolve_client_ids(&config);
         assert_eq!(ids["google"], "openparlant-google-client-id");
         assert_eq!(ids["github"], "openparlant-github-client-id");
@@ -368,7 +368,7 @@ mod tests {
 
     #[test]
     fn resolve_client_ids_applies_overrides() {
-        let config = openfang_types::config::OAuthConfig {
+        let config = openparlant_types::config::OAuthConfig {
             google_client_id: Some("my-real-google-id".into()),
             github_client_id: None,
             microsoft_client_id: Some("my-msft-id".into()),

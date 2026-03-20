@@ -85,7 +85,7 @@ pub fn validate_executable_path(path: &str) -> Result<(), String> {
 // Shell/exec allowlisting
 // ---------------------------------------------------------------------------
 
-use openfang_types::config::{ExecPolicy, ExecSecurityMode};
+use openparlant_types::config::{ExecPolicy, ExecSecurityMode};
 
 /// SECURITY: Check for shell metacharacters that enable command injection.
 ///
@@ -437,7 +437,7 @@ pub async fn wait_or_kill_with_idle(
     absolute_timeout: std::time::Duration,
     no_output_timeout: std::time::Duration,
     grace_ms: u64,
-) -> Result<(openfang_types::config::TerminationReason, String), String> {
+) -> Result<(openparlant_types::config::TerminationReason, String), String> {
     use tokio::io::AsyncReadExt;
 
     let idle_enabled = !no_output_timeout.is_zero();
@@ -463,7 +463,7 @@ pub async fn wait_or_kill_with_idle(
             tracing::warn!("Process hit absolute timeout after {:?}", absolute_timeout);
             kill_child_tree(child, grace_ms).await?;
             return Ok((
-                openfang_types::config::TerminationReason::AbsoluteTimeout,
+                openparlant_types::config::TerminationReason::AbsoluteTimeout,
                 output,
             ));
         }
@@ -477,7 +477,7 @@ pub async fn wait_or_kill_with_idle(
                 );
                 kill_child_tree(child, grace_ms).await?;
                 return Ok((
-                    openfang_types::config::TerminationReason::NoOutputTimeout,
+                    openparlant_types::config::TerminationReason::NoOutputTimeout,
                     output,
                 ));
             }
@@ -509,14 +509,14 @@ pub async fn wait_or_kill_with_idle(
                             ).await {
                                 Ok(Ok(status)) => {
                                     return Ok((
-                                        openfang_types::config::TerminationReason::Exited(status.code().unwrap_or(-1)),
+                                        openparlant_types::config::TerminationReason::Exited(status.code().unwrap_or(-1)),
                                         output,
                                     ));
                                 }
                                 Ok(Err(e)) => return Err(format!("Wait error: {e}")),
                                 Err(_) => {
                                     kill_child_tree(child, grace_ms).await?;
-                                    return Ok((openfang_types::config::TerminationReason::AbsoluteTimeout, output));
+                                    return Ok((openparlant_types::config::TerminationReason::AbsoluteTimeout, output));
                                 }
                             }
                         }
@@ -567,7 +567,7 @@ pub async fn wait_or_kill_with_idle(
                 match result {
                     Ok(status) => {
                         return Ok((
-                            openfang_types::config::TerminationReason::Exited(status.code().unwrap_or(-1)),
+                            openparlant_types::config::TerminationReason::Exited(status.code().unwrap_or(-1)),
                             output,
                         ));
                     }

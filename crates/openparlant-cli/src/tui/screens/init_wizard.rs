@@ -13,8 +13,8 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crate::tui::theme;
-use openfang_runtime::model_catalog::ModelCatalog;
-use openfang_types::model_catalog::ModelTier;
+use openparlant_runtime::model_catalog::ModelCatalog;
+use openparlant_types::model_catalog::ModelTier;
 
 // ── Provider metadata ──────────────────────────────────────────────────────
 
@@ -303,8 +303,8 @@ struct State {
     migration_phase: MigrationPhase,
     migration_choice_list: ListState,
     openclaw_path: Option<PathBuf>,
-    openclaw_scan: Option<openfang_migrate::openclaw::ScanResult>,
-    migration_report: Option<openfang_migrate::report::MigrationReport>,
+    openclaw_scan: Option<openparlant_migrate::openclaw::ScanResult>,
+    migration_report: Option<openparlant_migrate::report::MigrationReport>,
     migration_error: Option<String>,
     migration_done_at: Option<Instant>,
     migrated_provider: Option<String>,
@@ -392,7 +392,7 @@ impl State {
         let gemini_via_google = std::env::var("GOOGLE_API_KEY").is_ok();
         for (i, p) in PROVIDERS.iter().enumerate() {
             let detected = if p.name == "claude-code" {
-                openfang_runtime::drivers::claude_code::claude_code_available()
+                openparlant_runtime::drivers::claude_code::claude_code_available()
             } else {
                 (!p.env_var.is_empty() && std::env::var(p.env_var).is_ok())
                     || (p.name == "gemini" && gemini_via_google)
@@ -403,7 +403,7 @@ impl State {
         }
         for (i, p) in PROVIDERS.iter().enumerate() {
             let detected = if p.name == "claude-code" {
-                openfang_runtime::drivers::claude_code::claude_code_available()
+                openparlant_runtime::drivers::claude_code::claude_code_available()
             } else {
                 (!p.env_var.is_empty() && std::env::var(p.env_var).is_ok())
                     || (p.name == "gemini" && gemini_via_google)
@@ -447,7 +447,7 @@ impl State {
     fn is_provider_detected(&self, prov_idx: usize) -> bool {
         let p = &PROVIDERS[prov_idx];
         if p.name == "claude-code" {
-            return openfang_runtime::drivers::claude_code::claude_code_available();
+            return openparlant_runtime::drivers::claude_code::claude_code_available();
         }
         (!p.env_var.is_empty() && std::env::var(p.env_var).is_ok())
             || (p.name == "gemini" && std::env::var("GOOGLE_API_KEY").is_ok())
@@ -601,7 +601,7 @@ pub fn run() -> InitResult {
 
     let (test_tx, test_rx) = std::sync::mpsc::channel::<bool>();
     let (migrate_tx, migrate_rx) =
-        std::sync::mpsc::channel::<Result<openfang_migrate::report::MigrationReport, String>>();
+        std::sync::mpsc::channel::<Result<openparlant_migrate::report::MigrationReport, String>>();
 
     let result = loop {
         terminal
@@ -634,13 +634,13 @@ pub fn run() -> InitResult {
 
         // ── Migration detection (resolves in 1 frame) ──
         if state.step == Step::Migration && state.migration_phase == MigrationPhase::Detecting {
-            match openfang_migrate::openclaw::detect_openclaw_home() {
+            match openparlant_migrate::openclaw::detect_openclaw_home() {
                 None => {
                     // No OpenClaw found — skip migration entirely
                     state.advance_to_provider();
                 }
                 Some(path) => {
-                    let scan = openfang_migrate::openclaw::scan_openclaw_workspace(&path);
+                    let scan = openparlant_migrate::openclaw::scan_openclaw_workspace(&path);
                     let has_content = scan.has_config
                         || !scan.agents.is_empty()
                         || !scan.channels.is_empty()
@@ -922,7 +922,7 @@ pub fn run() -> InitResult {
 fn handle_migration_key(
     state: &mut State,
     code: KeyCode,
-    migrate_tx: &std::sync::mpsc::Sender<Result<openfang_migrate::report::MigrationReport, String>>,
+    migrate_tx: &std::sync::mpsc::Sender<Result<openparlant_migrate::report::MigrationReport, String>>,
 ) {
     match state.migration_phase {
         MigrationPhase::Detecting => {} // auto-resolves, no keys
@@ -956,14 +956,14 @@ fn handle_migration_key(
                     };
                     let tx = migrate_tx.clone();
                     std::thread::spawn(move || {
-                        let options = openfang_migrate::MigrateOptions {
-                            source: openfang_migrate::MigrateSource::OpenClaw,
+                        let options = openparlant_migrate::MigrateOptions {
+                            source: openparlant_migrate::MigrateSource::OpenClaw,
                             source_dir,
                             target_dir,
                             dry_run: false,
                         };
                         let result =
-                            openfang_migrate::run_migration(&options).map_err(|e| format!("{e}"));
+                            openparlant_migrate::run_migration(&options).map_err(|e| format!("{e}"));
                         let _ = tx.send(result);
                     });
                 } else {
@@ -1072,7 +1072,7 @@ fn save_config(state: &mut State) {
         }
     };
 
-    let openfang_dir = if let Ok(h) = std::env::var("OPENFANG_HOME") {
+    let openparlant_dir = if let Ok(h) = std::env::var("OPENFANG_HOME") {
         PathBuf::from(h)
     } else {
         match dirs::home_dir() {
@@ -1083,9 +1083,9 @@ fn save_config(state: &mut State) {
             }
         }
     };
-    let _ = std::fs::create_dir_all(openfang_dir.join("agents"));
-    let _ = std::fs::create_dir_all(openfang_dir.join("data"));
-    crate::restrict_dir_permissions(&openfang_dir);
+    let _ = std::fs::create_dir_all(openparlant_dir.join("agents"));
+    let _ = std::fs::create_dir_all(openparlant_dir.join("data"));
+    crate::restrict_dir_permissions(&openparlant_dir);
 
     let model = if state.model_input.is_empty() {
         p.default_model
@@ -1111,7 +1111,7 @@ complex_threshold = 500
         String::new()
     };
 
-    let config_path = openfang_dir.join("config.toml");
+    let config_path = openparlant_dir.join("config.toml");
     let api_key_line = if p.env_var.is_empty() {
         String::new()
     } else {
@@ -1566,7 +1566,7 @@ fn draw_migration_done(f: &mut Frame, area: Rect, state: &State) {
         ]));
     } else if let Some(ref report) = state.migration_report {
         // Group imported items by kind
-        use openfang_migrate::report::ItemKind;
+        use openparlant_migrate::report::ItemKind;
         let config_count = report
             .imported
             .iter()
@@ -2053,7 +2053,7 @@ fn draw_routing_pick(f: &mut Frame, area: Rect, state: &mut State, tier: usize) 
                 .split('/')
                 .next_back()
                 .unwrap_or(&state.routing_models[t]);
-            let display = openfang_types::truncate_str(short, 14);
+            let display = openparlant_types::truncate_str(short, 14);
             summary_spans.push(Span::styled(
                 format!("{name}:{display}"),
                 Style::default().fg(*c),

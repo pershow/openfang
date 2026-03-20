@@ -101,7 +101,7 @@ Examples:
 - Server `github`, tool `create_issue` becomes `mcp_github_create_issue`
 - Server `my-server`, tool `do_thing` becomes `mcp_my_server_do_thing`
 
-Helper functions (exported from `openfang_runtime::mcp`):
+Helper functions (exported from `openparlant_runtime::mcp`):
 - `format_mcp_tool_name(server, tool)` -- builds the namespaced name
 - `is_mcp_tool(name)` -- checks if a tool name starts with `mcp_`
 - `extract_mcp_server(tool_name)` -- extracts the server name from a namespaced tool
@@ -166,9 +166,9 @@ OpenParlant can also act as an MCP server, exposing its agents as callable tools
 
 #### How It Works
 
-Each OpenParlant agent becomes an MCP tool named `openfang_agent_{name}` (with hyphens replaced by underscores). The tool accepts a single `message` string parameter and returns the agent's response.
+Each OpenParlant agent becomes an MCP tool named `openparlant_agent_{name}` (with hyphens replaced by underscores). The tool accepts a single `message` string parameter and returns the agent's response.
 
-For example, an agent named `code-reviewer` becomes the MCP tool `openfang_agent_code_reviewer`.
+For example, an agent named `code-reviewer` becomes the MCP tool `openparlant_agent_code_reviewer`.
 
 #### CLI: `openparlant mcp`
 
@@ -257,7 +257,7 @@ Response:
   "id": 3,
   "method": "tools/call",
   "params": {
-    "name": "openfang_agent_code_reviewer",
+    "name": "openparlant_agent_code_reviewer",
     "arguments": {
       "message": "Review this Python function for security issues..."
     }

@@ -12,9 +12,9 @@ use crate::types::{
 use async_trait::async_trait;
 use dashmap::DashMap;
 use futures::StreamExt;
-use openfang_types::agent::AgentId;
-use openfang_types::config::{ChannelOverrides, DmPolicy, GroupPolicy, OutputFormat};
-use openfang_types::message::ContentBlock;
+use openparlant_types::agent::AgentId;
+use openparlant_types::config::{ChannelOverrides, DmPolicy, GroupPolicy, OutputFormat};
+use openparlant_types::message::ContentBlock;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
@@ -757,7 +757,7 @@ async fn dispatch_message(
             let mut responses = Vec::new();
 
             match strategy {
-                openfang_types::config::BroadcastStrategy::Parallel => {
+                openparlant_types::config::BroadcastStrategy::Parallel => {
                     let mut handles_vec = Vec::new();
                     for (name, maybe_id) in &targets {
                         if let Some(aid) = maybe_id {
@@ -780,7 +780,7 @@ async fn dispatch_message(
                         }
                     }
                 }
-                openfang_types::config::BroadcastStrategy::Sequential => {
+                openparlant_types::config::BroadcastStrategy::Sequential => {
                     for (name, maybe_id) in &targets {
                         if let Some(aid) = maybe_id {
                             match handle.send_message(*aid, &text).await {
@@ -804,7 +804,7 @@ async fn dispatch_message(
     let agent_id = router.resolve(
         &message.channel,
         &message.sender.platform_id,
-        message.sender.openfang_user.as_deref(),
+        message.sender.openparlant_user.as_deref(),
     );
 
     let agent_id = match agent_id {
@@ -1222,7 +1222,7 @@ async fn dispatch_with_blocks(
     let agent_id = router.resolve(
         &message.channel,
         &message.sender.platform_id,
-        message.sender.openfang_user.as_deref(),
+        message.sender.openparlant_user.as_deref(),
     );
 
     let agent_id = match agent_id {
@@ -1513,7 +1513,7 @@ async fn handle_command(
             let agent_id = router.resolve(
                 &crate::types::ChannelType::CLI,
                 &sender.platform_id,
-                sender.openfang_user.as_deref(),
+                sender.openparlant_user.as_deref(),
             );
             match agent_id {
                 Some(aid) => handle
@@ -1527,7 +1527,7 @@ async fn handle_command(
             let agent_id = router.resolve(
                 &crate::types::ChannelType::CLI,
                 &sender.platform_id,
-                sender.openfang_user.as_deref(),
+                sender.openparlant_user.as_deref(),
             );
             match agent_id {
                 Some(aid) => handle
@@ -1541,7 +1541,7 @@ async fn handle_command(
             let agent_id = router.resolve(
                 &crate::types::ChannelType::CLI,
                 &sender.platform_id,
-                sender.openfang_user.as_deref(),
+                sender.openparlant_user.as_deref(),
             );
             match agent_id {
                 Some(aid) => {
@@ -1565,7 +1565,7 @@ async fn handle_command(
             let agent_id = router.resolve(
                 &crate::types::ChannelType::CLI,
                 &sender.platform_id,
-                sender.openfang_user.as_deref(),
+                sender.openparlant_user.as_deref(),
             );
             match agent_id {
                 Some(aid) => handle
@@ -1579,7 +1579,7 @@ async fn handle_command(
             let agent_id = router.resolve(
                 &crate::types::ChannelType::CLI,
                 &sender.platform_id,
-                sender.openfang_user.as_deref(),
+                sender.openparlant_user.as_deref(),
             );
             match agent_id {
                 Some(aid) => handle
@@ -1593,7 +1593,7 @@ async fn handle_command(
             let agent_id = router.resolve(
                 &crate::types::ChannelType::CLI,
                 &sender.platform_id,
-                sender.openfang_user.as_deref(),
+                sender.openparlant_user.as_deref(),
             );
             match agent_id {
                 Some(aid) => {
@@ -1755,7 +1755,7 @@ mod tests {
         let sender = ChannelUser {
             platform_id: "user1".to_string(),
             display_name: "Test".to_string(),
-            openfang_user: None,
+            openparlant_user: None,
         };
 
         let result = handle_command("agents", &[], &handle, &router, &sender).await;
@@ -1775,7 +1775,7 @@ mod tests {
         let sender = ChannelUser {
             platform_id: "user1".to_string(),
             display_name: "Test".to_string(),
-            openfang_user: None,
+            openparlant_user: None,
         };
 
         // Select existing agent

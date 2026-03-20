@@ -7,9 +7,9 @@
 use super::event::{self, AppEvent};
 use super::screens::chat::{self, ChatAction, ChatState, Role};
 use super::theme;
-use openfang_kernel::OpenFangKernel;
-use openfang_runtime::llm_driver::StreamEvent;
-use openfang_types::agent::AgentId;
+use openparlant_kernel::OpenFangKernel;
+use openparlant_runtime::llm_driver::StreamEvent;
+use openparlant_types::agent::AgentId;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -161,7 +161,7 @@ impl StandaloneChat {
 
     fn handle_stream_done(
         &mut self,
-        result: Result<openfang_runtime::agent_loop::AgentLoopResult, String>,
+        result: Result<openparlant_runtime::agent_loop::AgentLoopResult, String>,
     ) {
         self.chat.finalize_stream();
         match result {
@@ -649,7 +649,7 @@ impl StandaloneChat {
 
         match template {
             Some(t) => {
-                let manifest: openfang_types::agent::AgentManifest =
+                let manifest: openparlant_types::agent::AgentManifest =
                     match toml::from_str(&t.content) {
                         Ok(m) => m,
                         Err(e) => {

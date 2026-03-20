@@ -13,7 +13,7 @@ pub mod openai;
 pub mod qwen_code;
 
 use crate::llm_driver::{DriverConfig, LlmDriver, LlmError};
-use openfang_types::model_catalog::{
+use openparlant_types::model_catalog::{
     AI21_BASE_URL, ANTHROPIC_BASE_URL, AZURE_OPENAI_BASE_URL, CEREBRAS_BASE_URL, CHUTES_BASE_URL,
     COHERE_BASE_URL, DEEPSEEK_BASE_URL, FIREWORKS_BASE_URL, GEMINI_BASE_URL, GROQ_BASE_URL,
     HUGGINGFACE_BASE_URL, KIMI_CODING_BASE_URL, LEMONADE_BASE_URL, LMSTUDIO_BASE_URL,

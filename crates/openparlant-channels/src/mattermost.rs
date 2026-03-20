@@ -215,7 +215,7 @@ fn parse_mattermost_event(
         sender: ChannelUser {
             platform_id: channel_id.to_string(),
             display_name: sender_name.to_string(),
-            openfang_user: None,
+            openparlant_user: None,
         },
         content,
         target_agent: None,

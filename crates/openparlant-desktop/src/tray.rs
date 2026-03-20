@@ -1,6 +1,6 @@
 //! System tray setup for the OpenParlant desktop app.
 
-use openfang_kernel::config::openfang_home;
+use openparlant_kernel::config::openparlant_home;
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -192,7 +192,7 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 });
             }
             "open_config" => {
-                let dir = openfang_home();
+                let dir = openparlant_home();
                 let _ = std::fs::create_dir_all(&dir);
                 if let Err(e) = open::that(&dir) {
                     warn!("Failed to open config dir: {e}");

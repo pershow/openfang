@@ -4,8 +4,8 @@
 //! duplicate/similar memories.
 
 use chrono::Utc;
-use openfang_types::error::{OpenFangError, OpenFangResult};
-use openfang_types::memory::ConsolidationReport;
+use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::memory::ConsolidationReport;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 

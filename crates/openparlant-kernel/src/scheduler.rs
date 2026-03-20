@@ -1,9 +1,9 @@
 //! Agent scheduler — manages agent execution and resource tracking.
 
 use dashmap::DashMap;
-use openfang_types::agent::{AgentId, ResourceQuota};
-use openfang_types::error::{OpenFangError, OpenFangResult};
-use openfang_types::message::TokenUsage;
+use openparlant_types::agent::{AgentId, ResourceQuota};
+use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::message::TokenUsage;
 use std::time::Instant;
 use tokio::task::JoinHandle;
 use tracing::debug;

@@ -4,9 +4,9 @@
 //! to OpenParlant users with roles, then enforces permission checks on actions.
 
 use dashmap::DashMap;
-use openfang_types::agent::UserId;
-use openfang_types::config::UserConfig;
-use openfang_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::agent::UserId;
+use openparlant_types::config::UserConfig;
+use openparlant_types::error::{OpenFangError, OpenFangResult};
 use std::fmt;
 use tracing::info;
 

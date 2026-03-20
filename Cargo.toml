@@ -14,6 +14,10 @@ members = [
     "crates/openparlant-desktop",
     "crates/openparlant-hands",
     "crates/openparlant-extensions",
+    "crates/openparlant-policy",
+    "crates/openparlant-journey",
+    "crates/openparlant-context",
+    "crates/openparlant-control",
     "xtask",
 ]
 

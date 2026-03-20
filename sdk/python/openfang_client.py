@@ -3,7 +3,7 @@ OpenParlant Python Client — REST API client for controlling OpenParlant remote
 
 Usage:
 
-    from openfang_client import OpenParlant
+    from openparlant_client import OpenParlant
 
     client = OpenParlant("http://localhost:3000")
 
@@ -21,7 +21,7 @@ Usage:
             print(event["delta"], end="", flush=True)
 
 Note: This is the REST API *client* library.
-      For writing Python agents that run inside OpenParlant, see openfang_sdk.py instead.
+      For writing Python agents that run inside OpenParlant, see openparlant_sdk.py instead.
 """
 
 import json

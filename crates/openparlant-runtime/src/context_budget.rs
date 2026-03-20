@@ -5,8 +5,8 @@
 //! - Layer 2: Context guard that scans all tool results before LLM calls
 //!   and compacts oldest results when total exceeds 75% headroom.
 
-use openfang_types::message::{ContentBlock, Message, MessageContent};
-use openfang_types::tool::ToolDefinition;
+use openparlant_types::message::{ContentBlock, Message, MessageContent};
+use openparlant_types::tool::ToolDefinition;
 use tracing::debug;
 
 /// Budget parameters derived from the model's context window.
@@ -279,7 +279,7 @@ mod tests {
         let big_result = "x".repeat(500);
         let mut messages = vec![
             Message {
-                role: openfang_types::message::Role::User,
+                role: openparlant_types::message::Role::User,
                 content: MessageContent::Blocks(vec![ContentBlock::ToolResult {
                     tool_use_id: "t1".to_string(),
                     tool_name: String::new(),
@@ -288,7 +288,7 @@ mod tests {
                 }]),
             },
             Message {
-                role: openfang_types::message::Role::User,
+                role: openparlant_types::message::Role::User,
                 content: MessageContent::Blocks(vec![ContentBlock::ToolResult {
                     tool_use_id: "t2".to_string(),
                     tool_name: String::new(),
@@ -339,7 +339,7 @@ mod tests {
         // Chinese text: 500 chars * 3 bytes = 1500 bytes
         let big_chinese: String = "\u{4e2d}\u{6587}\u{6d4b}\u{8bd5}\u{6570}\u{636e}".repeat(83);
         let mut messages = vec![Message {
-            role: openfang_types::message::Role::User,
+            role: openparlant_types::message::Role::User,
             content: MessageContent::Blocks(vec![ContentBlock::ToolResult {
                 tool_use_id: "t1".to_string(),
                 tool_name: String::new(),

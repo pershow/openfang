@@ -8,9 +8,9 @@ pub mod screens;
 pub mod theme;
 
 use event::{AppEvent, BackendRef};
-use openfang_kernel::OpenFangKernel;
-use openfang_runtime::llm_driver::StreamEvent;
-use openfang_types::agent::AgentId;
+use openparlant_kernel::OpenFangKernel;
+use openparlant_runtime::llm_driver::StreamEvent;
+use openparlant_types::agent::AgentId;
 use screens::{
     agents, audit, channels, chat, comms, dashboard, extensions, hands, logs, memory, peers,
     security, sessions, settings, skills, templates, triggers, usage, welcome, wizard, workflows,
@@ -1191,7 +1191,7 @@ impl App {
 
     fn handle_stream_done(
         &mut self,
-        result: Result<openfang_runtime::agent_loop::AgentLoopResult, String>,
+        result: Result<openparlant_runtime::agent_loop::AgentLoopResult, String>,
     ) {
         self.chat.finalize_stream();
         match result {
@@ -1824,7 +1824,7 @@ impl App {
                 event::spawn_daemon_agent(base_url.clone(), toml_content, self.event_tx.clone());
             }
             Backend::InProcess { kernel } => {
-                let manifest: openfang_types::agent::AgentManifest =
+                let manifest: openparlant_types::agent::AgentManifest =
                     match toml::from_str(&toml_content) {
                         Ok(m) => m,
                         Err(e) => {

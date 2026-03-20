@@ -1,7 +1,7 @@
 //! Core channel bridge types.
 
 use chrono::{DateTime, Utc};
-use openfang_types::agent::AgentId;
+use openparlant_types::agent::AgentId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -34,7 +34,7 @@ pub struct ChannelUser {
     /// Human-readable display name.
     pub display_name: String,
     /// Optional mapping to an OpenParlant user identity.
-    pub openfang_user: Option<String>,
+    pub openparlant_user: Option<String>,
 }
 
 /// Content types that can be received from a channel.
@@ -210,7 +210,7 @@ pub struct ChannelStatus {
 }
 
 // Re-export policy/format types from openparlant-types for convenience.
-pub use openfang_types::config::{DmPolicy, GroupPolicy, OutputFormat};
+pub use openparlant_types::config::{DmPolicy, GroupPolicy, OutputFormat};
 
 /// Trait that every channel adapter must implement.
 ///
@@ -295,7 +295,7 @@ pub fn split_message(text: &str, max_len: usize) -> Vec<&str> {
             break;
         }
         // Try to split at a newline near the boundary (UTF-8 safe)
-        let safe_end = openfang_types::truncate_str(remaining, max_len).len();
+        let safe_end = openparlant_types::truncate_str(remaining, max_len).len();
         let split_at = remaining[..safe_end].rfind('\n').unwrap_or(safe_end);
         let (chunk, rest) = remaining.split_at(split_at);
         chunks.push(chunk);
@@ -320,7 +320,7 @@ mod tests {
             sender: ChannelUser {
                 platform_id: "user1".to_string(),
                 display_name: "Alice".to_string(),
-                openfang_user: None,
+                openparlant_user: None,
             },
             content: ChannelContent::Text("Hello!".to_string()),
             target_agent: None,

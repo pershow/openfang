@@ -9,7 +9,7 @@
 //! - `build_agent_card` — expose OpenParlant agents via A2A
 //! - `A2aClient` — discover and interact with external A2A agents
 
-use openfang_types::agent::AgentManifest;
+use openparlant_types::agent::AgentManifest;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -319,7 +319,7 @@ impl Default for A2aTaskStore {
 ///
 /// Called during kernel boot to populate the list of known external agents.
 pub async fn discover_external_agents(
-    agents: &[openfang_types::config::ExternalAgent],
+    agents: &[openparlant_types::config::ExternalAgent],
 ) -> Vec<(String, AgentCard)> {
     let client = A2aClient::new();
     let mut discovered = Vec::new();
@@ -733,7 +733,7 @@ mod tests {
 
     #[test]
     fn test_a2a_config_serde() {
-        use openfang_types::config::{A2aConfig, ExternalAgent};
+        use openparlant_types::config::{A2aConfig, ExternalAgent};
 
         let config = A2aConfig {
             enabled: true,

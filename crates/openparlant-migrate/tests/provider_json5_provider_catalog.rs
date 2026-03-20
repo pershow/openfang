@@ -1,4 +1,4 @@
-use openfang_migrate::{run_migration, MigrateOptions, MigrateSource};
+use openparlant_migrate::{run_migration, MigrateOptions, MigrateSource};
 use tempfile::TempDir;
 
 #[test]

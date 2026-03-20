@@ -14,16 +14,16 @@ use crate::loop_guard::{LoopGuard, LoopGuardConfig, LoopGuardVerdict};
 use crate::mcp::McpConnection;
 use crate::tool_runner;
 use crate::web_search::WebToolsContext;
-use openfang_memory::session::Session;
-use openfang_memory::MemorySubstrate;
-use openfang_skills::registry::SkillRegistry;
-use openfang_types::agent::AgentManifest;
-use openfang_types::error::{OpenFangError, OpenFangResult};
-use openfang_types::memory::{Memory, MemoryFilter, MemorySource};
-use openfang_types::message::{
+use openparlant_memory::session::Session;
+use openparlant_memory::MemorySubstrate;
+use openparlant_skills::registry::SkillRegistry;
+use openparlant_types::agent::AgentManifest;
+use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::memory::{Memory, MemoryFilter, MemorySource};
+use openparlant_types::message::{
     ContentBlock, Message, MessageContent, Role, StopReason, TokenUsage,
 };
-use openfang_types::tool::{ToolCall, ToolDefinition};
+use openparlant_types::tool::{ToolCall, ToolDefinition};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -134,7 +134,7 @@ pub struct AgentLoopResult {
     /// True when the agent intentionally chose not to reply (NO_REPLY token or [[silent]]).
     pub silent: bool,
     /// Reply directives extracted from the agent's response.
-    pub directives: openfang_types::message::ReplyDirectives,
+    pub directives: openparlant_types::message::ReplyDirectives,
 }
 
 /// Run the agent execution loop for a single user message.
@@ -159,7 +159,7 @@ pub async fn run_agent_loop(
     on_phase: Option<&PhaseCallback>,
     media_engine: Option<&crate::media_understanding::MediaEngine>,
     tts_engine: Option<&crate::tts::TtsEngine>,
-    docker_config: Option<&openfang_types::config::DockerSandboxConfig>,
+    docker_config: Option<&openparlant_types::config::DockerSandboxConfig>,
     hooks: Option<&crate::hooks::HookRegistry>,
     context_window_tokens: Option<usize>,
     process_manager: Option<&crate::process_manager::ProcessManager>,
@@ -227,7 +227,7 @@ pub async fn run_agent_loop(
         let ctx = crate::hooks::HookContext {
             agent_name: &manifest.name,
             agent_id: agent_id_str.as_str(),
-            event: openfang_types::agent::HookEvent::BeforePromptBuild,
+            event: openparlant_types::agent::HookEvent::BeforePromptBuild,
             data: serde_json::json!({
                 "system_prompt": &manifest.model.system_prompt,
                 "user_message": user_message,
@@ -443,7 +443,7 @@ pub async fn run_agent_loop(
                         iterations: iteration + 1,
                         cost_usd: None,
                         silent: true,
-                        directives: openfang_types::message::ReplyDirectives {
+                        directives: openparlant_types::message::ReplyDirectives {
                             reply_to: parsed_directives.reply_to,
                             current_thread: parsed_directives.current_thread,
                             silent: true,
@@ -585,7 +585,7 @@ pub async fn run_agent_loop(
                     let ctx = crate::hooks::HookContext {
                         agent_name: &manifest.name,
                         agent_id: agent_id_str.as_str(),
-                        event: openfang_types::agent::HookEvent::AgentLoopEnd,
+                        event: openparlant_types::agent::HookEvent::AgentLoopEnd,
                         data: serde_json::json!({
                             "iterations": iteration + 1,
                             "response_length": final_response.len(),
@@ -643,7 +643,7 @@ pub async fn run_agent_loop(
                                 let ctx = crate::hooks::HookContext {
                                     agent_name: &manifest.name,
                                     agent_id: agent_id_str.as_str(),
-                                    event: openfang_types::agent::HookEvent::AgentLoopEnd,
+                                    event: openparlant_types::agent::HookEvent::AgentLoopEnd,
                                     data: serde_json::json!({
                                         "reason": "circuit_break",
                                         "error": msg.as_str(),
@@ -686,7 +686,7 @@ pub async fn run_agent_loop(
                         let ctx = crate::hooks::HookContext {
                             agent_name: &manifest.name,
                             agent_id: &caller_id_str,
-                            event: openfang_types::agent::HookEvent::BeforeToolCall,
+                            event: openparlant_types::agent::HookEvent::BeforeToolCall,
                             data: serde_json::json!({
                                 "tool_name": &tool_call.name,
                                 "input": &tool_call.input,
@@ -741,7 +741,7 @@ pub async fn run_agent_loop(
                         Ok(result) => result,
                         Err(_) => {
                             warn!(tool = %tool_call.name, "Tool execution timed out after {}s", TOOL_TIMEOUT_SECS);
-                            openfang_types::tool::ToolResult {
+                            openparlant_types::tool::ToolResult {
                                 tool_use_id: tool_call.id.clone(),
                                 content: format!(
                                     "Tool '{}' timed out after {}s.",
@@ -757,7 +757,7 @@ pub async fn run_agent_loop(
                         let ctx = crate::hooks::HookContext {
                             agent_name: &manifest.name,
                             agent_id: caller_id_str.as_str(),
-                            event: openfang_types::agent::HookEvent::AfterToolCall,
+                            event: openparlant_types::agent::HookEvent::AfterToolCall,
                             data: serde_json::json!({
                                 "tool_name": &tool_call.name,
                                 "result": &result.content,
@@ -866,7 +866,7 @@ pub async fn run_agent_loop(
                         let ctx = crate::hooks::HookContext {
                             agent_name: &manifest.name,
                             agent_id: agent_id_str.as_str(),
-                            event: openfang_types::agent::HookEvent::AgentLoopEnd,
+                            event: openparlant_types::agent::HookEvent::AgentLoopEnd,
                             data: serde_json::json!({
                                 "iterations": iteration + 1,
                                 "reason": "max_continuations",
@@ -904,7 +904,7 @@ pub async fn run_agent_loop(
         let ctx = crate::hooks::HookContext {
             agent_name: &manifest.name,
             agent_id: agent_id_str.as_str(),
-            event: openfang_types::agent::HookEvent::AgentLoopEnd,
+            event: openparlant_types::agent::HookEvent::AgentLoopEnd,
             data: serde_json::json!({
                 "reason": "max_iterations_exceeded",
                 "iterations": max_iterations,
@@ -1166,7 +1166,7 @@ pub async fn run_agent_loop_streaming(
     on_phase: Option<&PhaseCallback>,
     media_engine: Option<&crate::media_understanding::MediaEngine>,
     tts_engine: Option<&crate::tts::TtsEngine>,
-    docker_config: Option<&openfang_types::config::DockerSandboxConfig>,
+    docker_config: Option<&openparlant_types::config::DockerSandboxConfig>,
     hooks: Option<&crate::hooks::HookRegistry>,
     context_window_tokens: Option<usize>,
     process_manager: Option<&crate::process_manager::ProcessManager>,
@@ -1234,7 +1234,7 @@ pub async fn run_agent_loop_streaming(
         let ctx = crate::hooks::HookContext {
             agent_name: &manifest.name,
             agent_id: agent_id_str.as_str(),
-            event: openfang_types::agent::HookEvent::BeforePromptBuild,
+            event: openparlant_types::agent::HookEvent::BeforePromptBuild,
             data: serde_json::json!({
                 "system_prompt": &manifest.model.system_prompt,
                 "user_message": user_message,
@@ -1464,7 +1464,7 @@ pub async fn run_agent_loop_streaming(
                         iterations: iteration + 1,
                         cost_usd: None,
                         silent: true,
-                        directives: openfang_types::message::ReplyDirectives {
+                        directives: openparlant_types::message::ReplyDirectives {
                             reply_to: parsed_directives_s.reply_to,
                             current_thread: parsed_directives_s.current_thread,
                             silent: true,
@@ -1588,7 +1588,7 @@ pub async fn run_agent_loop_streaming(
                     let ctx = crate::hooks::HookContext {
                         agent_name: &manifest.name,
                         agent_id: agent_id_str.as_str(),
-                        event: openfang_types::agent::HookEvent::AgentLoopEnd,
+                        event: openparlant_types::agent::HookEvent::AgentLoopEnd,
                         data: serde_json::json!({
                             "iterations": iteration + 1,
                             "response_length": final_response.len(),
@@ -1642,7 +1642,7 @@ pub async fn run_agent_loop_streaming(
                                 let ctx = crate::hooks::HookContext {
                                     agent_name: &manifest.name,
                                     agent_id: agent_id_str.as_str(),
-                                    event: openfang_types::agent::HookEvent::AgentLoopEnd,
+                                    event: openparlant_types::agent::HookEvent::AgentLoopEnd,
                                     data: serde_json::json!({
                                         "reason": "circuit_break",
                                         "error": msg.as_str(),
@@ -1685,7 +1685,7 @@ pub async fn run_agent_loop_streaming(
                         let ctx = crate::hooks::HookContext {
                             agent_name: &manifest.name,
                             agent_id: &caller_id_str,
-                            event: openfang_types::agent::HookEvent::BeforeToolCall,
+                            event: openparlant_types::agent::HookEvent::BeforeToolCall,
                             data: serde_json::json!({
                                 "tool_name": &tool_call.name,
                                 "input": &tool_call.input,
@@ -1740,7 +1740,7 @@ pub async fn run_agent_loop_streaming(
                         Ok(result) => result,
                         Err(_) => {
                             warn!(tool = %tool_call.name, "Tool execution timed out after {}s (streaming)", TOOL_TIMEOUT_SECS);
-                            openfang_types::tool::ToolResult {
+                            openparlant_types::tool::ToolResult {
                                 tool_use_id: tool_call.id.clone(),
                                 content: format!(
                                     "Tool '{}' timed out after {}s.",
@@ -1756,7 +1756,7 @@ pub async fn run_agent_loop_streaming(
                         let ctx = crate::hooks::HookContext {
                             agent_name: &manifest.name,
                             agent_id: caller_id_str.as_str(),
-                            event: openfang_types::agent::HookEvent::AfterToolCall,
+                            event: openparlant_types::agent::HookEvent::AfterToolCall,
                             data: serde_json::json!({
                                 "tool_name": &tool_call.name,
                                 "result": &result.content,
@@ -1876,7 +1876,7 @@ pub async fn run_agent_loop_streaming(
                         let ctx = crate::hooks::HookContext {
                             agent_name: &manifest.name,
                             agent_id: agent_id_str.as_str(),
-                            event: openfang_types::agent::HookEvent::AgentLoopEnd,
+                            event: openparlant_types::agent::HookEvent::AgentLoopEnd,
                             data: serde_json::json!({
                                 "iterations": iteration + 1,
                                 "reason": "max_continuations",
@@ -1912,7 +1912,7 @@ pub async fn run_agent_loop_streaming(
         let ctx = crate::hooks::HookContext {
             agent_name: &manifest.name,
             agent_id: agent_id_str.as_str(),
-            event: openfang_types::agent::HookEvent::AgentLoopEnd,
+            event: openparlant_types::agent::HookEvent::AgentLoopEnd,
             data: serde_json::json!({
                 "reason": "max_iterations_exceeded",
                 "iterations": max_iterations,
@@ -2737,7 +2737,7 @@ mod tests {
     use super::*;
     use crate::llm_driver::{CompletionResponse, LlmError};
     use async_trait::async_trait;
-    use openfang_types::tool::ToolCall;
+    use openparlant_types::tool::ToolCall;
     use std::sync::atomic::{AtomicU32, Ordering};
 
     #[test]
@@ -2805,7 +2805,7 @@ mod tests {
     fn test_manifest() -> AgentManifest {
         AgentManifest {
             name: "test-agent".to_string(),
-            model: openfang_types::agent::ModelConfig {
+            model: openparlant_types::agent::ModelConfig {
                 system_prompt: "You are a test agent.".to_string(),
                 ..Default::default()
             },
@@ -2918,10 +2918,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_empty_response_after_tool_use_returns_fallback() {
-        let memory = openfang_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
-        let agent_id = openfang_types::agent::AgentId::new();
-        let mut session = openfang_memory::session::Session {
-            id: openfang_types::agent::SessionId::new(),
+        let memory = openparlant_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
+        let agent_id = openparlant_types::agent::AgentId::new();
+        let mut session = openparlant_memory::session::Session {
+            id: openparlant_types::agent::SessionId::new(),
             agent_id,
             messages: Vec::new(),
             context_window_tokens: 0,
@@ -2971,10 +2971,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_error_injects_no_fabrication_guidance() {
-        let memory = openfang_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
-        let agent_id = openfang_types::agent::AgentId::new();
-        let mut session = openfang_memory::session::Session {
-            id: openfang_types::agent::SessionId::new(),
+        let memory = openparlant_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
+        let agent_id = openparlant_types::agent::AgentId::new();
+        let mut session = openparlant_memory::session::Session {
+            id: openparlant_types::agent::SessionId::new(),
             agent_id,
             messages: Vec::new(),
             context_window_tokens: 0,
@@ -3026,10 +3026,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_empty_response_max_tokens_returns_fallback() {
-        let memory = openfang_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
-        let agent_id = openfang_types::agent::AgentId::new();
-        let mut session = openfang_memory::session::Session {
-            id: openfang_types::agent::SessionId::new(),
+        let memory = openparlant_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
+        let agent_id = openparlant_types::agent::AgentId::new();
+        let mut session = openparlant_memory::session::Session {
+            id: openparlant_types::agent::SessionId::new(),
             agent_id,
             messages: Vec::new(),
             context_window_tokens: 0,
@@ -3079,10 +3079,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_normal_response_not_replaced_by_fallback() {
-        let memory = openfang_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
-        let agent_id = openfang_types::agent::AgentId::new();
-        let mut session = openfang_memory::session::Session {
-            id: openfang_types::agent::SessionId::new(),
+        let memory = openparlant_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
+        let agent_id = openparlant_types::agent::AgentId::new();
+        let mut session = openparlant_memory::session::Session {
+            id: openparlant_types::agent::SessionId::new(),
             agent_id,
             messages: Vec::new(),
             context_window_tokens: 0,
@@ -3123,10 +3123,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_streaming_empty_response_after_tool_use_returns_fallback() {
-        let memory = openfang_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
-        let agent_id = openfang_types::agent::AgentId::new();
-        let mut session = openfang_memory::session::Session {
-            id: openfang_types::agent::SessionId::new(),
+        let memory = openparlant_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
+        let agent_id = openparlant_types::agent::AgentId::new();
+        let mut session = openparlant_memory::session::Session {
+            id: openparlant_types::agent::SessionId::new(),
             agent_id,
             messages: Vec::new(),
             context_window_tokens: 0,
@@ -3249,10 +3249,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_empty_first_response_retries_and_recovers() {
-        let memory = openfang_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
-        let agent_id = openfang_types::agent::AgentId::new();
-        let mut session = openfang_memory::session::Session {
-            id: openfang_types::agent::SessionId::new(),
+        let memory = openparlant_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
+        let agent_id = openparlant_types::agent::AgentId::new();
+        let mut session = openparlant_memory::session::Session {
+            id: openparlant_types::agent::SessionId::new(),
             agent_id,
             messages: Vec::new(),
             context_window_tokens: 0,
@@ -3296,10 +3296,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_empty_first_response_fallback_when_retry_also_empty() {
-        let memory = openfang_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
-        let agent_id = openfang_types::agent::AgentId::new();
-        let mut session = openfang_memory::session::Session {
-            id: openfang_types::agent::SessionId::new(),
+        let memory = openparlant_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
+        let agent_id = openparlant_types::agent::AgentId::new();
+        let mut session = openparlant_memory::session::Session {
+            id: openparlant_types::agent::SessionId::new(),
             agent_id,
             messages: Vec::new(),
             context_window_tokens: 0,
@@ -3349,10 +3349,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_streaming_empty_response_max_tokens_returns_fallback() {
-        let memory = openfang_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
-        let agent_id = openfang_types::agent::AgentId::new();
-        let mut session = openfang_memory::session::Session {
-            id: openfang_types::agent::SessionId::new(),
+        let memory = openparlant_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
+        let agent_id = openparlant_types::agent::AgentId::new();
+        let mut session = openparlant_memory::session::Session {
+            id: openparlant_types::agent::SessionId::new(),
             agent_id,
             messages: Vec::new(),
             context_window_tokens: 0,
@@ -4227,10 +4227,10 @@ mod tests {
         // This is THE critical test: a model outputs a tool call as text,
         // the recovery code detects it, promotes it to ToolUse, executes the tool,
         // and the agent loop continues to produce a final response.
-        let memory = openfang_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
-        let agent_id = openfang_types::agent::AgentId::new();
-        let mut session = openfang_memory::session::Session {
-            id: openfang_types::agent::SessionId::new(),
+        let memory = openparlant_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
+        let agent_id = openparlant_types::agent::AgentId::new();
+        let mut session = openparlant_memory::session::Session {
+            id: openparlant_types::agent::SessionId::new(),
             agent_id,
             messages: Vec::new(),
             context_window_tokens: 0,
@@ -4300,10 +4300,10 @@ mod tests {
     /// Verifies recovery does NOT interfere with normal flow.
     #[tokio::test]
     async fn test_normal_flow_unaffected_by_recovery() {
-        let memory = openfang_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
-        let agent_id = openfang_types::agent::AgentId::new();
-        let mut session = openfang_memory::session::Session {
-            id: openfang_types::agent::SessionId::new(),
+        let memory = openparlant_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
+        let agent_id = openparlant_types::agent::AgentId::new();
+        let mut session = openparlant_memory::session::Session {
+            id: openparlant_types::agent::SessionId::new(),
             agent_id,
             messages: Vec::new(),
             context_window_tokens: 0,
@@ -4355,10 +4355,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_text_tool_call_recovery_streaming_e2e() {
-        let memory = openfang_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
-        let agent_id = openfang_types::agent::AgentId::new();
-        let mut session = openfang_memory::session::Session {
-            id: openfang_types::agent::SessionId::new(),
+        let memory = openparlant_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
+        let agent_id = openparlant_types::agent::AgentId::new();
+        let mut session = openparlant_memory::session::Session {
+            id: openparlant_types::agent::SessionId::new(),
             agent_id,
             messages: Vec::new(),
             context_window_tokens: 0,

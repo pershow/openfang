@@ -87,8 +87,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Client SDKs
 - JavaScript SDK (`@openparlant/sdk`): full REST API client with streaming, TypeScript declarations
-- Python client SDK (`openfang_client`): zero-dependency stdlib client with SSE streaming
-- Python agent SDK (`openfang_sdk`): decorator-based framework for writing Python agents
+- Python client SDK (`openparlant_client`): zero-dependency stdlib client with SSE streaming
+- Python agent SDK (`openparlant_sdk`): decorator-based framework for writing Python agents
 - Usage examples for both languages (basic + streaming)
 
 #### CLI

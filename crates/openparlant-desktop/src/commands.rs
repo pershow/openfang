@@ -1,7 +1,7 @@
 //! Tauri IPC command handlers.
 
 use crate::{KernelState, PortState};
-use openfang_kernel::config::openfang_home;
+use openparlant_kernel::config::openparlant_home;
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_dialog::DialogExt;
 use tracing::info;
@@ -59,11 +59,11 @@ pub fn import_agent_toml(
     let content = std::fs::read_to_string(file_path.as_path().ok_or("Invalid file path")?)
         .map_err(|e| format!("Failed to read file: {e}"))?;
 
-    let manifest: openfang_types::agent::AgentManifest =
+    let manifest: openparlant_types::agent::AgentManifest =
         toml::from_str(&content).map_err(|e| format!("Invalid agent manifest: {e}"))?;
 
     let agent_name = manifest.name.clone();
-    let agent_dir = openfang_home().join("agents").join(&agent_name);
+    let agent_dir = openparlant_home().join("agents").join(&agent_name);
     std::fs::create_dir_all(&agent_dir)
         .map_err(|e| format!("Failed to create agent directory: {e}"))?;
 
@@ -107,7 +107,7 @@ pub fn import_skill_file(
         .to_string_lossy()
         .to_string();
 
-    let skills_dir = openfang_home().join("skills");
+    let skills_dir = openparlant_home().join("skills");
     std::fs::create_dir_all(&skills_dir)
         .map_err(|e| format!("Failed to create skills directory: {e}"))?;
 
@@ -157,7 +157,7 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
 /// Open the OpenParlant config directory (`~/.openparlant/`) in the OS file manager.
 #[tauri::command]
 pub fn open_config_dir() -> Result<(), String> {
-    let dir = openfang_home();
+    let dir = openparlant_home();
     std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create config dir: {e}"))?;
     open::that(&dir).map_err(|e| format!("Failed to open directory: {e}"))
 }
@@ -165,7 +165,7 @@ pub fn open_config_dir() -> Result<(), String> {
 /// Open the OpenParlant logs directory (`~/.openparlant/logs/`) in the OS file manager.
 #[tauri::command]
 pub fn open_logs_dir() -> Result<(), String> {
-    let dir = openfang_home().join("logs");
+    let dir = openparlant_home().join("logs");
     std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create logs dir: {e}"))?;
     open::that(&dir).map_err(|e| format!("Failed to open directory: {e}"))
 }

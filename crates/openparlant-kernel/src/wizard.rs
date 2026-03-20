@@ -4,7 +4,7 @@
 //! an agent to do, extracts structured intent, and generates a complete
 //! agent manifest (TOML config) ready to spawn.
 
-use openfang_types::agent::{
+use openparlant_types::agent::{
     AgentManifest, ManifestCapabilities, ModelConfig, Priority, ResourceQuota, ScheduleMode,
 };
 use serde::{Deserialize, Serialize};

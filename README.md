@@ -13,7 +13,7 @@
 <p align="center">
   <a href="https://openparlant.sh/docs">Documentation</a> &bull;
   <a href="https://openparlant.sh/docs/getting-started">Quick Start</a> &bull;
-  <a href="https://x.com/openfangg">Twitter / X</a>
+  <a href="https://x.com/openparlantg">Twitter / X</a>
 </p>
 
 <p align="center">
@@ -491,7 +491,7 @@ MIT — use it however you want.
 - [Quick Start Guide](https://openparlant.sh/docs/getting-started)
 - [GitHub](https://github.com/RightNow-AI/openparlant)
 - [Discord](https://discord.gg/sSJqgNnq6X)
-- [Twitter / X](https://x.com/openfangg)
+- [Twitter / X](https://x.com/openparlantg)
 
 ---
 

@@ -8,11 +8,11 @@
 //! Run: cargo test -p openparlant-api --test api_integration_test -- --nocapture
 
 use axum::Router;
-use openfang_api::middleware;
-use openfang_api::routes::{self, AppState};
-use openfang_api::ws;
-use openfang_kernel::OpenFangKernel;
-use openfang_types::config::{DefaultModelConfig, KernelConfig};
+use openparlant_api::middleware;
+use openparlant_api::routes::{self, AppState};
+use openparlant_api::ws;
+use openparlant_kernel::OpenFangKernel;
+use openparlant_types::config::{DefaultModelConfig, KernelConfig};
 use std::sync::Arc;
 use std::time::Instant;
 use tower_http::cors::CorsLayer;
@@ -77,7 +77,7 @@ async fn start_test_server_with_provider(
         channels_config: tokio::sync::RwLock::new(Default::default()),
         shutdown_notify: Arc::new(tokio::sync::Notify::new()),
         clawhub_cache: dashmap::DashMap::new(),
-        provider_probe_cache: openfang_runtime::provider_health::ProbeCache::new(),
+        provider_probe_cache: openparlant_runtime::provider_health::ProbeCache::new(),
     });
 
     let app = Router::new()
@@ -706,7 +706,7 @@ async fn start_test_server_with_auth(api_key: &str) -> TestServer {
         channels_config: tokio::sync::RwLock::new(Default::default()),
         shutdown_notify: Arc::new(tokio::sync::Notify::new()),
         clawhub_cache: dashmap::DashMap::new(),
-        provider_probe_cache: openfang_runtime::provider_health::ProbeCache::new(),
+        provider_probe_cache: openparlant_runtime::provider_health::ProbeCache::new(),
     });
 
     let api_key = state.kernel.config.api_key.trim().to_string();

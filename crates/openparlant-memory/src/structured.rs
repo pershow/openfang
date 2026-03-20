@@ -1,8 +1,8 @@
 //! SQLite structured store for key-value pairs and agent persistence.
 
 use chrono::Utc;
-use openfang_types::agent::{AgentEntry, AgentId};
-use openfang_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::agent::{AgentEntry, AgentId};
+use openparlant_types::error::{OpenFangError, OpenFangResult};
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
@@ -212,8 +212,8 @@ impl StructuredStore {
                     .unwrap_or_else(|_| Utc::now());
                 let session_id = session_id_str
                     .and_then(|s| uuid::Uuid::parse_str(&s).ok())
-                    .map(openfang_types::agent::SessionId)
-                    .unwrap_or_else(openfang_types::agent::SessionId::new);
+                    .map(openparlant_types::agent::SessionId)
+                    .unwrap_or_else(openparlant_types::agent::SessionId::new);
                 let identity = identity_str
                     .and_then(|s| serde_json::from_str(&s).ok())
                     .unwrap_or_default();
@@ -329,7 +329,7 @@ impl StructuredStore {
                 continue;
             }
 
-            let agent_id = match uuid::Uuid::parse_str(&id_str).map(openfang_types::agent::AgentId)
+            let agent_id = match uuid::Uuid::parse_str(&id_str).map(openparlant_types::agent::AgentId)
             {
                 Ok(id) => id,
                 Err(e) => {
@@ -338,7 +338,7 @@ impl StructuredStore {
                 }
             };
 
-            let manifest: openfang_types::agent::AgentManifest = match rmp_serde::from_slice(
+            let manifest: openparlant_types::agent::AgentManifest = match rmp_serde::from_slice(
                 &manifest_blob,
             ) {
                 Ok(m) => m,
@@ -375,8 +375,8 @@ impl StructuredStore {
                 .unwrap_or_else(|_| Utc::now());
             let session_id = session_id_str
                 .and_then(|s| uuid::Uuid::parse_str(&s).ok())
-                .map(openfang_types::agent::SessionId)
-                .unwrap_or_else(openfang_types::agent::SessionId::new);
+                .map(openparlant_types::agent::SessionId)
+                .unwrap_or_else(openparlant_types::agent::SessionId::new);
 
             let identity = identity_str
                 .and_then(|s| serde_json::from_str(&s).ok())

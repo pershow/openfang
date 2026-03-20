@@ -436,5 +436,5 @@ fn draw_active(f: &mut Frame, area: Rect, state: &mut HandsState) {
 }
 
 fn truncate(s: &str, max: usize) -> &str {
-    openfang_types::truncate_str(s, max)
+    openparlant_types::truncate_str(s, max)
 }

@@ -5,9 +5,9 @@
 //!
 //! These tests use real WASM execution — no mocks.
 
-use openfang_kernel::OpenFangKernel;
-use openfang_types::agent::AgentManifest;
-use openfang_types::config::{DefaultModelConfig, KernelConfig};
+use openparlant_kernel::OpenFangKernel;
+use openparlant_types::agent::AgentManifest;
+use openparlant_types::config::{DefaultModelConfig, KernelConfig};
 use std::sync::Arc;
 
 /// Minimal echo module: returns input JSON wrapped as `{"response": "..."}`.

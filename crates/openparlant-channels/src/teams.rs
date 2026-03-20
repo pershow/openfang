@@ -258,7 +258,7 @@ fn parse_teams_activity(
         sender: ChannelUser {
             platform_id: conversation_id,
             display_name: from_name.to_string(),
-            openfang_user: None,
+            openparlant_user: None,
         },
         content,
         target_agent: None,

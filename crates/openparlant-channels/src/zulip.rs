@@ -391,7 +391,7 @@ impl ChannelAdapter for ZulipAdapter {
                         sender: ChannelUser {
                             platform_id,
                             display_name: sender_name.to_string(),
-                            openfang_user: None,
+                            openparlant_user: None,
                         },
                         content: msg_content,
                         target_agent: None,

@@ -3,8 +3,8 @@
 //! Boots the OpenParlant kernel, binds to a random localhost port, and runs the
 //! API server on a background thread with its own tokio runtime.
 
-use openfang_api::server::build_router;
-use openfang_kernel::OpenFangKernel;
+use openparlant_api::server::build_router;
+use openparlant_kernel::OpenFangKernel;
 use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;

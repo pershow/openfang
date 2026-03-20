@@ -6,7 +6,7 @@
 //!
 //! All MCP tools are namespaced with `mcp_{server}_{tool}` to prevent collisions.
 
-use openfang_types::tool::ToolDefinition;
+use openparlant_types::tool::ToolDefinition;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::process::Stdio;

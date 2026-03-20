@@ -2,9 +2,9 @@
 //!
 //! Run with: GROQ_API_KEY=gsk_... cargo test -p openparlant-kernel --test multi_agent_test -- --nocapture
 
-use openfang_kernel::OpenFangKernel;
-use openfang_types::agent::AgentManifest;
-use openfang_types::config::{DefaultModelConfig, KernelConfig};
+use openparlant_kernel::OpenFangKernel;
+use openparlant_types::agent::AgentManifest;
+use openparlant_types::config::{DefaultModelConfig, KernelConfig};
 
 fn test_config() -> KernelConfig {
     let tmp = std::env::temp_dir().join("openparlant-multi-agent-test");

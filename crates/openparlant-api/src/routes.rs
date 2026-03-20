@@ -6,14 +6,14 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use dashmap::DashMap;
-use openfang_kernel::triggers::{TriggerId, TriggerPattern};
-use openfang_kernel::workflow::{
+use openparlant_kernel::triggers::{TriggerId, TriggerPattern};
+use openparlant_kernel::workflow::{
     ErrorMode, StepAgent, StepMode, Workflow, WorkflowId, WorkflowStep,
 };
-use openfang_kernel::OpenFangKernel;
-use openfang_runtime::kernel_handle::KernelHandle;
-use openfang_runtime::tool_runner::builtin_tool_definitions;
-use openfang_types::agent::{AgentId, AgentIdentity, AgentManifest};
+use openparlant_kernel::OpenFangKernel;
+use openparlant_runtime::kernel_handle::KernelHandle;
+use openparlant_runtime::tool_runner::builtin_tool_definitions;
+use openparlant_types::agent::{AgentId, AgentIdentity, AgentManifest};
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 use std::time::Instant;
@@ -26,11 +26,11 @@ pub struct AppState {
     pub kernel: Arc<OpenFangKernel>,
     pub started_at: Instant,
     /// Optional peer registry for OFP mesh networking status.
-    pub peer_registry: Option<Arc<openfang_wire::registry::PeerRegistry>>,
+    pub peer_registry: Option<Arc<openparlant_wire::registry::PeerRegistry>>,
     /// Channel bridge manager — held behind a Mutex so it can be swapped on hot-reload.
-    pub bridge_manager: tokio::sync::Mutex<Option<openfang_channels::bridge::BridgeManager>>,
+    pub bridge_manager: tokio::sync::Mutex<Option<openparlant_channels::bridge::BridgeManager>>,
     /// Live channel config — updated on every hot-reload so list_channels() reflects reality.
-    pub channels_config: tokio::sync::RwLock<openfang_types::config::ChannelsConfig>,
+    pub channels_config: tokio::sync::RwLock<openparlant_types::config::ChannelsConfig>,
     /// Notify handle to trigger graceful HTTP server shutdown from the API.
     pub shutdown_notify: Arc<tokio::sync::Notify>,
     /// ClawHub response cache — prevents 429 rate limiting on rapid dashboard refreshes.
@@ -39,7 +39,7 @@ pub struct AppState {
     /// Probe cache for local provider health checks (ollama/vllm/lmstudio).
     /// Avoids blocking the `/api/providers` endpoint on TCP timeouts to
     /// unreachable local services. 60-second TTL.
-    pub provider_probe_cache: openfang_runtime::provider_health::ProbeCache,
+    pub provider_probe_cache: openparlant_runtime::provider_health::ProbeCache,
 }
 
 /// POST /api/agents — Spawn a new agent.
@@ -119,7 +119,7 @@ pub async fn spawn_agent(
                 tracing::warn!("Manifest signature verification failed: {e}");
                 state.kernel.audit_log.record(
                     "system",
-                    openfang_runtime::audit::AuditAction::AuthAttempt,
+                    openparlant_runtime::audit::AuditAction::AuthAttempt,
                     "manifest signature verification failed",
                     format!("error: {e}"),
                 );
@@ -209,7 +209,7 @@ pub async fn list_agents(State(state): State<Arc<AppState>>) -> impl IntoRespons
                 })
                 .unwrap_or(("unknown".to_string(), "unknown".to_string()));
 
-            let ready = matches!(e.state, openfang_types::agent::AgentState::Running)
+            let ready = matches!(e.state, openparlant_types::agent::AgentState::Running)
                 && auth_status != "missing";
 
             serde_json::json!({
@@ -243,10 +243,10 @@ pub async fn list_agents(State(state): State<Arc<AppState>>) -> impl IntoRespons
 /// returns image content blocks ready to insert into a session message.
 pub fn resolve_attachments(
     attachments: &[AttachmentRef],
-) -> Vec<openfang_types::message::ContentBlock> {
+) -> Vec<openparlant_types::message::ContentBlock> {
     use base64::Engine;
 
-    let upload_dir = std::env::temp_dir().join("openfang_uploads");
+    let upload_dir = std::env::temp_dir().join("openparlant_uploads");
     let mut blocks = Vec::new();
 
     for att in attachments {
@@ -274,7 +274,7 @@ pub fn resolve_attachments(
         match std::fs::read(&file_path) {
             Ok(data) => {
                 let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
-                blocks.push(openfang_types::message::ContentBlock::Image {
+                blocks.push(openparlant_types::message::ContentBlock::Image {
                     media_type: content_type,
                     data: b64,
                 });
@@ -295,9 +295,9 @@ pub fn resolve_attachments(
 pub fn inject_attachments_into_session(
     kernel: &OpenFangKernel,
     agent_id: AgentId,
-    image_blocks: Vec<openfang_types::message::ContentBlock>,
+    image_blocks: Vec<openparlant_types::message::ContentBlock>,
 ) {
-    use openfang_types::message::{Message, MessageContent, Role};
+    use openparlant_types::message::{Message, MessageContent, Role};
 
     let entry = match kernel.registry.get(agent_id) {
         Some(e) => e,
@@ -306,7 +306,7 @@ pub fn inject_attachments_into_session(
 
     let mut session = match kernel.memory.get_session(entry.session_id) {
         Ok(Some(s)) => s,
-        _ => openfang_memory::session::Session {
+        _ => openparlant_memory::session::Session {
             id: entry.session_id,
             agent_id,
             messages: Vec::new(),
@@ -468,15 +468,15 @@ pub async fn get_agent_session(
                 let mut tools: Vec<serde_json::Value> = Vec::new();
                 let mut msg_images: Vec<serde_json::Value> = Vec::new();
                 let content = match &m.content {
-                    openfang_types::message::MessageContent::Text(t) => t.clone(),
-                    openfang_types::message::MessageContent::Blocks(blocks) => {
+                    openparlant_types::message::MessageContent::Text(t) => t.clone(),
+                    openparlant_types::message::MessageContent::Blocks(blocks) => {
                         let mut texts = Vec::new();
                         for b in blocks {
                             match b {
-                                openfang_types::message::ContentBlock::Text { text, .. } => {
+                                openparlant_types::message::ContentBlock::Text { text, .. } => {
                                     texts.push(text.clone());
                                 }
-                                openfang_types::message::ContentBlock::Image {
+                                openparlant_types::message::ContentBlock::Image {
                                     media_type,
                                     data,
                                 } => {
@@ -484,7 +484,7 @@ pub async fn get_agent_session(
                                     // Persist image to upload dir so it can be
                                     // served back when loading session history.
                                     let file_id = uuid::Uuid::new_v4().to_string();
-                                    let upload_dir = std::env::temp_dir().join("openfang_uploads");
+                                    let upload_dir = std::env::temp_dir().join("openparlant_uploads");
                                     let _ = std::fs::create_dir_all(&upload_dir);
                                     if let Ok(bytes) =
                                         base64::engine::general_purpose::STANDARD.decode(data)
@@ -506,7 +506,7 @@ pub async fn get_agent_session(
                                         }));
                                     }
                                 }
-                                openfang_types::message::ContentBlock::ToolUse {
+                                openparlant_types::message::ContentBlock::ToolUse {
                                     id,
                                     name,
                                     input,
@@ -523,7 +523,7 @@ pub async fn get_agent_session(
                                     tool_use_index.insert(id.clone(), (usize::MAX, tool_idx));
                                 }
                                 // ToolResult blocks are handled in pass 2
-                                openfang_types::message::ContentBlock::ToolResult { .. } => {}
+                                openparlant_types::message::ContentBlock::ToolResult { .. } => {}
                                 _ => {}
                             }
                         }
@@ -556,9 +556,9 @@ pub async fn get_agent_session(
 
             // Pass 2: walk messages again and attach ToolResult to the correct tool
             for m in &session.messages {
-                if let openfang_types::message::MessageContent::Blocks(blocks) = &m.content {
+                if let openparlant_types::message::MessageContent::Blocks(blocks) = &m.content {
                     for b in blocks {
-                        if let openfang_types::message::ContentBlock::ToolResult {
+                        if let openparlant_types::message::ContentBlock::ToolResult {
                             tool_use_id,
                             content: result,
                             is_error,
@@ -688,7 +688,7 @@ pub async fn restart_agent(
     let _ = state
         .kernel
         .registry
-        .set_state(agent_id, openfang_types::agent::AgentState::Running);
+        .set_state(agent_id, openparlant_types::agent::AgentState::Running);
 
     tracing::info!(
         agent = %agent_name,
@@ -754,7 +754,7 @@ pub async fn shutdown(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     // SECURITY: Record shutdown in audit trail
     state.kernel.audit_log.record(
         "system",
-        openfang_runtime::audit::AuditAction::ConfigChange,
+        openparlant_runtime::audit::AuditAction::ConfigChange,
         "shutdown requested via API",
         "ok",
     );
@@ -1252,7 +1252,7 @@ pub async fn delete_trigger(
 
 /// GET /api/profiles — List all tool profiles and their tool lists.
 pub async fn list_profiles() -> impl IntoResponse {
-    use openfang_types::agent::ToolProfile;
+    use openparlant_types::agent::ToolProfile;
 
     let profiles = [
         ("minimal", ToolProfile::Minimal),
@@ -1396,7 +1396,7 @@ pub async fn send_message_stream(
 ) -> axum::response::Response {
     use axum::response::sse::{Event, Sse};
     use futures::stream;
-    use openfang_runtime::llm_driver::StreamEvent;
+    use openparlant_runtime::llm_driver::StreamEvent;
 
     // SECURITY: Reject oversized messages to prevent OOM / LLM token abuse.
     const MAX_MESSAGE_SIZE: usize = 64 * 1024; // 64KB
@@ -1728,7 +1728,7 @@ const CHANNEL_REGISTRY: &[ChannelMeta] = &[
         quick_setup: "Enter your username and paper key",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "username", label: "Username", field_type: FieldType::Text, env_var: None, required: true, placeholder: "openfang_bot", advanced: false },
+            ChannelField { key: "username", label: "Username", field_type: FieldType::Text, env_var: None, required: true, placeholder: "openparlant_bot", advanced: false },
             ChannelField { key: "paperkey_env", label: "Paper Key", field_type: FieldType::Secret, env_var: Some("KEYBASE_PAPERKEY"), required: true, placeholder: "word1 word2 word3...", advanced: false },
             ChannelField { key: "allowed_teams", label: "Allowed Teams", field_type: FieldType::List, env_var: None, required: false, placeholder: "team1, team2", advanced: true },
             ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
@@ -1746,7 +1746,7 @@ const CHANNEL_REGISTRY: &[ChannelMeta] = &[
         fields: &[
             ChannelField { key: "client_id", label: "Client ID", field_type: FieldType::Text, env_var: None, required: true, placeholder: "abc123def", advanced: false },
             ChannelField { key: "client_secret_env", label: "Client Secret", field_type: FieldType::Secret, env_var: Some("REDDIT_CLIENT_SECRET"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "username", label: "Bot Username", field_type: FieldType::Text, env_var: None, required: true, placeholder: "openfang_bot", advanced: false },
+            ChannelField { key: "username", label: "Bot Username", field_type: FieldType::Text, env_var: None, required: true, placeholder: "openparlant_bot", advanced: false },
             ChannelField { key: "password_env", label: "Bot Password", field_type: FieldType::Secret, env_var: Some("REDDIT_PASSWORD"), required: true, placeholder: "password", advanced: false },
             ChannelField { key: "subreddits", label: "Subreddits", field_type: FieldType::List, env_var: None, required: false, placeholder: "openparlant, rust", advanced: true },
             ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
@@ -2203,7 +2203,7 @@ const CHANNEL_REGISTRY: &[ChannelMeta] = &[
 ];
 
 /// Check if a channel is configured (has a `[channels.xxx]` section in config).
-fn is_channel_configured(config: &openfang_types::config::ChannelsConfig, name: &str) -> bool {
+fn is_channel_configured(config: &openparlant_types::config::ChannelsConfig, name: &str) -> bool {
     match name {
         "telegram" => config.telegram.is_some(),
         "discord" => config.discord.is_some(),
@@ -2312,7 +2312,7 @@ fn find_channel_meta(name: &str) -> Option<&'static ChannelMeta> {
 
 /// Serialize a channel's config to a JSON Value for pre-populating dashboard forms.
 fn channel_config_values(
-    config: &openfang_types::config::ChannelsConfig,
+    config: &openparlant_types::config::ChannelsConfig,
     name: &str,
 ) -> Option<serde_json::Value> {
     match name {
@@ -2571,7 +2571,7 @@ pub async fn configure_channel(
         }
     };
 
-    let home = openfang_kernel::config::openfang_home();
+    let home = openparlant_kernel::config::openparlant_home();
     let secrets_path = home.join("secrets.env");
     let config_path = home.join("config.toml");
     let mut config_fields: HashMap<String, (String, FieldType)> = HashMap::new();
@@ -2669,7 +2669,7 @@ pub async fn remove_channel(
         }
     };
 
-    let home = openfang_kernel::config::openfang_home();
+    let home = openparlant_kernel::config::openparlant_home();
     let secrets_path = home.join("secrets.env");
     let config_path = home.join("config.toml");
 
@@ -3089,7 +3089,7 @@ async fn gateway_http_get(url_with_path: &str) -> Result<serde_json::Value, Stri
 
 /// GET /api/templates — List available agent templates.
 pub async fn list_templates() -> impl IntoResponse {
-    let agents_dir = openfang_kernel::config::openfang_home().join("agents");
+    let agents_dir = openparlant_kernel::config::openparlant_home().join("agents");
     let mut templates = Vec::new();
 
     if let Ok(entries) = std::fs::read_dir(&agents_dir) {
@@ -3127,7 +3127,7 @@ pub async fn list_templates() -> impl IntoResponse {
 
 /// GET /api/templates/:name — Get template details.
 pub async fn get_template(Path(name): Path<String>) -> impl IntoResponse {
-    let agents_dir = openfang_kernel::config::openfang_home().join("agents");
+    let agents_dir = openparlant_kernel::config::openparlant_home().join("agents");
     let manifest_path = agents_dir.join(&name).join("agent.toml");
 
     if !manifest_path.exists() {
@@ -3190,7 +3190,7 @@ pub async fn get_agent_kv(
     State(state): State<Arc<AppState>>,
     Path(_id): Path<String>,
 ) -> impl IntoResponse {
-    let agent_id = openfang_kernel::kernel::shared_memory_agent_id();
+    let agent_id = openparlant_kernel::kernel::shared_memory_agent_id();
 
     match state.kernel.memory.list_kv(agent_id) {
         Ok(pairs) => {
@@ -3215,7 +3215,7 @@ pub async fn get_agent_kv_key(
     State(state): State<Arc<AppState>>,
     Path((_id, key)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    let agent_id = openfang_kernel::kernel::shared_memory_agent_id();
+    let agent_id = openparlant_kernel::kernel::shared_memory_agent_id();
 
     match state.kernel.memory.structured_get(agent_id, &key) {
         Ok(Some(val)) => (
@@ -3242,7 +3242,7 @@ pub async fn set_agent_kv_key(
     Path((_id, key)): Path<(String, String)>,
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let agent_id = openfang_kernel::kernel::shared_memory_agent_id();
+    let agent_id = openparlant_kernel::kernel::shared_memory_agent_id();
 
     let value = body.get("value").cloned().unwrap_or(body);
 
@@ -3266,7 +3266,7 @@ pub async fn delete_agent_kv_key(
     State(state): State<Arc<AppState>>,
     Path((_id, key)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    let agent_id = openfang_kernel::kernel::shared_memory_agent_id();
+    let agent_id = openparlant_kernel::kernel::shared_memory_agent_id();
 
     match state.kernel.memory.structured_delete(agent_id, &key) {
         Ok(()) => (
@@ -3293,7 +3293,7 @@ pub async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     // is holding the database lock for session saves.
     let memory = state.kernel.memory.clone();
     let db_ok = tokio::task::spawn_blocking(move || {
-        let shared_id = openfang_types::agent::AgentId(uuid::Uuid::from_bytes([
+        let shared_id = openparlant_types::agent::AgentId(uuid::Uuid::from_bytes([
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
         ]));
         memory.structured_get(shared_id, "__health_check__").is_ok()
@@ -3315,7 +3315,7 @@ pub async fn health_detail(State(state): State<Arc<AppState>>) -> impl IntoRespo
 
     let memory = state.kernel.memory.clone();
     let db_ok = tokio::task::spawn_blocking(move || {
-        let shared_id = openfang_types::agent::AgentId(uuid::Uuid::from_bytes([
+        let shared_id = openparlant_types::agent::AgentId(uuid::Uuid::from_bytes([
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
         ]));
         memory.structured_get(shared_id, "__health_check__").is_ok()
@@ -3345,49 +3345,49 @@ pub async fn health_detail(State(state): State<Arc<AppState>>) -> impl IntoRespo
 /// GET /api/metrics — Prometheus text-format metrics.
 ///
 /// Returns counters and gauges for monitoring OpenParlant in production:
-/// - `openfang_agents_active` — number of active agents
-/// - `openfang_uptime_seconds` — seconds since daemon started
-/// - `openfang_tokens_total` — total tokens consumed (per agent)
-/// - `openfang_tool_calls_total` — total tool calls (per agent)
-/// - `openfang_panics_total` — supervisor panic count
-/// - `openfang_restarts_total` — supervisor restart count
+/// - `openparlant_agents_active` — number of active agents
+/// - `openparlant_uptime_seconds` — seconds since daemon started
+/// - `openparlant_tokens_total` — total tokens consumed (per agent)
+/// - `openparlant_tool_calls_total` — total tool calls (per agent)
+/// - `openparlant_panics_total` — supervisor panic count
+/// - `openparlant_restarts_total` — supervisor restart count
 pub async fn prometheus_metrics(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let mut out = String::with_capacity(2048);
 
     // Uptime
     let uptime = state.started_at.elapsed().as_secs();
-    out.push_str("# HELP openfang_uptime_seconds Time since daemon started.\n");
-    out.push_str("# TYPE openfang_uptime_seconds gauge\n");
-    out.push_str(&format!("openfang_uptime_seconds {uptime}\n\n"));
+    out.push_str("# HELP openparlant_uptime_seconds Time since daemon started.\n");
+    out.push_str("# TYPE openparlant_uptime_seconds gauge\n");
+    out.push_str(&format!("openparlant_uptime_seconds {uptime}\n\n"));
 
     // Active agents
     let agents = state.kernel.registry.list();
     let active = agents
         .iter()
-        .filter(|a| matches!(a.state, openfang_types::agent::AgentState::Running))
+        .filter(|a| matches!(a.state, openparlant_types::agent::AgentState::Running))
         .count();
-    out.push_str("# HELP openfang_agents_active Number of active agents.\n");
-    out.push_str("# TYPE openfang_agents_active gauge\n");
-    out.push_str(&format!("openfang_agents_active {active}\n"));
-    out.push_str("# HELP openfang_agents_total Total number of registered agents.\n");
-    out.push_str("# TYPE openfang_agents_total gauge\n");
-    out.push_str(&format!("openfang_agents_total {}\n\n", agents.len()));
+    out.push_str("# HELP openparlant_agents_active Number of active agents.\n");
+    out.push_str("# TYPE openparlant_agents_active gauge\n");
+    out.push_str(&format!("openparlant_agents_active {active}\n"));
+    out.push_str("# HELP openparlant_agents_total Total number of registered agents.\n");
+    out.push_str("# TYPE openparlant_agents_total gauge\n");
+    out.push_str(&format!("openparlant_agents_total {}\n\n", agents.len()));
 
     // Per-agent token and tool usage
-    out.push_str("# HELP openfang_tokens_total Total tokens consumed (rolling hourly window).\n");
-    out.push_str("# TYPE openfang_tokens_total gauge\n");
-    out.push_str("# HELP openfang_tool_calls_total Total tool calls (rolling hourly window).\n");
-    out.push_str("# TYPE openfang_tool_calls_total gauge\n");
+    out.push_str("# HELP openparlant_tokens_total Total tokens consumed (rolling hourly window).\n");
+    out.push_str("# TYPE openparlant_tokens_total gauge\n");
+    out.push_str("# HELP openparlant_tool_calls_total Total tool calls (rolling hourly window).\n");
+    out.push_str("# TYPE openparlant_tool_calls_total gauge\n");
     for agent in &agents {
         let name = &agent.name;
         let provider = &agent.manifest.model.provider;
         let model = &agent.manifest.model.model;
         if let Some((tokens, tools)) = state.kernel.scheduler.get_usage(agent.id) {
             out.push_str(&format!(
-                "openfang_tokens_total{{agent=\"{name}\",provider=\"{provider}\",model=\"{model}\"}} {tokens}\n"
+                "openparlant_tokens_total{{agent=\"{name}\",provider=\"{provider}\",model=\"{model}\"}} {tokens}\n"
             ));
             out.push_str(&format!(
-                "openfang_tool_calls_total{{agent=\"{name}\"}} {tools}\n"
+                "openparlant_tool_calls_total{{agent=\"{name}\"}} {tools}\n"
             ));
         }
     }
@@ -3395,21 +3395,21 @@ pub async fn prometheus_metrics(State(state): State<Arc<AppState>>) -> impl Into
 
     // Supervisor health
     let health = state.kernel.supervisor.health();
-    out.push_str("# HELP openfang_panics_total Total supervisor panics since start.\n");
-    out.push_str("# TYPE openfang_panics_total counter\n");
-    out.push_str(&format!("openfang_panics_total {}\n", health.panic_count));
-    out.push_str("# HELP openfang_restarts_total Total supervisor restarts since start.\n");
-    out.push_str("# TYPE openfang_restarts_total counter\n");
+    out.push_str("# HELP openparlant_panics_total Total supervisor panics since start.\n");
+    out.push_str("# TYPE openparlant_panics_total counter\n");
+    out.push_str(&format!("openparlant_panics_total {}\n", health.panic_count));
+    out.push_str("# HELP openparlant_restarts_total Total supervisor restarts since start.\n");
+    out.push_str("# TYPE openparlant_restarts_total counter\n");
     out.push_str(&format!(
-        "openfang_restarts_total {}\n\n",
+        "openparlant_restarts_total {}\n\n",
         health.restart_count
     ));
 
     // Version info
-    out.push_str("# HELP openfang_info OpenParlant version and build info.\n");
-    out.push_str("# TYPE openfang_info gauge\n");
+    out.push_str("# HELP openparlant_info OpenParlant version and build info.\n");
+    out.push_str("# TYPE openparlant_info gauge\n");
     out.push_str(&format!(
-        "openfang_info{{version=\"{}\"}} 1\n",
+        "openparlant_info{{version=\"{}\"}} 1\n",
         env!("CARGO_PKG_VERSION")
     ));
 
@@ -3430,7 +3430,7 @@ pub async fn prometheus_metrics(State(state): State<Arc<AppState>>) -> impl Into
 /// GET /api/skills — List installed skills.
 pub async fn list_skills(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let skills_dir = state.kernel.config.home_dir.join("skills");
-    let mut registry = openfang_skills::registry::SkillRegistry::new(skills_dir);
+    let mut registry = openparlant_skills::registry::SkillRegistry::new(skills_dir);
     let _ = registry.load_all();
 
     let skills: Vec<serde_json::Value> = registry
@@ -3438,16 +3438,16 @@ pub async fn list_skills(State(state): State<Arc<AppState>>) -> impl IntoRespons
         .iter()
         .map(|s| {
             let source = match &s.manifest.source {
-                Some(openfang_skills::SkillSource::ClawHub { slug, version }) => {
+                Some(openparlant_skills::SkillSource::ClawHub { slug, version }) => {
                     serde_json::json!({"type": "clawhub", "slug": slug, "version": version})
                 }
-                Some(openfang_skills::SkillSource::OpenClaw) => {
+                Some(openparlant_skills::SkillSource::OpenClaw) => {
                     serde_json::json!({"type": "openclaw"})
                 }
-                Some(openfang_skills::SkillSource::Bundled) => {
+                Some(openparlant_skills::SkillSource::Bundled) => {
                     serde_json::json!({"type": "bundled"})
                 }
-                Some(openfang_skills::SkillSource::Native) | None => {
+                Some(openparlant_skills::SkillSource::Native) | None => {
                     serde_json::json!({"type": "local"})
                 }
             };
@@ -3475,8 +3475,8 @@ pub async fn install_skill(
     Json(req): Json<SkillInstallRequest>,
 ) -> impl IntoResponse {
     let skills_dir = state.kernel.config.home_dir.join("skills");
-    let config = openfang_skills::marketplace::MarketplaceConfig::default();
-    let client = openfang_skills::marketplace::MarketplaceClient::new(config);
+    let config = openparlant_skills::marketplace::MarketplaceConfig::default();
+    let client = openparlant_skills::marketplace::MarketplaceClient::new(config);
 
     match client.install(&req.name, &skills_dir).await {
         Ok(version) => {
@@ -3507,7 +3507,7 @@ pub async fn uninstall_skill(
     Json(req): Json<SkillUninstallRequest>,
 ) -> impl IntoResponse {
     let skills_dir = state.kernel.config.home_dir.join("skills");
-    let mut registry = openfang_skills::registry::SkillRegistry::new(skills_dir);
+    let mut registry = openparlant_skills::registry::SkillRegistry::new(skills_dir);
     let _ = registry.load_all();
 
     match registry.remove(&req.name) {
@@ -3535,8 +3535,8 @@ pub async fn marketplace_search(
         return Json(serde_json::json!({"results": [], "total": 0}));
     }
 
-    let config = openfang_skills::marketplace::MarketplaceConfig::default();
-    let client = openfang_skills::marketplace::MarketplaceClient::new(config);
+    let config = openparlant_skills::marketplace::MarketplaceConfig::default();
+    let client = openparlant_skills::marketplace::MarketplaceClient::new(config);
 
     match client.search(&query).await {
         Ok(results) => {
@@ -3595,7 +3595,7 @@ pub async fn clawhub_search(
     }
 
     let cache_dir = state.kernel.config.home_dir.join(".cache").join("clawhub");
-    let client = openfang_skills::clawhub::ClawHubClient::new(cache_dir);
+    let client = openparlant_skills::clawhub::ClawHubClient::new(cache_dir);
 
     let skills_dir = state.kernel.config.home_dir.join("skills");
     match client.search(&query, limit).await {
@@ -3652,11 +3652,11 @@ pub async fn clawhub_browse(
     Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
     let sort = match params.get("sort").map(|s| s.as_str()) {
-        Some("downloads") => openfang_skills::clawhub::ClawHubSort::Downloads,
-        Some("stars") => openfang_skills::clawhub::ClawHubSort::Stars,
-        Some("updated") => openfang_skills::clawhub::ClawHubSort::Updated,
-        Some("rating") => openfang_skills::clawhub::ClawHubSort::Rating,
-        _ => openfang_skills::clawhub::ClawHubSort::Trending,
+        Some("downloads") => openparlant_skills::clawhub::ClawHubSort::Downloads,
+        Some("stars") => openparlant_skills::clawhub::ClawHubSort::Stars,
+        Some("updated") => openparlant_skills::clawhub::ClawHubSort::Updated,
+        Some("rating") => openparlant_skills::clawhub::ClawHubSort::Rating,
+        _ => openparlant_skills::clawhub::ClawHubSort::Trending,
     };
 
     let limit: u32 = params
@@ -3675,7 +3675,7 @@ pub async fn clawhub_browse(
     }
 
     let cache_dir = state.kernel.config.home_dir.join(".cache").join("clawhub");
-    let client = openfang_skills::clawhub::ClawHubClient::new(cache_dir);
+    let client = openparlant_skills::clawhub::ClawHubClient::new(cache_dir);
 
     let skills_dir = state.kernel.config.home_dir.join("skills");
     match client.browse(sort, limit, cursor).await {
@@ -3721,7 +3721,7 @@ pub async fn clawhub_skill_detail(
     Path(slug): Path<String>,
 ) -> impl IntoResponse {
     let cache_dir = state.kernel.config.home_dir.join(".cache").join("clawhub");
-    let client = openfang_skills::clawhub::ClawHubClient::new(cache_dir);
+    let client = openparlant_skills::clawhub::ClawHubClient::new(cache_dir);
 
     let skills_dir = state.kernel.config.home_dir.join("skills");
     let is_installed = client.is_installed(&slug, &skills_dir);
@@ -3785,7 +3785,7 @@ pub async fn clawhub_skill_code(
     Path(slug): Path<String>,
 ) -> impl IntoResponse {
     let cache_dir = state.kernel.config.home_dir.join(".cache").join("clawhub");
-    let client = openfang_skills::clawhub::ClawHubClient::new(cache_dir);
+    let client = openparlant_skills::clawhub::ClawHubClient::new(cache_dir);
 
     // Try to fetch SKILL.md first, then fallback to package.json
     let mut code = String::new();
@@ -3829,7 +3829,7 @@ pub async fn clawhub_install(
 ) -> impl IntoResponse {
     let skills_dir = state.kernel.config.home_dir.join("skills");
     let cache_dir = state.kernel.config.home_dir.join(".cache").join("clawhub");
-    let client = openfang_skills::clawhub::ClawHubClient::new(cache_dir);
+    let client = openparlant_skills::clawhub::ClawHubClient::new(cache_dir);
 
     // Check if already installed
     if client.is_installed(&req.slug, &skills_dir) {
@@ -3876,11 +3876,11 @@ pub async fn clawhub_install(
         }
         Err(e) => {
             let msg = format!("{e}");
-            let status = if matches!(e, openfang_skills::SkillError::SecurityBlocked(_)) {
+            let status = if matches!(e, openparlant_skills::SkillError::SecurityBlocked(_)) {
                 StatusCode::FORBIDDEN
             } else if is_clawhub_rate_limit(&e) {
                 StatusCode::TOO_MANY_REQUESTS
-            } else if matches!(e, openfang_skills::SkillError::Network(_)) {
+            } else if matches!(e, openparlant_skills::SkillError::Network(_)) {
                 StatusCode::BAD_GATEWAY
             } else {
                 StatusCode::INTERNAL_SERVER_ERROR
@@ -3892,15 +3892,15 @@ pub async fn clawhub_install(
 }
 
 /// Check whether a SkillError represents a ClawHub rate-limit (429).
-fn is_clawhub_rate_limit(err: &openfang_skills::SkillError) -> bool {
-    matches!(err, openfang_skills::SkillError::RateLimited(_))
+fn is_clawhub_rate_limit(err: &openparlant_skills::SkillError) -> bool {
+    matches!(err, openparlant_skills::SkillError::RateLimited(_))
 }
 
 /// Convert a browse entry (nested stats/tags) to a flat JSON object for the frontend.
 fn clawhub_browse_entry_to_json(
-    entry: &openfang_skills::clawhub::ClawHubBrowseEntry,
+    entry: &openparlant_skills::clawhub::ClawHubBrowseEntry,
 ) -> serde_json::Value {
-    let version = openfang_skills::clawhub::ClawHubClient::entry_version(entry);
+    let version = openparlant_skills::clawhub::ClawHubClient::entry_version(entry);
     serde_json::json!({
         "slug": entry.slug,
         "name": entry.display_name,
@@ -4444,7 +4444,7 @@ pub async fn upsert_hand(
 pub async fn activate_hand(
     State(state): State<Arc<AppState>>,
     Path(hand_id): Path<String>,
-    body: Option<Json<openfang_hands::ActivateHandRequest>>,
+    body: Option<Json<openparlant_hands::ActivateHandRequest>>,
 ) -> impl IntoResponse {
     let config = body.map(|b| b.0.config).unwrap_or_default();
 
@@ -4462,7 +4462,7 @@ pub async fn activate_hand(
                 if let Some(entry) = entry {
                     if !matches!(
                         entry.manifest.schedule,
-                        openfang_types::agent::ScheduleMode::Reactive
+                        openparlant_types::agent::ScheduleMode::Reactive
                     ) {
                         state.kernel.start_background_for_agent(
                             agent_id,
@@ -4661,7 +4661,7 @@ pub async fn hand_stats(
     };
 
     // Read dashboard metrics from shared structured memory (memory_store uses shared namespace)
-    let shared_id = openfang_kernel::kernel::shared_memory_agent_id();
+    let shared_id = openparlant_kernel::kernel::shared_memory_agent_id();
     let mut metrics = serde_json::Map::new();
     for metric in &def.dashboard.metrics {
         // Try shared memory first (where memory_store tool writes), fall back to agent-specific
@@ -4742,7 +4742,7 @@ pub async fn hand_instance_browser(
         .browser_ctx
         .send_command(
             &agent_id_str,
-            openfang_runtime::browser::BrowserCommand::ReadPage,
+            openparlant_runtime::browser::BrowserCommand::ReadPage,
         )
         .await
     {
@@ -4755,7 +4755,7 @@ pub async fn hand_instance_browser(
                 if content.len() > 2000 {
                     content = format!(
                         "{}... (truncated)",
-                        openfang_types::truncate_str(&content, 2000)
+                        openparlant_types::truncate_str(&content, 2000)
                     );
                 }
             }
@@ -4772,7 +4772,7 @@ pub async fn hand_instance_browser(
         .browser_ctx
         .send_command(
             &agent_id_str,
-            openfang_runtime::browser::BrowserCommand::Screenshot,
+            openparlant_runtime::browser::BrowserCommand::Screenshot,
         )
         .await
     {
@@ -4812,14 +4812,14 @@ pub async fn list_mcp_servers(State(state): State<Arc<AppState>>) -> impl IntoRe
         .iter()
         .map(|s| {
             let transport = match &s.transport {
-                openfang_types::config::McpTransportEntry::Stdio { command, args } => {
+                openparlant_types::config::McpTransportEntry::Stdio { command, args } => {
                     serde_json::json!({
                         "type": "stdio",
                         "command": command,
                         "args": args,
                     })
                 }
-                openfang_types::config::McpTransportEntry::Sse { url } => {
+                openparlant_types::config::McpTransportEntry::Sse { url } => {
                     serde_json::json!({
                         "type": "sse",
                         "url": url,
@@ -5280,8 +5280,8 @@ pub async fn update_budget(
 ) -> impl IntoResponse {
     // SAFETY: Budget config is updated in-place. Since KernelConfig is behind
     // an Arc and we only have &self, we use ptr mutation (same pattern as OFP).
-    let config_ptr = &state.kernel.config as *const openfang_types::config::KernelConfig
-        as *mut openfang_types::config::KernelConfig;
+    let config_ptr = &state.kernel.config as *const openparlant_types::config::KernelConfig
+        as *mut openparlant_types::config::KernelConfig;
 
     // Apply updates
     unsafe {
@@ -5335,7 +5335,7 @@ pub async fn agent_budget_status(
     };
 
     let quota = &entry.manifest.resources;
-    let usage_store = openfang_memory::usage::UsageStore::new(state.kernel.memory.usage_conn());
+    let usage_store = openparlant_memory::usage::UsageStore::new(state.kernel.memory.usage_conn());
     let hourly = usage_store.query_hourly(agent_id).unwrap_or(0.0);
     let daily = usage_store.query_daily(agent_id).unwrap_or(0.0);
     let monthly = usage_store.query_monthly(agent_id).unwrap_or(0.0);
@@ -5375,7 +5375,7 @@ pub async fn agent_budget_status(
 
 /// GET /api/budget/agents — Per-agent cost ranking (top spenders).
 pub async fn agent_budget_ranking(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let usage_store = openfang_memory::usage::UsageStore::new(state.kernel.memory.usage_conn());
+    let usage_store = openparlant_memory::usage::UsageStore::new(state.kernel.memory.usage_conn());
     let agents: Vec<serde_json::Value> = state
         .kernel
         .registry
@@ -5472,7 +5472,7 @@ pub async fn delete_session(
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     let session_id = match id.parse::<uuid::Uuid>() {
-        Ok(u) => openfang_types::agent::SessionId(u),
+        Ok(u) => openparlant_types::agent::SessionId(u),
         Err(_) => {
             return (
                 StatusCode::BAD_REQUEST,
@@ -5500,7 +5500,7 @@ pub async fn set_session_label(
     Json(req): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let session_id = match id.parse::<uuid::Uuid>() {
-        Ok(u) => openfang_types::agent::SessionId(u),
+        Ok(u) => openparlant_types::agent::SessionId(u),
         Err(_) => {
             return (
                 StatusCode::BAD_REQUEST,
@@ -5513,7 +5513,7 @@ pub async fn set_session_label(
 
     // Validate label if present
     if let Some(lbl) = label {
-        if let Err(e) = openfang_types::agent::SessionLabel::new(lbl) {
+        if let Err(e) = openparlant_types::agent::SessionLabel::new(lbl) {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": e.to_string()})),
@@ -5543,7 +5543,7 @@ pub async fn find_session_by_label(
     Path((agent_id_str, label)): Path<(String, String)>,
 ) -> impl IntoResponse {
     let agent_id = match agent_id_str.parse::<uuid::Uuid>() {
-        Ok(u) => openfang_types::agent::AgentId(u),
+        Ok(u) => openparlant_types::agent::AgentId(u),
         Err(_) => {
             // Try name lookup
             match state.kernel.registry.find_by_name(&agent_id_str) {
@@ -5840,9 +5840,9 @@ pub async fn security_status(State(state): State<Arc<AppState>>) -> impl IntoRes
 
 /// GET /api/migrate/detect — Auto-detect OpenClaw installation.
 pub async fn migrate_detect() -> impl IntoResponse {
-    match openfang_migrate::openclaw::detect_openclaw_home() {
+    match openparlant_migrate::openclaw::detect_openclaw_home() {
         Some(path) => {
-            let scan = openfang_migrate::openclaw::scan_openclaw_workspace(&path);
+            let scan = openparlant_migrate::openclaw::scan_openclaw_workspace(&path);
             (
                 StatusCode::OK,
                 Json(serde_json::json!({
@@ -5872,16 +5872,16 @@ pub async fn migrate_scan(Json(req): Json<MigrateScanRequest>) -> impl IntoRespo
             Json(serde_json::json!({"error": "Directory not found"})),
         );
     }
-    let scan = openfang_migrate::openclaw::scan_openclaw_workspace(&path);
+    let scan = openparlant_migrate::openclaw::scan_openclaw_workspace(&path);
     (StatusCode::OK, Json(serde_json::json!(scan)))
 }
 
 /// POST /api/migrate — Run migration from another agent framework.
 pub async fn run_migrate(Json(req): Json<MigrateRequest>) -> impl IntoResponse {
     let source = match req.source.as_str() {
-        "openclaw" => openfang_migrate::MigrateSource::OpenClaw,
-        "langchain" => openfang_migrate::MigrateSource::LangChain,
-        "autogpt" => openfang_migrate::MigrateSource::AutoGpt,
+        "openclaw" => openparlant_migrate::MigrateSource::OpenClaw,
+        "langchain" => openparlant_migrate::MigrateSource::LangChain,
+        "autogpt" => openparlant_migrate::MigrateSource::AutoGpt,
         other => {
             return (
                 StatusCode::BAD_REQUEST,
@@ -5892,14 +5892,14 @@ pub async fn run_migrate(Json(req): Json<MigrateRequest>) -> impl IntoResponse {
         }
     };
 
-    let options = openfang_migrate::MigrateOptions {
+    let options = openparlant_migrate::MigrateOptions {
         source,
         source_dir: std::path::PathBuf::from(&req.source_dir),
         target_dir: std::path::PathBuf::from(&req.target_dir),
         dry_run: req.dry_run,
     };
 
-    match openfang_migrate::run_migration(&options) {
+    match openparlant_migrate::run_migration(&options) {
         Ok(report) => {
             let imported: Vec<serde_json::Value> = report
                 .imported
@@ -5987,7 +5987,7 @@ pub async fn list_models(
             if available_only {
                 let provider = catalog.get_provider(&m.provider);
                 if let Some(p) = provider {
-                    if p.auth_status == openfang_types::model_catalog::AuthStatus::Missing {
+                    if p.auth_status == openparlant_types::model_catalog::AuthStatus::Missing {
                         return false;
                     }
                 }
@@ -5998,8 +5998,8 @@ pub async fn list_models(
             // Custom models from unknown providers are assumed available
             let available = catalog
                 .get_provider(&m.provider)
-                .map(|p| p.auth_status != openfang_types::model_catalog::AuthStatus::Missing)
-                .unwrap_or(m.tier == openfang_types::model_catalog::ModelTier::Custom);
+                .map(|p| p.auth_status != openparlant_types::model_catalog::AuthStatus::Missing)
+                .unwrap_or(m.tier == openparlant_types::model_catalog::ModelTier::Custom);
             serde_json::json!({
                 "id": m.id,
                 "display_name": m.display_name,
@@ -6072,8 +6072,8 @@ pub async fn get_model(
         Some(m) => {
             let available = catalog
                 .get_provider(&m.provider)
-                .map(|p| p.auth_status != openfang_types::model_catalog::AuthStatus::Missing)
-                .unwrap_or(m.tier == openfang_types::model_catalog::ModelTier::Custom);
+                .map(|p| p.auth_status != openparlant_types::model_catalog::AuthStatus::Missing)
+                .unwrap_or(m.tier == openparlant_types::model_catalog::ModelTier::Custom);
             (
                 StatusCode::OK,
                 Json(serde_json::json!({
@@ -6109,7 +6109,7 @@ pub async fn get_model(
 /// endpoint responds instantly on repeated dashboard loads even when local
 /// providers are unreachable (fixes #474).
 pub async fn list_providers(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let provider_list: Vec<openfang_types::model_catalog::ProviderInfo> = {
+    let provider_list: Vec<openparlant_types::model_catalog::ProviderInfo> = {
         let catalog = state
             .kernel
             .model_catalog
@@ -6131,13 +6131,13 @@ pub async fn list_providers(State(state): State<Arc<AppState>>) -> impl IntoResp
     let probe_futures: Vec<_> = local_providers
         .iter()
         .map(|(_, id, url)| {
-            openfang_runtime::provider_health::probe_provider_cached(id, url, cache)
+            openparlant_runtime::provider_health::probe_provider_cached(id, url, cache)
         })
         .collect();
     let probe_results = futures::future::join_all(probe_futures).await;
 
     // Index probe results by provider list position for O(1) lookup
-    let mut probe_map: HashMap<usize, openfang_runtime::provider_health::ProbeResult> =
+    let mut probe_map: HashMap<usize, openparlant_runtime::provider_health::ProbeResult> =
         HashMap::with_capacity(local_providers.len());
     for ((idx, _, _), result) in local_providers.iter().zip(probe_results.into_iter()) {
         probe_map.insert(*idx, result);
@@ -6229,11 +6229,11 @@ pub async fn add_custom_model(
         .unwrap_or(&id)
         .to_string();
 
-    let entry = openfang_types::model_catalog::ModelCatalogEntry {
+    let entry = openparlant_types::model_catalog::ModelCatalogEntry {
         id: id.clone(),
         display_name: display,
         provider: provider.clone(),
-        tier: openfang_types::model_catalog::ModelTier::Custom,
+        tier: openparlant_types::model_catalog::ModelTier::Custom,
         context_window,
         max_output_tokens: max_output,
         input_cost_per_m: body
@@ -6327,7 +6327,7 @@ pub async fn a2a_agent_card(State(state): State<Arc<AppState>>) -> impl IntoResp
     let base_url = format!("http://{}", state.kernel.config.api_listen);
 
     if let Some(first) = agents.first() {
-        let card = openfang_runtime::a2a::build_agent_card(&first.manifest, &base_url);
+        let card = openparlant_runtime::a2a::build_agent_card(&first.manifest, &base_url);
         (
             StatusCode::OK,
             Json(serde_json::to_value(&card).unwrap_or_default()),
@@ -6355,7 +6355,7 @@ pub async fn a2a_list_agents(State(state): State<Arc<AppState>>) -> impl IntoRes
     let cards: Vec<serde_json::Value> = agents
         .iter()
         .map(|entry| {
-            let card = openfang_runtime::a2a::build_agent_card(&entry.manifest, &base_url);
+            let card = openparlant_runtime::a2a::build_agent_card(&entry.manifest, &base_url);
             serde_json::to_value(&card).unwrap_or_default()
         })
         .collect();
@@ -6403,13 +6403,13 @@ pub async fn a2a_send_task(
     let session_id = request["params"]["sessionId"].as_str().map(String::from);
 
     // Create the task in the store as Working
-    let task = openfang_runtime::a2a::A2aTask {
+    let task = openparlant_runtime::a2a::A2aTask {
         id: task_id.clone(),
         session_id: session_id.clone(),
-        status: openfang_runtime::a2a::A2aTaskStatus::Working.into(),
-        messages: vec![openfang_runtime::a2a::A2aMessage {
+        status: openparlant_runtime::a2a::A2aTaskStatus::Working.into(),
+        messages: vec![openparlant_runtime::a2a::A2aMessage {
             role: "user".to_string(),
-            parts: vec![openfang_runtime::a2a::A2aPart::Text {
+            parts: vec![openparlant_runtime::a2a::A2aPart::Text {
                 text: message_text.clone(),
             }],
         }],
@@ -6420,9 +6420,9 @@ pub async fn a2a_send_task(
     // Send message to agent
     match state.kernel.send_message(agent.id, &message_text).await {
         Ok(result) => {
-            let response_msg = openfang_runtime::a2a::A2aMessage {
+            let response_msg = openparlant_runtime::a2a::A2aMessage {
                 role: "agent".to_string(),
-                parts: vec![openfang_runtime::a2a::A2aPart::Text {
+                parts: vec![openparlant_runtime::a2a::A2aPart::Text {
                     text: result.response,
                 }],
             };
@@ -6442,9 +6442,9 @@ pub async fn a2a_send_task(
             }
         }
         Err(e) => {
-            let error_msg = openfang_runtime::a2a::A2aMessage {
+            let error_msg = openparlant_runtime::a2a::A2aMessage {
                 role: "agent".to_string(),
-                parts: vec![openfang_runtime::a2a::A2aPart::Text {
+                parts: vec![openparlant_runtime::a2a::A2aPart::Text {
                     text: format!("Error: {e}"),
                 }],
             };
@@ -6543,7 +6543,7 @@ pub async fn a2a_discover_external(
         }
     };
 
-    let client = openfang_runtime::a2a::A2aClient::new();
+    let client = openparlant_runtime::a2a::A2aClient::new();
     match client.discover(&url).await {
         Ok(card) => {
             let card_json = serde_json::to_value(&card).unwrap_or_default();
@@ -6601,7 +6601,7 @@ pub async fn a2a_send_external(
     };
     let session_id = body["session_id"].as_str();
 
-    let client = openfang_runtime::a2a::A2aClient::new();
+    let client = openparlant_runtime::a2a::A2aClient::new();
     match client.send_task(&url, &message, session_id).await {
         Ok(task) => (
             StatusCode::OK,
@@ -6630,7 +6630,7 @@ pub async fn a2a_external_task_status(
         }
     };
 
-    let client = openfang_runtime::a2a::A2aClient::new();
+    let client = openparlant_runtime::a2a::A2aClient::new();
     match client.get_task(&url, &task_id).await {
         Ok(task) => (
             StatusCode::OK,
@@ -6662,7 +6662,7 @@ pub async fn mcp_http(
             .read()
             .unwrap_or_else(|e| e.into_inner());
         for skill_tool in registry.all_tool_definitions() {
-            tools.push(openfang_types::tool::ToolDefinition {
+            tools.push(openparlant_types::tool::ToolDefinition {
                 name: skill_tool.name.clone(),
                 description: skill_tool.description.clone(),
                 input_schema: skill_tool.input_schema.clone(),
@@ -6700,9 +6700,9 @@ pub async fn mcp_http(
             .snapshot();
 
         // Execute the tool via the kernel's tool runner
-        let kernel_handle: Arc<dyn openfang_runtime::kernel_handle::KernelHandle> =
-            state.kernel.clone() as Arc<dyn openfang_runtime::kernel_handle::KernelHandle>;
-        let result = openfang_runtime::tool_runner::execute_tool(
+        let kernel_handle: Arc<dyn openparlant_runtime::kernel_handle::KernelHandle> =
+            state.kernel.clone() as Arc<dyn openparlant_runtime::kernel_handle::KernelHandle>;
+        let result = openparlant_runtime::tool_runner::execute_tool(
             "mcp-http",
             tool_name,
             &arguments,
@@ -6742,7 +6742,7 @@ pub async fn mcp_http(
     }
 
     // For non-tools/call methods (initialize, tools/list, etc.), delegate to the handler
-    let response = openfang_runtime::mcp_server::handle_mcp_request(&request, &tools).await;
+    let response = openparlant_runtime::mcp_server::handle_mcp_request(&request, &tools).await;
     Json(response)
 }
 
@@ -6814,7 +6814,7 @@ pub async fn switch_agent_session(
         }
     };
     let session_id = match session_id_str.parse::<uuid::Uuid>() {
-        Ok(uuid) => openfang_types::agent::SessionId(uuid),
+        Ok(uuid) => openparlant_types::agent::SessionId(uuid),
         Err(_) => {
             return (
                 StatusCode::BAD_REQUEST,
@@ -7200,7 +7200,7 @@ pub async fn get_agent_mcp_servers(
     if let Ok(mcp_tools) = state.kernel.mcp_tools.lock() {
         let mut seen = std::collections::HashSet::new();
         for tool in mcp_tools.iter() {
-            if let Some(server) = openfang_runtime::mcp::extract_mcp_server(&tool.name) {
+            if let Some(server) = openparlant_runtime::mcp::extract_mcp_server(&tool.name) {
                 if seen.insert(server.to_string()) {
                     available.push(server.to_string());
                 }
@@ -7378,7 +7378,7 @@ pub async fn set_provider_key(
             // Hot-update the in-memory default model override so resolve_driver()
             // immediately creates drivers for the new provider — no restart needed.
             {
-                let new_dm = openfang_types::config::DefaultModelConfig {
+                let new_dm = openparlant_types::config::DefaultModelConfig {
                     provider: name.clone(),
                     model: model_id,
                     api_key_env: env_var.clone(),
@@ -7419,7 +7419,7 @@ pub async fn set_provider_key(
             let base = guard
                 .clone()
                 .unwrap_or_else(|| state.kernel.config.default_model.clone());
-            *guard = Some(openfang_types::config::DefaultModelConfig {
+            *guard = Some(openparlant_types::config::DefaultModelConfig {
                 api_key_env: env_var.clone(),
                 ..base
             });
@@ -7541,7 +7541,7 @@ pub async fn test_provider(
 
     // Attempt a lightweight connectivity test
     let start = std::time::Instant::now();
-    let driver_config = openfang_runtime::llm_driver::DriverConfig {
+    let driver_config = openparlant_runtime::llm_driver::DriverConfig {
         provider: name.clone(),
         api_key,
         base_url: if base_url.is_empty() {
@@ -7552,12 +7552,12 @@ pub async fn test_provider(
         skip_permissions: true,
     };
 
-    match openfang_runtime::drivers::create_driver(&driver_config) {
+    match openparlant_runtime::drivers::create_driver(&driver_config) {
         Ok(driver) => {
             // Send a minimal completion request to test connectivity
-            let test_req = openfang_runtime::llm_driver::CompletionRequest {
+            let test_req = openparlant_runtime::llm_driver::CompletionRequest {
                 model: default_model.clone(),
-                messages: vec![openfang_types::message::Message::user("Hi")],
+                messages: vec![openparlant_types::message::Message::user("Hi")],
                 tools: vec![],
                 max_tokens: 1,
                 temperature: 0.0,
@@ -7642,7 +7642,7 @@ pub async fn set_provider_url(
     }
 
     // Probe reachability at the new URL
-    let probe = openfang_runtime::provider_health::probe_provider(&name, &base_url).await;
+    let probe = openparlant_runtime::provider_health::probe_provider(&name, &base_url).await;
 
     // Merge discovered models into catalog
     if !probe.discovered_models.is_empty() {
@@ -7962,8 +7962,8 @@ pub async fn list_integrations(State(state): State<Arc<AppState>>) -> impl IntoR
         let status = match &info.installed {
             Some(inst) if !inst.enabled => "disabled",
             Some(_) => match h.as_ref().map(|h| &h.status) {
-                Some(openfang_extensions::IntegrationStatus::Ready) => "ready",
-                Some(openfang_extensions::IntegrationStatus::Error(_)) => "error",
+                Some(openparlant_extensions::IntegrationStatus::Ready) => "ready",
+                Some(openparlant_extensions::IntegrationStatus::Error(_)) => "error",
                 _ => "installed",
             },
             None => continue, // Only show installed
@@ -8058,7 +8058,7 @@ pub async fn add_integration(
                 format!("Unknown integration: '{}'", id),
             ))
         } else {
-            let entry = openfang_extensions::InstalledIntegration {
+            let entry = openparlant_extensions::InstalledIntegration {
                 id: id.clone(),
                 installed_at: chrono::Utc::now(),
                 enabled: true,
@@ -8225,7 +8225,7 @@ fn schedule_shared_agent_id() -> AgentId {
     ]))
 }
 
-const SCHEDULES_KEY: &str = "__openfang_schedules";
+const SCHEDULES_KEY: &str = "__openparlant_schedules";
 
 /// GET /api/schedules — List all cron-based scheduled jobs.
 pub async fn list_schedules(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -8666,7 +8666,7 @@ pub struct PatchAgentConfigRequest {
     pub provider: Option<String>,
     pub api_key_env: Option<String>,
     pub base_url: Option<String>,
-    pub fallback_models: Option<Vec<openfang_types::agent::FallbackModel>>,
+    pub fallback_models: Option<Vec<openparlant_types::agent::FallbackModel>>,
 }
 
 /// PATCH /api/agents/{id}/config — Hot-update agent name, description, system prompt, and identity.
@@ -9381,7 +9381,7 @@ pub async fn upload_file(
 
     // Generate file ID and save
     let file_id = uuid::Uuid::new_v4().to_string();
-    let upload_dir = std::env::temp_dir().join("openfang_uploads");
+    let upload_dir = std::env::temp_dir().join("openparlant_uploads");
     if let Err(e) = std::fs::create_dir_all(&upload_dir) {
         tracing::warn!("Failed to create upload dir: {e}");
         return (
@@ -9410,10 +9410,10 @@ pub async fn upload_file(
 
     // Auto-transcribe audio uploads using the media engine
     let transcription = if content_type.starts_with("audio/") {
-        let attachment = openfang_types::media::MediaAttachment {
-            media_type: openfang_types::media::MediaType::Audio,
+        let attachment = openparlant_types::media::MediaAttachment {
+            media_type: openparlant_types::media::MediaType::Audio,
             mime_type: content_type.clone(),
-            source: openfang_types::media::MediaSource::FilePath {
+            source: openparlant_types::media::MediaSource::FilePath {
                 path: file_path.to_string_lossy().to_string(),
             },
             size_bytes: size as u64,
@@ -9463,7 +9463,7 @@ pub async fn serve_upload(Path(file_id): Path<String>) -> impl IntoResponse {
         );
     }
 
-    let file_path = std::env::temp_dir().join("openfang_uploads").join(&file_id);
+    let file_path = std::env::temp_dir().join("openparlant_uploads").join(&file_id);
 
     // Look up metadata from registry; fall back to disk probe for generated images
     // (image_generate saves files without registering in UPLOAD_REGISTRY).
@@ -9549,9 +9549,9 @@ pub async fn list_approvals(State(state): State<Arc<AppState>>) -> impl IntoResp
         let request = record.request;
         let agent_name = agent_name_for(&request.agent_id);
         let status = match record.decision {
-            openfang_types::approval::ApprovalDecision::Approved => "approved",
-            openfang_types::approval::ApprovalDecision::Denied => "rejected",
-            openfang_types::approval::ApprovalDecision::TimedOut => "expired",
+            openparlant_types::approval::ApprovalDecision::Approved => "approved",
+            openparlant_types::approval::ApprovalDecision::Denied => "rejected",
+            openparlant_types::approval::ApprovalDecision::TimedOut => "expired",
         };
         serde_json::json!({
             "id": request.id,
@@ -9603,7 +9603,7 @@ pub async fn create_approval(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateApprovalRequest>,
 ) -> impl IntoResponse {
-    use openfang_types::approval::{ApprovalRequest, RiskLevel};
+    use openparlant_types::approval::{ApprovalRequest, RiskLevel};
 
     let policy = state.kernel.approval_manager.policy();
     let id = uuid::Uuid::new_v4();
@@ -9655,7 +9655,7 @@ pub async fn approve_request(
 
     match state.kernel.approval_manager.resolve(
         uuid,
-        openfang_types::approval::ApprovalDecision::Approved,
+        openparlant_types::approval::ApprovalDecision::Approved,
         Some("api".to_string()),
     ) {
         Ok(resp) => (
@@ -9685,7 +9685,7 @@ pub async fn reject_request(
 
     match state.kernel.approval_manager.resolve(
         uuid,
-        openfang_types::approval::ApprovalDecision::Denied,
+        openparlant_types::approval::ApprovalDecision::Denied,
         Some("api".to_string()),
     ) {
         Ok(resp) => (
@@ -9711,7 +9711,7 @@ pub async fn config_reload(State(state): State<Arc<AppState>>) -> impl IntoRespo
     // SECURITY: Record config reload in audit trail
     state.kernel.audit_log.record(
         "system",
-        openfang_runtime::audit::AuditAction::ConfigChange,
+        openparlant_runtime::audit::AuditAction::ConfigChange,
         "config reload requested via API",
         "pending",
     );
@@ -9966,7 +9966,7 @@ pub async fn config_set(
 
     state.kernel.audit_log.record(
         "system",
-        openfang_runtime::audit::AuditAction::ConfigChange,
+        openparlant_runtime::audit::AuditAction::ConfigChange,
         format!("config set: {path}"),
         "completed",
     );
@@ -10101,7 +10101,7 @@ pub async fn delete_cron_job(
 ) -> impl IntoResponse {
     match uuid::Uuid::parse_str(&id) {
         Ok(uuid) => {
-            let job_id = openfang_types::scheduler::CronJobId(uuid);
+            let job_id = openparlant_types::scheduler::CronJobId(uuid);
             match state.kernel.cron_scheduler.remove_job(job_id) {
                 Ok(_) => {
                     let _ = state.kernel.cron_scheduler.persist();
@@ -10132,7 +10132,7 @@ pub async fn toggle_cron_job(
     let enabled = body["enabled"].as_bool().unwrap_or(true);
     match uuid::Uuid::parse_str(&id) {
         Ok(uuid) => {
-            let job_id = openfang_types::scheduler::CronJobId(uuid);
+            let job_id = openparlant_types::scheduler::CronJobId(uuid);
             match state.kernel.cron_scheduler.set_enabled(job_id, enabled) {
                 Ok(()) => {
                     let _ = state.kernel.cron_scheduler.persist();
@@ -10161,7 +10161,7 @@ pub async fn cron_job_status(
 ) -> impl IntoResponse {
     match uuid::Uuid::parse_str(&id) {
         Ok(uuid) => {
-            let job_id = openfang_types::scheduler::CronJobId(uuid);
+            let job_id = openparlant_types::scheduler::CronJobId(uuid);
             match state.kernel.cron_scheduler.get_meta(job_id) {
                 Some(meta) => (
                     StatusCode::OK,
@@ -10191,7 +10191,7 @@ pub async fn cron_job_status(
 pub async fn webhook_wake(
     State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
-    Json(body): Json<openfang_types::webhook::WakePayload>,
+    Json(body): Json<openparlant_types::webhook::WakePayload>,
 ) -> impl IntoResponse {
     // Check if webhook triggers are enabled
     let wh_config = match &state.kernel.config.webhook_triggers {
@@ -10250,7 +10250,7 @@ pub async fn webhook_wake(
 pub async fn webhook_agent(
     State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
-    Json(body): Json<openfang_types::webhook::AgentHookPayload>,
+    Json(body): Json<openparlant_types::webhook::AgentHookPayload>,
 ) -> impl IntoResponse {
     // Check if webhook triggers are enabled
     let wh_config = match &state.kernel.config.webhook_triggers {
@@ -10347,7 +10347,7 @@ pub async fn list_bindings(State(state): State<Arc<AppState>>) -> impl IntoRespo
 /// POST /api/bindings — Add a new agent binding.
 pub async fn add_binding(
     State(state): State<Arc<AppState>>,
-    Json(binding): Json<openfang_types::config::AgentBinding>,
+    Json(binding): Json<openparlant_types::config::AgentBinding>,
 ) -> impl IntoResponse {
     // Validate agent exists
     let agents = state.kernel.registry.list();
@@ -10435,7 +10435,7 @@ pub async fn pairing_complete(
         .get("push_token")
         .and_then(|v| v.as_str())
         .map(String::from);
-    let device_info = openfang_kernel::pairing::PairedDevice {
+    let device_info = openparlant_kernel::pairing::PairedDevice {
         device_id: uuid::Uuid::new_v4().to_string(),
         display_name: display_name.to_string(),
         platform: platform.to_string(),
@@ -10610,7 +10610,7 @@ pub async fn copilot_oauth_start() -> impl IntoResponse {
     // Clean up expired flows first
     COPILOT_FLOWS.retain(|_, state| state.expires_at > Instant::now());
 
-    match openfang_runtime::copilot_oauth::start_device_flow().await {
+    match openparlant_runtime::copilot_oauth::start_device_flow().await {
         Ok(resp) => {
             let poll_id = uuid::Uuid::new_v4().to_string();
 
@@ -10672,12 +10672,12 @@ pub async fn copilot_oauth_poll(
     let device_code = flow.device_code.clone();
     drop(flow);
 
-    match openfang_runtime::copilot_oauth::poll_device_flow(&device_code).await {
-        openfang_runtime::copilot_oauth::DeviceFlowStatus::Pending => (
+    match openparlant_runtime::copilot_oauth::poll_device_flow(&device_code).await {
+        openparlant_runtime::copilot_oauth::DeviceFlowStatus::Pending => (
             StatusCode::OK,
             Json(serde_json::json!({"status": "pending"})),
         ),
-        openfang_runtime::copilot_oauth::DeviceFlowStatus::Complete { access_token } => {
+        openparlant_runtime::copilot_oauth::DeviceFlowStatus::Complete { access_token } => {
             // Store in vault (best-effort)
             state.kernel.store_credential("GITHUB_TOKEN", &access_token);
 
@@ -10711,7 +10711,7 @@ pub async fn copilot_oauth_poll(
                 Json(serde_json::json!({"status": "complete"})),
             )
         }
-        openfang_runtime::copilot_oauth::DeviceFlowStatus::SlowDown { new_interval } => {
+        openparlant_runtime::copilot_oauth::DeviceFlowStatus::SlowDown { new_interval } => {
             // Update interval
             if let Some(mut f) = COPILOT_FLOWS.get_mut(&poll_id) {
                 f.interval = new_interval;
@@ -10721,21 +10721,21 @@ pub async fn copilot_oauth_poll(
                 Json(serde_json::json!({"status": "pending", "interval": new_interval})),
             )
         }
-        openfang_runtime::copilot_oauth::DeviceFlowStatus::Expired => {
+        openparlant_runtime::copilot_oauth::DeviceFlowStatus::Expired => {
             COPILOT_FLOWS.remove(&poll_id);
             (
                 StatusCode::OK,
                 Json(serde_json::json!({"status": "expired"})),
             )
         }
-        openfang_runtime::copilot_oauth::DeviceFlowStatus::AccessDenied => {
+        openparlant_runtime::copilot_oauth::DeviceFlowStatus::AccessDenied => {
             COPILOT_FLOWS.remove(&poll_id);
             (
                 StatusCode::OK,
                 Json(serde_json::json!({"status": "denied"})),
             )
         }
-        openfang_runtime::copilot_oauth::DeviceFlowStatus::Error(e) => (
+        openparlant_runtime::copilot_oauth::DeviceFlowStatus::Error(e) => (
             StatusCode::OK,
             Json(serde_json::json!({"status": "error", "error": e})),
         ),
@@ -10748,7 +10748,7 @@ pub async fn copilot_oauth_poll(
 
 /// GET /api/comms/topology — Build agent topology graph from registry.
 pub async fn comms_topology(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    use openfang_types::comms::{EdgeKind, TopoEdge, TopoNode, Topology};
+    use openparlant_types::comms::{EdgeKind, TopoEdge, TopoNode, Topology};
 
     let agents = state.kernel.registry.list();
 
@@ -10779,8 +10779,8 @@ pub async fn comms_topology(State(state): State<Arc<AppState>>) -> impl IntoResp
     let events = state.kernel.event_bus.history(500).await;
     let mut peer_pairs = std::collections::HashSet::new();
     for event in &events {
-        if let openfang_types::event::EventPayload::Message(_) = &event.payload {
-            if let openfang_types::event::EventTarget::Agent(target_id) = &event.target {
+        if let openparlant_types::event::EventPayload::Message(_) = &event.payload {
+            if let openparlant_types::event::EventTarget::Agent(target_id) = &event.target {
                 let from = event.source.to_string();
                 let to = target_id.to_string();
                 // Deduplicate: only one edge per pair, skip self-loops
@@ -10807,11 +10807,11 @@ pub async fn comms_topology(State(state): State<Arc<AppState>>) -> impl IntoResp
 
 /// Filter a kernel event into a CommsEvent, if it represents inter-agent communication.
 fn filter_to_comms_event(
-    event: &openfang_types::event::Event,
-    agents: &[openfang_types::agent::AgentEntry],
-) -> Option<openfang_types::comms::CommsEvent> {
-    use openfang_types::comms::{CommsEvent, CommsEventKind};
-    use openfang_types::event::{EventPayload, EventTarget, LifecycleEvent};
+    event: &openparlant_types::event::Event,
+    agents: &[openparlant_types::agent::AgentEntry],
+) -> Option<openparlant_types::comms::CommsEvent> {
+    use openparlant_types::comms::{CommsEvent, CommsEventKind};
+    use openparlant_types::event::{EventPayload, EventTarget, LifecycleEvent};
 
     let resolve_name = |id: &str| -> String {
         agents
@@ -10835,7 +10835,7 @@ fn filter_to_comms_event(
                 source_name: resolve_name(&event.source.to_string()),
                 target_id: target_id.clone(),
                 target_name: resolve_name(&target_id),
-                detail: openfang_types::truncate_str(&msg.content, 200).to_string(),
+                detail: openparlant_types::truncate_str(&msg.content, 200).to_string(),
             })
         }
         EventPayload::Lifecycle(lifecycle) => match lifecycle {
@@ -10867,10 +10867,10 @@ fn filter_to_comms_event(
 
 /// Convert an audit entry into a CommsEvent if it represents inter-agent activity.
 fn audit_to_comms_event(
-    entry: &openfang_runtime::audit::AuditEntry,
-    agents: &[openfang_types::agent::AgentEntry],
-) -> Option<openfang_types::comms::CommsEvent> {
-    use openfang_types::comms::{CommsEvent, CommsEventKind};
+    entry: &openparlant_runtime::audit::AuditEntry,
+    agents: &[openparlant_types::agent::AgentEntry],
+) -> Option<openparlant_types::comms::CommsEvent> {
+    use openparlant_types::comms::{CommsEvent, CommsEventKind};
 
     let resolve_name = |id: &str| -> String {
         agents
@@ -10881,7 +10881,7 @@ fn audit_to_comms_event(
                 if id.is_empty() || id == "system" {
                     "system".to_string()
                 } else {
-                    openfang_types::truncate_str(id, 12).to_string()
+                    openparlant_types::truncate_str(id, 12).to_string()
                 }
             })
     };
@@ -10907,17 +10907,17 @@ fn audit_to_comms_event(
                         "{} in / {} out — {}",
                         in_tok,
                         out_tok,
-                        openfang_types::truncate_str(&entry.outcome, 80)
+                        openparlant_types::truncate_str(&entry.outcome, 80)
                     )
                 }
             } else if entry.outcome != "ok" {
                 format!(
                     "{} — {}",
-                    openfang_types::truncate_str(&entry.detail, 80),
-                    openfang_types::truncate_str(&entry.outcome, 80)
+                    openparlant_types::truncate_str(&entry.detail, 80),
+                    openparlant_types::truncate_str(&entry.outcome, 80)
                 )
             } else {
-                openfang_types::truncate_str(&entry.detail, 200).to_string()
+                openparlant_types::truncate_str(&entry.detail, 200).to_string()
             };
             (CommsEventKind::AgentMessage, detail, "user")
         }
@@ -10925,7 +10925,7 @@ fn audit_to_comms_event(
             CommsEventKind::AgentSpawned,
             format!(
                 "Agent spawned: {}",
-                openfang_types::truncate_str(&entry.detail, 100)
+                openparlant_types::truncate_str(&entry.detail, 100)
             ),
             "",
         ),
@@ -10933,7 +10933,7 @@ fn audit_to_comms_event(
             CommsEventKind::AgentTerminated,
             format!(
                 "Agent killed: {}",
-                openfang_types::truncate_str(&entry.detail, 100)
+                openparlant_types::truncate_str(&entry.detail, 100)
             ),
             "",
         ),
@@ -10978,7 +10978,7 @@ pub async fn comms_events(
 
     // Primary source: event bus (has full source/target context)
     let bus_events = state.kernel.event_bus.history(500).await;
-    let mut comms_events: Vec<openfang_types::comms::CommsEvent> = bus_events
+    let mut comms_events: Vec<openparlant_types::comms::CommsEvent> = bus_events
         .iter()
         .filter_map(|e| filter_to_comms_event(e, &agents))
         .collect();
@@ -11056,10 +11056,10 @@ pub async fn comms_events_stream(State(state): State<Arc<AppState>>) -> axum::re
 /// POST /api/comms/send — Send a message from one agent to another.
 pub async fn comms_send(
     State(state): State<Arc<AppState>>,
-    Json(req): Json<openfang_types::comms::CommsSendRequest>,
+    Json(req): Json<openparlant_types::comms::CommsSendRequest>,
 ) -> impl IntoResponse {
     // Validate from agent exists
-    let from_id: openfang_types::agent::AgentId = match req.from_agent_id.parse() {
+    let from_id: openparlant_types::agent::AgentId = match req.from_agent_id.parse() {
         Ok(id) => id,
         Err(_) => {
             return (
@@ -11076,7 +11076,7 @@ pub async fn comms_send(
     }
 
     // Validate to agent exists
-    let to_id: openfang_types::agent::AgentId = match req.to_agent_id.parse() {
+    let to_id: openparlant_types::agent::AgentId = match req.to_agent_id.parse() {
         Ok(id) => id,
         Err(_) => {
             return (
@@ -11120,7 +11120,7 @@ pub async fn comms_send(
 /// POST /api/comms/task — Post a task to the agent task queue.
 pub async fn comms_task(
     State(state): State<Arc<AppState>>,
-    Json(req): Json<openfang_types::comms::CommsTaskRequest>,
+    Json(req): Json<openparlant_types::comms::CommsTaskRequest>,
 ) -> impl IntoResponse {
     if req.title.is_empty() {
         return (
@@ -11194,7 +11194,7 @@ pub async fn auth_login(
         // Audit log the failed attempt
         state.kernel.audit_log.record(
             "system",
-            openfang_runtime::audit::AuditAction::AuthAttempt,
+            openparlant_runtime::audit::AuditAction::AuthAttempt,
             "dashboard login failed",
             format!("username: {username}"),
         );
@@ -11219,11 +11219,11 @@ pub async fn auth_login(
         crate::session_auth::create_session_token(username, &secret, auth_cfg.session_ttl_hours);
     let ttl_secs = auth_cfg.session_ttl_hours * 3600;
     let cookie =
-        format!("openfang_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={ttl_secs}");
+        format!("openparlant_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={ttl_secs}");
 
     state.kernel.audit_log.record(
         "system",
-        openfang_runtime::audit::AuditAction::AuthAttempt,
+        openparlant_runtime::audit::AuditAction::AuthAttempt,
         "dashboard login success",
         format!("username: {username}"),
     );
@@ -11245,7 +11245,7 @@ pub async fn auth_login(
 
 /// POST /api/auth/logout — Clear the session cookie.
 pub async fn auth_logout() -> impl IntoResponse {
-    let cookie = "openfang_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0";
+    let cookie = "openparlant_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0";
     (
         StatusCode::OK,
         [("content-type", "application/json"), ("set-cookie", cookie)],
@@ -11282,7 +11282,7 @@ pub async fn auth_check(
         .and_then(|cookies| {
             cookies.split(';').find_map(|c| {
                 c.trim()
-                    .strip_prefix("openfang_session=")
+                    .strip_prefix("openparlant_session=")
                     .map(|v| v.to_string())
             })
         })
@@ -11336,14 +11336,14 @@ mod channel_config_tests {
 
     #[test]
     fn test_is_channel_configured_wecom_none() {
-        let config = openfang_types::config::ChannelsConfig::default();
+        let config = openparlant_types::config::ChannelsConfig::default();
         assert!(!is_channel_configured(&config, "wecom"));
     }
 
     #[test]
     fn test_is_channel_configured_wecom_some() {
-        let mut config = openfang_types::config::ChannelsConfig::default();
-        config.wecom = Some(openfang_types::config::WeComConfig {
+        let mut config = openparlant_types::config::ChannelsConfig::default();
+        config.wecom = Some(openparlant_types::config::WeComConfig {
             corp_id: "test_corp".to_string(),
             agent_id: "test_agent".to_string(),
             secret_env: "WECOM_SECRET".to_string(),
@@ -11351,7 +11351,7 @@ mod channel_config_tests {
             token: Some("token".to_string()),
             encoding_aes_key: Some("aes_key".to_string()),
             default_agent: Some("assistant".to_string()),
-            overrides: openfang_types::config::ChannelOverrides::default(),
+            overrides: openparlant_types::config::ChannelOverrides::default(),
         });
         assert!(is_channel_configured(&config, "wecom"));
     }

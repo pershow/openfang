@@ -12,9 +12,9 @@ use crate::structured::StructuredStore;
 use crate::usage::UsageStore;
 
 use async_trait::async_trait;
-use openfang_types::agent::{AgentEntry, AgentId, SessionId};
-use openfang_types::error::{OpenFangError, OpenFangResult};
-use openfang_types::memory::{
+use openparlant_types::agent::{AgentEntry, AgentId, SessionId};
+use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::memory::{
     ConsolidationReport, Entity, ExportFormat, GraphMatch, GraphPattern, ImportReport, Memory,
     MemoryFilter, MemoryFragment, MemoryId, MemorySource, Relation,
 };
@@ -224,7 +224,7 @@ impl MemorySubstrate {
         &self,
         agent_id: AgentId,
         window_size: Option<usize>,
-    ) -> OpenFangResult<(Option<String>, Vec<openfang_types::message::Message>)> {
+    ) -> OpenFangResult<(Option<String>, Vec<openparlant_types::message::Message>)> {
         self.sessions.canonical_context(agent_id, window_size)
     }
 
@@ -236,7 +236,7 @@ impl MemorySubstrate {
         &self,
         agent_id: AgentId,
         summary: &str,
-        kept_messages: Vec<openfang_types::message::Message>,
+        kept_messages: Vec<openparlant_types::message::Message>,
     ) -> OpenFangResult<()> {
         self.sessions
             .store_llm_summary(agent_id, summary, kept_messages)
@@ -258,7 +258,7 @@ impl MemorySubstrate {
     pub fn append_canonical(
         &self,
         agent_id: AgentId,
-        messages: &[openfang_types::message::Message],
+        messages: &[openparlant_types::message::Message],
         compaction_threshold: Option<usize>,
     ) -> OpenFangResult<()> {
         self.sessions

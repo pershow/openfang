@@ -267,7 +267,7 @@ impl ChannelAdapter for NtfyAdapter {
                                                     sender: ChannelUser {
                                                         platform_id: sender_name.to_string(),
                                                         display_name: sender_name.to_string(),
-                                                        openfang_user: None,
+                                                        openparlant_user: None,
                                                     },
                                                     content,
                                                     target_agent: None,

@@ -10,8 +10,8 @@ mod shortcuts;
 mod tray;
 mod updater;
 
-use openfang_kernel::OpenFangKernel;
-use openfang_types::event::{EventPayload, LifecycleEvent, SystemEvent};
+use openparlant_kernel::OpenFangKernel;
+use openparlant_types::event::{EventPayload, LifecycleEvent, SystemEvent};
 use std::sync::Arc;
 use std::time::Instant;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};

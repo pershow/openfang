@@ -222,7 +222,7 @@ impl WizardState {
         // Detected providers first
         for (i, p) in PROVIDERS.iter().enumerate() {
             let detected = if p.name == "claude-code" {
-                openfang_runtime::drivers::claude_code::claude_code_available()
+                openparlant_runtime::drivers::claude_code::claude_code_available()
             } else {
                 !p.env_var.is_empty() && std::env::var(p.env_var).is_ok()
             };
@@ -233,7 +233,7 @@ impl WizardState {
         // Then the rest
         for (i, p) in PROVIDERS.iter().enumerate() {
             let detected = if p.name == "claude-code" {
-                openfang_runtime::drivers::claude_code::claude_code_available()
+                openparlant_runtime::drivers::claude_code::claude_code_available()
             } else {
                 !p.env_var.is_empty() && std::env::var(p.env_var).is_ok()
             };
@@ -374,7 +374,7 @@ impl WizardState {
             }
         };
 
-        let openfang_dir = if let Ok(h) = std::env::var("OPENFANG_HOME") {
+        let openparlant_dir = if let Ok(h) = std::env::var("OPENFANG_HOME") {
             std::path::PathBuf::from(h)
         } else {
             match dirs::home_dir() {
@@ -386,9 +386,9 @@ impl WizardState {
                 }
             }
         };
-        let _ = std::fs::create_dir_all(openfang_dir.join("agents"));
-        let _ = std::fs::create_dir_all(openfang_dir.join("data"));
-        crate::restrict_dir_permissions(&openfang_dir);
+        let _ = std::fs::create_dir_all(openparlant_dir.join("agents"));
+        let _ = std::fs::create_dir_all(openparlant_dir.join("data"));
+        crate::restrict_dir_permissions(&openparlant_dir);
 
         let api_key_line = if !self.api_key_input.is_empty() {
             format!("api_key = \"{}\"", self.api_key_input)
@@ -422,7 +422,7 @@ listen_addr = "127.0.0.1:4200"
             provider = p.name,
         );
 
-        let config_path = openfang_dir.join("config.toml");
+        let config_path = openparlant_dir.join("config.toml");
         match std::fs::write(&config_path, &config) {
             Ok(()) => {
                 crate::restrict_file_permissions(&config_path);
@@ -525,7 +525,7 @@ fn draw_provider(f: &mut Frame, area: Rect, state: &mut WizardState) {
         .map(|&idx| {
             let p = &PROVIDERS[idx];
             let hint = if p.name == "claude-code" {
-                if openfang_runtime::drivers::claude_code::claude_code_available() {
+                if openparlant_runtime::drivers::claude_code::claude_code_available() {
                     "CLI detected".to_string()
                 } else {
                     "no API key needed".to_string()

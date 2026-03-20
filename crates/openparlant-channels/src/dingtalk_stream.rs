@@ -530,7 +530,7 @@ where
                                 sender: ChannelUser {
                                     platform_id: uid,
                                     display_name: cb.sender_nick,
-                                    openfang_user: None,
+                                    openparlant_user: None,
                                 },
                                 content,
                                 target_agent: None,

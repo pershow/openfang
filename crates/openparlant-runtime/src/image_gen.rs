@@ -1,7 +1,7 @@
 //! Image generation — DALL-E 3, DALL-E 2, GPT-Image-1 via OpenAI API.
 
 use base64::Engine;
-use openfang_types::media::{GeneratedImage, ImageGenRequest, ImageGenResult};
+use openparlant_types::media::{GeneratedImage, ImageGenRequest, ImageGenResult};
 use tracing::warn;
 
 /// Generate images via OpenAI's image generation API.
@@ -26,7 +26,7 @@ pub async fn generate_image(request: &ImageGenRequest) -> Result<ImageGenResult,
     });
 
     // DALL-E 3 specific fields
-    if request.model == openfang_types::media::ImageGenModel::DallE3 {
+    if request.model == openparlant_types::media::ImageGenModel::DallE3 {
         body["quality"] = serde_json::json!(request.quality);
     }
 
@@ -147,7 +147,7 @@ pub fn save_images_to_workspace(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openfang_types::media::ImageGenModel;
+    use openparlant_types::media::ImageGenModel;
 
     #[test]
     fn test_validate_valid_request() {

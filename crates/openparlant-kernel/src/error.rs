@@ -1,6 +1,6 @@
 //! Kernel-specific error types.
 
-use openfang_types::error::OpenFangError;
+use openparlant_types::error::OpenFangError;
 use thiserror::Error;
 
 /// Kernel error type wrapping OpenFangError with kernel-specific context.

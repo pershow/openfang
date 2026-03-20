@@ -4,7 +4,7 @@
 //! push notifications via ntfy.sh or gotify.
 
 use dashmap::DashMap;
-use openfang_types::config::PairingConfig;
+use openparlant_types::config::PairingConfig;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 

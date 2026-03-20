@@ -252,7 +252,7 @@ These are features where OpenParlant can leapfrog OpenClaw.
 
 ### 3.3 JavaScript/Python SDK -- DONE
 
-**Status: COMPLETE** — Created `sdk/javascript/` (@openparlant/sdk) with full REST client: agent CRUD, streaming via SSE, sessions, workflows, skills, channels, memory KV, triggers, schedules + TypeScript declarations. Created `sdk/python/openfang_client.py` (zero-dependency stdlib urllib) with same coverage. Both include basic + streaming examples. Python `setup.py` for pip install.
+**Status: COMPLETE** — Created `sdk/javascript/` (@openparlant/sdk) with full REST client: agent CRUD, streaming via SSE, sessions, workflows, skills, channels, memory KV, triggers, schedules + TypeScript declarations. Created `sdk/python/openparlant_client.py` (zero-dependency stdlib urllib) with same coverage. Both include basic + streaming examples. Python `setup.py` for pip install.
 
 **Problem (was):** No official client libraries. Developers must raw-fetch the API.
 
@@ -274,18 +274,18 @@ These are features where OpenParlant can leapfrog OpenClaw.
 
 ### 3.4 Observability & Metrics Export -- DONE
 
-**Status: COMPLETE** — Added `GET /api/metrics` endpoint returning Prometheus text format. Metrics: `openfang_uptime_seconds`, `openfang_agents_active`, `openfang_agents_total`, `openfang_tokens_total{agent,provider,model}`, `openfang_tool_calls_total{agent}`, `openfang_panics_total`, `openfang_restarts_total`, `openfang_info{version}`.
+**Status: COMPLETE** — Added `GET /api/metrics` endpoint returning Prometheus text format. Metrics: `openparlant_uptime_seconds`, `openparlant_agents_active`, `openparlant_agents_total`, `openparlant_tokens_total{agent,provider,model}`, `openparlant_tool_calls_total{agent}`, `openparlant_panics_total`, `openparlant_restarts_total`, `openparlant_info{version}`.
 
 **Problem (was):** No way to monitor OpenParlant in production (no Prometheus, no OpenTelemetry).
 
 **What to do:**
 1. Add `/api/metrics` endpoint with Prometheus format
-   - `openfang_agents_active` gauge
-   - `openfang_messages_total` counter (by agent, by channel)
-   - `openfang_tokens_total` counter (by provider, by model)
-   - `openfang_request_duration_seconds` histogram
-   - `openfang_tool_calls_total` counter (by tool name)
-   - `openfang_errors_total` counter (by type)
+   - `openparlant_agents_active` gauge
+   - `openparlant_messages_total` counter (by agent, by channel)
+   - `openparlant_tokens_total` counter (by provider, by model)
+   - `openparlant_request_duration_seconds` histogram
+   - `openparlant_tool_calls_total` counter (by tool name)
+   - `openparlant_errors_total` counter (by type)
 2. Optional: OTLP export for tracing spans
 
 **Files:** `crates/openparlant-api/src/routes.rs`, new `metrics.rs` module

@@ -1,9 +1,9 @@
 //! Event system: crossterm polling, tick timer, streaming bridges.
 
-use openfang_kernel::OpenFangKernel;
-use openfang_runtime::agent_loop::AgentLoopResult;
-use openfang_runtime::llm_driver::StreamEvent;
-use openfang_types::agent::AgentId;
+use openparlant_kernel::OpenFangKernel;
+use openparlant_runtime::agent_loop::AgentLoopResult;
+use openparlant_runtime::llm_driver::StreamEvent;
+use openparlant_types::agent::AgentId;
 use ratatui::crossterm::event::{self, Event as CtEvent, KeyEvent, KeyEventKind};
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
@@ -417,8 +417,8 @@ pub fn spawn_daemon_stream(
                         // token display, but do NOT terminate — the agent
                         // loop may continue with tool results.
                         let _ = tx.send(AppEvent::Stream(StreamEvent::ContentComplete {
-                            stop_reason: openfang_types::message::StopReason::EndTurn,
-                            usage: openfang_types::message::TokenUsage {
+                            stop_reason: openparlant_types::message::StopReason::EndTurn,
+                            usage: openparlant_types::message::TokenUsage {
                                 input_tokens: total_input_tokens,
                                 output_tokens: total_output_tokens,
                             },
@@ -431,7 +431,7 @@ pub fn spawn_daemon_stream(
         // Connection closed — agent loop is truly done.
         let _ = tx.send(AppEvent::StreamDone(Ok(AgentLoopResult {
             response: String::new(),
-            total_usage: openfang_types::message::TokenUsage {
+            total_usage: openparlant_types::message::TokenUsage {
                 input_tokens: total_input_tokens,
                 output_tokens: total_output_tokens,
             },
@@ -467,7 +467,7 @@ fn daemon_fallback(
         let output_tokens = body["output_tokens"].as_u64().unwrap_or(0);
         Ok(AgentLoopResult {
             response: response.to_string(),
-            total_usage: openfang_types::message::TokenUsage {
+            total_usage: openparlant_types::message::TokenUsage {
                 input_tokens,
                 output_tokens,
             },
@@ -1035,7 +1035,7 @@ pub fn spawn_fetch_agent_skills(backend: BackendRef, agent_id: String, tx: mpsc:
         }
         BackendRef::InProcess(kernel) => {
             if let Ok(uuid) = uuid::Uuid::parse_str(&agent_id) {
-                let aid = openfang_types::agent::AgentId(uuid);
+                let aid = openparlant_types::agent::AgentId(uuid);
                 let assigned = kernel
                     .registry
                     .get(aid)
@@ -1101,7 +1101,7 @@ pub fn spawn_fetch_agent_mcp_servers(
         }
         BackendRef::InProcess(kernel) => {
             if let Ok(uuid) = uuid::Uuid::parse_str(&agent_id) {
-                let aid = openfang_types::agent::AgentId(uuid);
+                let aid = openparlant_types::agent::AgentId(uuid);
                 let assigned = kernel
                     .registry
                     .get(aid)
@@ -1111,7 +1111,7 @@ pub fn spawn_fetch_agent_mcp_servers(
                 if let Ok(mcp_tools) = kernel.mcp_tools.lock() {
                     let mut seen = std::collections::HashSet::new();
                     for tool in mcp_tools.iter() {
-                        if let Some(server) = openfang_runtime::mcp::extract_mcp_server(&tool.name)
+                        if let Some(server) = openparlant_runtime::mcp::extract_mcp_server(&tool.name)
                         {
                             if seen.insert(server.to_string()) {
                                 available.push(server.to_string());
@@ -1156,7 +1156,7 @@ pub fn spawn_update_agent_skills(
         }
         BackendRef::InProcess(kernel) => {
             if let Ok(uuid) = uuid::Uuid::parse_str(&agent_id) {
-                let aid = openfang_types::agent::AgentId(uuid);
+                let aid = openparlant_types::agent::AgentId(uuid);
                 match kernel.set_agent_skills(aid, skills) {
                     Ok(()) => {
                         let _ = tx.send(AppEvent::AgentSkillsUpdated(agent_id));
@@ -1200,7 +1200,7 @@ pub fn spawn_update_agent_mcp_servers(
         }
         BackendRef::InProcess(kernel) => {
             if let Ok(uuid) = uuid::Uuid::parse_str(&agent_id) {
-                let aid = openfang_types::agent::AgentId(uuid);
+                let aid = openparlant_types::agent::AgentId(uuid);
                 match kernel.set_agent_mcp_servers(aid, servers) {
                     Ok(()) => {
                         let _ = tx.send(AppEvent::AgentMcpServersUpdated(agent_id));

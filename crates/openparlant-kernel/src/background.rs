@@ -7,7 +7,7 @@
 
 use crate::triggers::TriggerPattern;
 use dashmap::DashMap;
-use openfang_types::agent::{AgentId, ScheduleMode};
+use openparlant_types::agent::{AgentId, ScheduleMode};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::watch;

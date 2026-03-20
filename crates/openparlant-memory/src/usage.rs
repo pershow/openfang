@@ -1,8 +1,8 @@
 //! Usage tracking store — records LLM usage events for cost monitoring.
 
 use chrono::Utc;
-use openfang_types::agent::AgentId;
-use openfang_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::agent::AgentId;
+use openparlant_types::error::{OpenFangError, OpenFangResult};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};

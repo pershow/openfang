@@ -3,62 +3,62 @@
 //! Implements `ChannelBridgeHandle` on `OpenFangKernel` and provides the
 //! `start_channel_bridge()` entry point called by the daemon.
 
-use openfang_channels::bridge::{BridgeManager, ChannelBridgeHandle};
-use openfang_channels::discord::DiscordAdapter;
-use openfang_channels::email::EmailAdapter;
-use openfang_channels::google_chat::GoogleChatAdapter;
-use openfang_channels::irc::IrcAdapter;
-use openfang_channels::matrix::MatrixAdapter;
-use openfang_channels::mattermost::MattermostAdapter;
-use openfang_channels::rocketchat::RocketChatAdapter;
-use openfang_channels::router::AgentRouter;
-use openfang_channels::signal::SignalAdapter;
-use openfang_channels::slack::SlackAdapter;
-use openfang_channels::teams::TeamsAdapter;
-use openfang_channels::telegram::TelegramAdapter;
-use openfang_channels::twitch::TwitchAdapter;
-use openfang_channels::types::ChannelAdapter;
-use openfang_channels::whatsapp::WhatsAppAdapter;
-use openfang_channels::xmpp::XmppAdapter;
-use openfang_channels::zulip::ZulipAdapter;
+use openparlant_channels::bridge::{BridgeManager, ChannelBridgeHandle};
+use openparlant_channels::discord::DiscordAdapter;
+use openparlant_channels::email::EmailAdapter;
+use openparlant_channels::google_chat::GoogleChatAdapter;
+use openparlant_channels::irc::IrcAdapter;
+use openparlant_channels::matrix::MatrixAdapter;
+use openparlant_channels::mattermost::MattermostAdapter;
+use openparlant_channels::rocketchat::RocketChatAdapter;
+use openparlant_channels::router::AgentRouter;
+use openparlant_channels::signal::SignalAdapter;
+use openparlant_channels::slack::SlackAdapter;
+use openparlant_channels::teams::TeamsAdapter;
+use openparlant_channels::telegram::TelegramAdapter;
+use openparlant_channels::twitch::TwitchAdapter;
+use openparlant_channels::types::ChannelAdapter;
+use openparlant_channels::whatsapp::WhatsAppAdapter;
+use openparlant_channels::xmpp::XmppAdapter;
+use openparlant_channels::zulip::ZulipAdapter;
 // Wave 3
-use openfang_channels::bluesky::BlueskyAdapter;
-use openfang_channels::feishu::FeishuAdapter;
-use openfang_channels::line::LineAdapter;
-use openfang_channels::mastodon::MastodonAdapter;
-use openfang_channels::messenger::MessengerAdapter;
-use openfang_channels::reddit::RedditAdapter;
-use openfang_channels::revolt::RevoltAdapter;
-use openfang_channels::viber::ViberAdapter;
+use openparlant_channels::bluesky::BlueskyAdapter;
+use openparlant_channels::feishu::FeishuAdapter;
+use openparlant_channels::line::LineAdapter;
+use openparlant_channels::mastodon::MastodonAdapter;
+use openparlant_channels::messenger::MessengerAdapter;
+use openparlant_channels::reddit::RedditAdapter;
+use openparlant_channels::revolt::RevoltAdapter;
+use openparlant_channels::viber::ViberAdapter;
 // Wave 4
-use openfang_channels::flock::FlockAdapter;
-use openfang_channels::guilded::GuildedAdapter;
-use openfang_channels::keybase::KeybaseAdapter;
-use openfang_channels::nextcloud::NextcloudAdapter;
-use openfang_channels::nostr::NostrAdapter;
-use openfang_channels::pumble::PumbleAdapter;
-use openfang_channels::threema::ThreemaAdapter;
-use openfang_channels::twist::TwistAdapter;
-use openfang_channels::webex::WebexAdapter;
+use openparlant_channels::flock::FlockAdapter;
+use openparlant_channels::guilded::GuildedAdapter;
+use openparlant_channels::keybase::KeybaseAdapter;
+use openparlant_channels::nextcloud::NextcloudAdapter;
+use openparlant_channels::nostr::NostrAdapter;
+use openparlant_channels::pumble::PumbleAdapter;
+use openparlant_channels::threema::ThreemaAdapter;
+use openparlant_channels::twist::TwistAdapter;
+use openparlant_channels::webex::WebexAdapter;
 // Wave 5
 use async_trait::async_trait;
-use openfang_channels::dingtalk::DingTalkAdapter;
-use openfang_channels::dingtalk_stream::DingTalkStreamAdapter;
-use openfang_channels::discourse::DiscourseAdapter;
-use openfang_channels::gitter::GitterAdapter;
-use openfang_channels::gotify::GotifyAdapter;
-use openfang_channels::linkedin::LinkedInAdapter;
-use openfang_channels::mumble::MumbleAdapter;
-use openfang_channels::ntfy::NtfyAdapter;
-use openfang_channels::webhook::WebhookAdapter;
-use openfang_channels::wecom::WeComAdapter;
-use openfang_kernel::OpenFangKernel;
-use openfang_types::agent::AgentId;
+use openparlant_channels::dingtalk::DingTalkAdapter;
+use openparlant_channels::dingtalk_stream::DingTalkStreamAdapter;
+use openparlant_channels::discourse::DiscourseAdapter;
+use openparlant_channels::gitter::GitterAdapter;
+use openparlant_channels::gotify::GotifyAdapter;
+use openparlant_channels::linkedin::LinkedInAdapter;
+use openparlant_channels::mumble::MumbleAdapter;
+use openparlant_channels::ntfy::NtfyAdapter;
+use openparlant_channels::webhook::WebhookAdapter;
+use openparlant_channels::wecom::WeComAdapter;
+use openparlant_kernel::OpenFangKernel;
+use openparlant_types::agent::AgentId;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
 
-use openfang_runtime::str_utils::safe_truncate_str;
+use openparlant_runtime::str_utils::safe_truncate_str;
 
 /// Wraps `OpenFangKernel` to implement `ChannelBridgeHandle`.
 pub struct KernelBridgeAdapter {
@@ -84,13 +84,13 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
     async fn send_message_with_blocks(
         &self,
         agent_id: AgentId,
-        blocks: Vec<openfang_types::message::ContentBlock>,
+        blocks: Vec<openparlant_types::message::ContentBlock>,
     ) -> Result<String, String> {
         // Extract text for the message parameter (used for memory recall / logging)
         let text: String = blocks
             .iter()
             .filter_map(|b| match b {
-                openfang_types::message::ContentBlock::Text { text, .. } => Some(text.as_str()),
+                openparlant_types::message::ContentBlock::Text { text, .. } => Some(text.as_str()),
                 _ => None,
             })
             .collect::<Vec<_>>()
@@ -139,7 +139,7 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
         let contents = std::fs::read_to_string(&manifest_path)
             .map_err(|e| format!("Failed to read manifest: {e}"))?;
 
-        let manifest: openfang_types::agent::AgentManifest =
+        let manifest: openparlant_types::agent::AgentManifest =
             toml::from_str(&contents).map_err(|e| format!("Invalid manifest TOML: {e}"))?;
 
         let agent_id = self
@@ -186,7 +186,7 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
         // Group by provider
         let mut by_provider: std::collections::HashMap<
             &str,
-            Vec<&openfang_types::model_catalog::ModelCatalogEntry>,
+            Vec<&openparlant_types::model_catalog::ModelCatalogEntry>,
         > = std::collections::HashMap::new();
         for m in &available {
             by_provider.entry(m.provider.as_str()).or_default().push(m);
@@ -223,9 +223,9 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
         let mut msg = "Providers:\n".to_string();
         for p in catalog.list_providers() {
             let status = match p.auth_status {
-                openfang_types::model_catalog::AuthStatus::Configured => "configured",
-                openfang_types::model_catalog::AuthStatus::Missing => "not configured",
-                openfang_types::model_catalog::AuthStatus::NotRequired => "local (no key needed)",
+                openparlant_types::model_catalog::AuthStatus::Configured => "configured",
+                openparlant_types::model_catalog::AuthStatus::Missing => "not configured",
+                openparlant_types::model_catalog::AuthStatus::NotRequired => "local (no key needed)",
             };
             msg.push_str(&format!(
                 "  {} — {} [{}, {} model(s)]\n",
@@ -339,12 +339,12 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
             .execute_run(
                 run_id,
                 |step_agent| match step_agent {
-                    openfang_kernel::workflow::StepAgent::ById { id } => {
+                    openparlant_kernel::workflow::StepAgent::ById { id } => {
                         let aid: AgentId = id.parse().ok()?;
                         let entry = registry_ref.get(aid)?;
                         Some((aid, entry.name.clone()))
                     }
-                    openfang_kernel::workflow::StepAgent::ByName { name } => {
+                    openparlant_kernel::workflow::StepAgent::ByName { name } => {
                         let entry = registry_ref.find_by_name(name)?;
                         Some((entry.id, entry.name.clone()))
                     }
@@ -469,11 +469,11 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
             let id_str = job.id.0.to_string();
             let id_short = safe_truncate_str(&id_str, 8);
             let sched = match &job.schedule {
-                openfang_types::scheduler::CronSchedule::Cron { expr, .. } => expr.clone(),
-                openfang_types::scheduler::CronSchedule::Every { every_secs } => {
+                openparlant_types::scheduler::CronSchedule::Cron { expr, .. } => expr.clone(),
+                openparlant_types::scheduler::CronSchedule::Every { every_secs } => {
                     format!("every {every_secs}s")
                 }
-                openfang_types::scheduler::CronSchedule::At { at } => {
+                openparlant_types::scheduler::CronSchedule::At { at } => {
                     format!("at {}", at.format("%Y-%m-%d %H:%M"))
                 }
             };
@@ -506,21 +506,21 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
                 let cron_expr = args[1..6].join(" ");
                 let message = args[6..].join(" ");
 
-                let job = openfang_types::scheduler::CronJob {
-                    id: openfang_types::scheduler::CronJobId::new(),
+                let job = openparlant_types::scheduler::CronJob {
+                    id: openparlant_types::scheduler::CronJobId::new(),
                     agent_id: agent.id,
                     name: format!("chat-{}", &agent.name),
                     enabled: true,
-                    schedule: openfang_types::scheduler::CronSchedule::Cron {
+                    schedule: openparlant_types::scheduler::CronSchedule::Cron {
                         expr: cron_expr.clone(),
                         tz: None,
                     },
-                    action: openfang_types::scheduler::CronAction::AgentTurn {
+                    action: openparlant_types::scheduler::CronAction::AgentTurn {
                         message: message.clone(),
                         model_override: None,
                         timeout_secs: None,
                     },
-                    delivery: openfang_types::scheduler::CronDelivery::None,
+                    delivery: openparlant_types::scheduler::CronDelivery::None,
                     created_at: chrono::Utc::now(),
                     last_run: None,
                     next_run: None,
@@ -579,13 +579,13 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
                     1 => {
                         let j = matched[0];
                         let message = match &j.action {
-                            openfang_types::scheduler::CronAction::AgentTurn {
+                            openparlant_types::scheduler::CronAction::AgentTurn {
                                 message, ..
                             } => message.clone(),
-                            openfang_types::scheduler::CronAction::SystemEvent { text } => {
+                            openparlant_types::scheduler::CronAction::SystemEvent { text } => {
                                 text.clone()
                             }
-                            openfang_types::scheduler::CronAction::WorkflowRun {
+                            openparlant_types::scheduler::CronAction::WorkflowRun {
                                 workflow_id,
                                 input,
                                 ..
@@ -653,9 +653,9 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
             1 => {
                 let req = matched[0];
                 let decision = if approve {
-                    openfang_types::approval::ApprovalDecision::Approved
+                    openparlant_types::approval::ApprovalDecision::Approved
                 } else {
-                    openfang_types::approval::ApprovalDecision::Denied
+                    openparlant_types::approval::ApprovalDecision::Denied
                 };
                 match self.kernel.approval_manager.resolve(
                     req.id,
@@ -758,7 +758,7 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
     async fn channel_overrides(
         &self,
         channel_type: &str,
-    ) -> Option<openfang_types::config::ChannelOverrides> {
+    ) -> Option<openparlant_types::config::ChannelOverrides> {
         let channels = &self.kernel.config.channels;
         match channel_type {
             "telegram" => channels.telegram.as_ref().map(|c| c.overrides.clone()),
@@ -830,11 +830,11 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
             .ok_or_else(|| "Unrecognized user. Contact an admin to get access.".to_string())?;
 
         let auth_action = match action {
-            "chat" => openfang_kernel::auth::Action::ChatWithAgent,
-            "spawn" => openfang_kernel::auth::Action::SpawnAgent,
-            "kill" => openfang_kernel::auth::Action::KillAgent,
-            "install_skill" => openfang_kernel::auth::Action::InstallSkill,
-            _ => openfang_kernel::auth::Action::ChatWithAgent,
+            "chat" => openparlant_kernel::auth::Action::ChatWithAgent,
+            "spawn" => openparlant_kernel::auth::Action::SpawnAgent,
+            "kill" => openparlant_kernel::auth::Action::KillAgent,
+            "install_skill" => openparlant_kernel::auth::Action::InstallSkill,
+            _ => openparlant_kernel::auth::Action::ChatWithAgent,
         };
 
         self.kernel
@@ -853,9 +853,9 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
         thread_id: Option<&str>,
     ) {
         let receipt = if success {
-            openfang_kernel::DeliveryTracker::sent_receipt(channel, recipient)
+            openparlant_kernel::DeliveryTracker::sent_receipt(channel, recipient)
         } else {
-            openfang_kernel::DeliveryTracker::failed_receipt(
+            openparlant_kernel::DeliveryTracker::failed_receipt(
                 channel,
                 recipient,
                 error.unwrap_or("Unknown error"),
@@ -974,7 +974,7 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
             msg.push_str(&format!("  {} — {}\n", card.name, url));
             let desc = &card.description;
             if !desc.is_empty() {
-                let short = openfang_types::truncate_str(desc, 60);
+                let short = openparlant_types::truncate_str(desc, 60);
                 msg.push_str(&format!("    {short}\n"));
             }
         }
@@ -983,8 +983,8 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
 }
 
 /// Parse a trigger pattern string from chat into a `TriggerPattern`.
-fn parse_trigger_pattern(s: &str) -> Option<openfang_kernel::triggers::TriggerPattern> {
-    use openfang_kernel::triggers::TriggerPattern;
+fn parse_trigger_pattern(s: &str) -> Option<openparlant_kernel::triggers::TriggerPattern> {
+    use openparlant_kernel::triggers::TriggerPattern;
     if let Some(rest) = s.strip_prefix("spawned:") {
         return Some(TriggerPattern::AgentSpawned {
             name_pattern: rest.to_string(),
@@ -1068,7 +1068,7 @@ pub async fn start_channel_bridge(kernel: Arc<OpenFangKernel>) -> Option<BridgeM
 /// Returns `(Option<BridgeManager>, Vec<started_channel_names>)`.
 pub async fn start_channel_bridge_with_config(
     kernel: Arc<OpenFangKernel>,
-    config: &openfang_types::config::ChannelsConfig,
+    config: &openparlant_types::config::ChannelsConfig,
 ) -> (Option<BridgeManager>, Vec<String>) {
     let has_any = config.telegram.is_some()
         || config.discord.is_some()
@@ -1426,7 +1426,7 @@ pub async fn start_channel_bridge_with_config(
     // Feishu/Lark
     if let Some(ref fs_config) = config.feishu {
         if let Some(secret) = read_token(&fs_config.app_secret_env, "Feishu") {
-            let region = openfang_channels::feishu::FeishuRegion::parse_region(&fs_config.region);
+            let region = openparlant_channels::feishu::FeishuRegion::parse_region(&fs_config.region);
             let encrypt_key = fs_config
                 .encrypt_key_env
                 .as_ref()
@@ -1805,7 +1805,7 @@ pub async fn reload_channels_from_disk(
 
     // Re-read config from disk
     let config_path = state.kernel.config.home_dir.join("config.toml");
-    let fresh_config = openfang_kernel::config::load_config(Some(&config_path));
+    let fresh_config = openparlant_kernel::config::load_config(Some(&config_path));
 
     // Update the live channels config so list_channels() reflects reality
     *state.channels_config.write().await = fresh_config.channels.clone();
@@ -1830,7 +1830,7 @@ pub async fn reload_channels_from_disk(
 mod tests {
     #[tokio::test]
     async fn test_bridge_skips_when_no_config() {
-        let config = openfang_types::config::KernelConfig::default();
+        let config = openparlant_types::config::KernelConfig::default();
         assert!(config.channels.telegram.is_none());
         assert!(config.channels.discord.is_none());
         assert!(config.channels.slack.is_none());

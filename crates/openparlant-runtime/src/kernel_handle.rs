@@ -80,20 +80,20 @@ pub trait KernelHandle: Send + Sync {
     /// Add an entity to the knowledge graph.
     async fn knowledge_add_entity(
         &self,
-        entity: openfang_types::memory::Entity,
+        entity: openparlant_types::memory::Entity,
     ) -> Result<String, String>;
 
     /// Add a relation to the knowledge graph.
     async fn knowledge_add_relation(
         &self,
-        relation: openfang_types::memory::Relation,
+        relation: openparlant_types::memory::Relation,
     ) -> Result<String, String>;
 
     /// Query the knowledge graph with a pattern.
     async fn knowledge_query(
         &self,
-        pattern: openfang_types::memory::GraphPattern,
-    ) -> Result<Vec<openfang_types::memory::GraphMatch>, String>;
+        pattern: openparlant_types::memory::GraphPattern,
+    ) -> Result<Vec<openparlant_types::memory::GraphMatch>, String>;
 
     /// Create a cron job for the calling agent.
     async fn cron_create(
@@ -245,7 +245,7 @@ pub trait KernelHandle: Send + Sync {
         &self,
         manifest_toml: &str,
         parent_id: Option<&str>,
-        parent_caps: &[openfang_types::capability::Capability],
+        parent_caps: &[openparlant_types::capability::Capability],
     ) -> Result<(String, String), String> {
         // Default: delegate to spawn_agent (no enforcement)
         // The kernel MUST override this with real enforcement

@@ -58,7 +58,7 @@ impl NonceTracker {
         if self.seen.contains_key(nonce) {
             return Err(format!(
                 "Nonce replay detected: {}",
-                openfang_types::truncate_str(nonce, 16)
+                openparlant_types::truncate_str(nonce, 16)
             ));
         }
 

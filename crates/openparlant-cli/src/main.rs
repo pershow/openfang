@@ -15,9 +15,9 @@ mod ui;
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use openfang_api::server::read_daemon_info;
-use openfang_kernel::OpenFangKernel;
-use openfang_types::agent::{AgentId, AgentManifest};
+use openparlant_api::server::read_daemon_info;
+use openparlant_kernel::OpenFangKernel;
+use openparlant_types::agent::{AgentId, AgentManifest};
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -833,7 +833,7 @@ fn init_tracing_stderr() {
 }
 
 /// Get the OpenParlant home directory, respecting OPENFANG_HOME env var.
-fn cli_openfang_home() -> std::path::PathBuf {
+fn cli_openparlant_home() -> std::path::PathBuf {
     if let Ok(home) = std::env::var("OPENFANG_HOME") {
         return std::path::PathBuf::from(home);
     }
@@ -844,7 +844,7 @@ fn cli_openfang_home() -> std::path::PathBuf {
 
 /// Redirect tracing to a log file so it doesn't corrupt the ratatui TUI.
 fn init_tracing_file() {
-    let log_dir = cli_openfang_home();
+    let log_dir = cli_openparlant_home();
     let _ = std::fs::create_dir_all(&log_dir);
     let log_path = log_dir.join("tui.log");
 
@@ -1105,7 +1105,7 @@ pub(crate) fn restrict_dir_permissions(path: &std::path::Path) {
 pub(crate) fn restrict_dir_permissions(_path: &std::path::Path) {}
 
 pub(crate) fn find_daemon() -> Option<String> {
-    let home_dir = cli_openfang_home();
+    let home_dir = cli_openparlant_home();
     let info = read_daemon_info(&home_dir)?;
 
     // Normalize listen address: replace 0.0.0.0 with 127.0.0.1 to avoid
@@ -1199,23 +1199,23 @@ fn cmd_init(quick: bool) {
         }
     };
 
-    let openfang_dir = cli_openfang_home();
+    let openparlant_dir = cli_openparlant_home();
 
     // --- Ensure directories exist ---
-    if !openfang_dir.exists() {
-        std::fs::create_dir_all(&openfang_dir).unwrap_or_else(|e| {
+    if !openparlant_dir.exists() {
+        std::fs::create_dir_all(&openparlant_dir).unwrap_or_else(|e| {
             ui::error_with_fix(
-                &format!("Failed to create {}", openfang_dir.display()),
+                &format!("Failed to create {}", openparlant_dir.display()),
                 &format!("Check permissions on {}", home.display()),
             );
             eprintln!("  {e}");
             std::process::exit(1);
         });
-        restrict_dir_permissions(&openfang_dir);
+        restrict_dir_permissions(&openparlant_dir);
     }
 
     for sub in ["data", "agents"] {
-        let dir = openfang_dir.join(sub);
+        let dir = openparlant_dir.join(sub);
         if !dir.exists() {
             std::fs::create_dir_all(&dir).unwrap_or_else(|e| {
                 eprintln!("Error creating {sub} dir: {e}");
@@ -1225,29 +1225,29 @@ fn cmd_init(quick: bool) {
     }
 
     // Install bundled agent templates (skips existing ones to preserve user edits)
-    bundled_agents::install_bundled_agents(&openfang_dir.join("agents"));
+    bundled_agents::install_bundled_agents(&openparlant_dir.join("agents"));
 
     if quick {
-        cmd_init_quick(&openfang_dir);
+        cmd_init_quick(&openparlant_dir);
     } else if !std::io::IsTerminal::is_terminal(&std::io::stdin())
         || !std::io::IsTerminal::is_terminal(&std::io::stdout())
     {
         ui::hint("Non-interactive terminal detected — running in quick mode");
         ui::hint("For the interactive wizard, run: openparlant init (in a terminal)");
-        cmd_init_quick(&openfang_dir);
+        cmd_init_quick(&openparlant_dir);
     } else {
-        cmd_init_interactive(&openfang_dir);
+        cmd_init_interactive(&openparlant_dir);
     }
 }
 
 /// Quick init: no prompts, auto-detect, write config + .env, print next steps.
-fn cmd_init_quick(openfang_dir: &std::path::Path) {
+fn cmd_init_quick(openparlant_dir: &std::path::Path) {
     ui::banner();
     ui::blank();
 
     let (provider, api_key_env, model) = detect_best_provider();
 
-    write_config_if_missing(openfang_dir, provider, model, api_key_env);
+    write_config_if_missing(openparlant_dir, provider, model, api_key_env);
 
     ui::blank();
     ui::success("OpenParlant initialized (quick mode)");
@@ -1261,7 +1261,7 @@ fn cmd_init_quick(openfang_dir: &std::path::Path) {
 }
 
 /// Interactive 5-step onboarding wizard (ratatui TUI).
-fn cmd_init_interactive(openfang_dir: &std::path::Path) {
+fn cmd_init_interactive(openparlant_dir: &std::path::Path) {
     use tui::screens::init_wizard::{self, InitResult, LaunchChoice};
 
     match init_wizard::run() {
@@ -1285,7 +1285,7 @@ fn cmd_init_interactive(openfang_dir: &std::path::Path) {
             // Execute the user's chosen launch action.
             match launch {
                 LaunchChoice::Desktop => {
-                    launch_desktop_app(openfang_dir);
+                    launch_desktop_app(openparlant_dir);
                 }
                 LaunchChoice::Dashboard => {
                     if let Some(base) = find_daemon() {
@@ -1316,7 +1316,7 @@ fn cmd_init_interactive(openfang_dir: &std::path::Path) {
 }
 
 /// Launch the openparlant-desktop Tauri app, connecting to the running daemon.
-fn launch_desktop_app(_openfang_dir: &std::path::Path) {
+fn launch_desktop_app(_openparlant_dir: &std::path::Path) {
     // Look for the desktop binary next to our own executable.
     let desktop_bin = {
         let exe = std::env::current_exe().ok();
@@ -1431,12 +1431,12 @@ fn check_ollama_available() -> bool {
 
 /// Write config.toml if it doesn't already exist.
 fn write_config_if_missing(
-    openfang_dir: &std::path::Path,
+    openparlant_dir: &std::path::Path,
     provider: &str,
     model: &str,
     api_key_env: &str,
 ) {
-    let config_path = openfang_dir.join("config.toml");
+    let config_path = openparlant_dir.join("config.toml");
     if config_path.exists() {
         ui::check_ok(&format!("Config already exists: {}", config_path.display()));
     } else {
@@ -1481,7 +1481,7 @@ fn cmd_start(config: Option<PathBuf>, yolo: bool) {
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
-        let mut kernel_config = openfang_kernel::config::load_config(config.as_deref());
+        let mut kernel_config = openparlant_kernel::config::load_config(config.as_deref());
         if yolo {
             kernel_config.approval.auto_approve = true;
             kernel_config.approval.apply_shorthands();
@@ -1523,7 +1523,7 @@ fn cmd_start(config: Option<PathBuf>, yolo: bool) {
         ui::blank();
 
         if let Err(e) =
-            openfang_api::server::run_daemon(kernel, &listen_addr, Some(&daemon_info_path)).await
+            openparlant_api::server::run_daemon(kernel, &listen_addr, Some(&daemon_info_path)).await
         {
             ui::error(&format!("Daemon error: {e}"));
             std::process::exit(1);
@@ -1540,7 +1540,7 @@ fn cmd_start(config: Option<PathBuf>, yolo: bool) {
 /// meaning the daemon is running in public (unauthenticated) mode.
 fn read_api_key() -> Option<String> {
     // 1. Config file takes precedence
-    let config_path = cli_openfang_home().join("config.toml");
+    let config_path = cli_openparlant_home().join("config.toml");
     if let Ok(text) = std::fs::read_to_string(config_path) {
         if let Ok(table) = text.parse::<toml::Value>() {
             if let Some(key) = table.get("api_key").and_then(|v| v.as_str()) {
@@ -1577,7 +1577,7 @@ fn cmd_stop() {
                     }
                     // Still alive — force kill via PID
                     {
-                        let of_dir = cli_openfang_home();
+                        let of_dir = cli_openparlant_home();
                         if let Some(info) = read_daemon_info(&of_dir) {
                             force_kill_pid(info.pid);
                             let _ = std::fs::remove_file(of_dir.join("daemon.json"));
@@ -1618,7 +1618,7 @@ fn force_kill_pid(pid: u32) {
 }
 
 /// Show context-aware error for kernel boot failures.
-fn boot_kernel_error(e: &openfang_kernel::error::KernelError) {
+fn boot_kernel_error(e: &openparlant_kernel::error::KernelError) {
     let msg = e.to_string();
     if msg.contains("parse") || msg.contains("toml") || msg.contains("config") {
         ui::error_with_fix(
@@ -2053,24 +2053,24 @@ fn cmd_doctor(json: bool, repair: bool) {
 
     let home = dirs::home_dir();
     if let Some(_h) = &home {
-        let openfang_dir = cli_openfang_home();
+        let openparlant_dir = cli_openparlant_home();
 
         // --- Check 1: OpenParlant directory ---
-        if openfang_dir.exists() {
+        if openparlant_dir.exists() {
             if !json {
-                ui::check_ok(&format!("OpenParlant directory: {}", openfang_dir.display()));
+                ui::check_ok(&format!("OpenParlant directory: {}", openparlant_dir.display()));
             }
-            checks.push(serde_json::json!({"check": "openfang_dir", "status": "ok", "path": openfang_dir.display().to_string()}));
+            checks.push(serde_json::json!({"check": "openparlant_dir", "status": "ok", "path": openparlant_dir.display().to_string()}));
         } else if repair {
             if !json {
                 ui::check_fail("OpenParlant directory not found.");
             }
             let answer = prompt_input("    Create it now? [Y/n] ");
             if answer.is_empty() || answer.starts_with('y') || answer.starts_with('Y') {
-                if std::fs::create_dir_all(&openfang_dir).is_ok() {
-                    restrict_dir_permissions(&openfang_dir);
+                if std::fs::create_dir_all(&openparlant_dir).is_ok() {
+                    restrict_dir_permissions(&openparlant_dir);
                     for sub in ["data", "agents"] {
-                        let _ = std::fs::create_dir_all(openfang_dir.join(sub));
+                        let _ = std::fs::create_dir_all(openparlant_dir.join(sub));
                     }
                     if !json {
                         ui::check_ok("Created OpenParlant directory");
@@ -2085,17 +2085,17 @@ fn cmd_doctor(json: bool, repair: bool) {
             } else {
                 all_ok = false;
             }
-            checks.push(serde_json::json!({"check": "openfang_dir", "status": if repaired { "repaired" } else { "fail" }}));
+            checks.push(serde_json::json!({"check": "openparlant_dir", "status": if repaired { "repaired" } else { "fail" }}));
         } else {
             if !json {
                 ui::check_fail("OpenParlant directory not found. Run `openparlant init` first.");
             }
-            checks.push(serde_json::json!({"check": "openfang_dir", "status": "fail"}));
+            checks.push(serde_json::json!({"check": "openparlant_dir", "status": "fail"}));
             all_ok = false;
         }
 
         // --- Check 2: .env file exists + permissions ---
-        let env_path = openfang_dir.join(".env");
+        let env_path = openparlant_dir.join(".env");
         if env_path.exists() {
             #[cfg(unix)]
             {
@@ -2146,7 +2146,7 @@ fn cmd_doctor(json: bool, repair: bool) {
         }
 
         // --- Check 3: Config TOML syntax validation ---
-        let config_path = openfang_dir.join("config.toml");
+        let config_path = openparlant_dir.join("config.toml");
         if config_path.exists() {
             let config_content = std::fs::read_to_string(&config_path).unwrap_or_default();
             match toml::from_str::<toml::Value>(&config_content) {
@@ -2188,7 +2188,7 @@ api_key_env = "{api_key_env}"
 decay_rate = 0.05
 "#
                 );
-                let _ = std::fs::create_dir_all(&openfang_dir);
+                let _ = std::fs::create_dir_all(&openparlant_dir);
                 if std::fs::write(&config_path, default_config).is_ok() {
                     restrict_file_permissions(&config_path);
                     if !json {
@@ -2216,11 +2216,11 @@ decay_rate = 0.05
         // --- Check 4: Port availability ---
         // Read api_listen from config (default: 127.0.0.1:4200)
         let api_listen = {
-            let cfg_path = openfang_dir.join("config.toml");
+            let cfg_path = openparlant_dir.join("config.toml");
             if cfg_path.exists() {
                 std::fs::read_to_string(&cfg_path)
                     .ok()
-                    .and_then(|s| toml::from_str::<openfang_types::config::KernelConfig>(&s).ok())
+                    .and_then(|s| toml::from_str::<openparlant_types::config::KernelConfig>(&s).ok())
                     .map(|c| c.api_listen)
                     .unwrap_or_else(|| "127.0.0.1:4200".to_string())
             } else {
@@ -2267,7 +2267,7 @@ decay_rate = 0.05
         }
 
         // --- Check 5: Stale daemon.json ---
-        let daemon_json_path = openfang_dir.join("daemon.json");
+        let daemon_json_path = openparlant_dir.join("daemon.json");
         if daemon_json_path.exists() && daemon_running.is_none() {
             if repair {
                 let _ = std::fs::remove_file(&daemon_json_path);
@@ -2284,7 +2284,7 @@ decay_rate = 0.05
         }
 
         // --- Check 6: Database file ---
-        let db_path = openfang_dir.join("data").join("openparlant.db");
+        let db_path = openparlant_dir.join("data").join("openparlant.db");
         if db_path.exists() {
             // Quick SQLite magic bytes check
             if let Ok(bytes) = std::fs::read(&db_path) {
@@ -2312,7 +2312,7 @@ decay_rate = 0.05
         #[cfg(unix)]
         {
             if let Ok(output) = std::process::Command::new("df")
-                .args(["-m", &openfang_dir.display().to_string()])
+                .args(["-m", &openparlant_dir.display().to_string()])
                 .output()
             {
                 let stdout = String::from_utf8_lossy(&output.stdout);
@@ -2343,7 +2343,7 @@ decay_rate = 0.05
         }
 
         // --- Check 8: Agent manifests parse correctly ---
-        let agents_dir = openfang_dir.join("agents");
+        let agents_dir = openparlant_dir.join("agents");
         if agents_dir.exists() {
             let mut agent_errors = Vec::new();
             if let Ok(entries) = std::fs::read_dir(&agents_dir) {
@@ -2482,8 +2482,8 @@ decay_rate = 0.05
 
     // --- Check 11: .env keys vs config api_key_env consistency ---
     {
-        let openfang_dir = cli_openfang_home();
-        let config_path = openfang_dir.join("config.toml");
+        let openparlant_dir = cli_openparlant_home();
+        let config_path = openparlant_dir.join("config.toml");
         if config_path.exists() {
             let config_str = std::fs::read_to_string(&config_path).unwrap_or_default();
             // Look for api_key_env references in config
@@ -2508,14 +2508,14 @@ decay_rate = 0.05
 
     // --- Check 12: Config deserialization into KernelConfig ---
     {
-        let openfang_dir = cli_openfang_home();
-        let config_path = openfang_dir.join("config.toml");
+        let openparlant_dir = cli_openparlant_home();
+        let config_path = openparlant_dir.join("config.toml");
         if config_path.exists() {
             if !json {
                 println!("\n  Config Validation:");
             }
             let config_content = std::fs::read_to_string(&config_path).unwrap_or_default();
-            match toml::from_str::<openfang_types::config::KernelConfig>(&config_content) {
+            match toml::from_str::<openparlant_types::config::KernelConfig>(&config_content) {
                 Ok(cfg) => {
                     if !json {
                         ui::check_ok("Config deserializes into KernelConfig");
@@ -2536,7 +2536,7 @@ decay_rate = 0.05
                     if !cfg.include.is_empty() {
                         let mut include_ok = true;
                         for inc in &cfg.include {
-                            let inc_path = openfang_dir.join(inc);
+                            let inc_path = openparlant_dir.join(inc);
                             if inc_path.exists() {
                                 if !json {
                                     ui::check_ok(&format!("Include file: {inc}"));
@@ -2566,7 +2566,7 @@ decay_rate = 0.05
                         for server in &cfg.mcp_servers {
                             // Validate transport config
                             match &server.transport {
-                                openfang_types::config::McpTransportEntry::Stdio {
+                                openparlant_types::config::McpTransportEntry::Stdio {
                                     command,
                                     ..
                                 } => {
@@ -2580,7 +2580,7 @@ decay_rate = 0.05
                                         checks.push(serde_json::json!({"check": "mcp_server_config", "status": "warn", "name": server.name}));
                                     }
                                 }
-                                openfang_types::config::McpTransportEntry::Sse { url } => {
+                                openparlant_types::config::McpTransportEntry::Sse { url } => {
                                     if url.is_empty() {
                                         if !json {
                                             ui::check_warn(&format!(
@@ -2612,8 +2612,8 @@ decay_rate = 0.05
         if !json {
             println!("\n  Skills:");
         }
-        let skills_dir = cli_openfang_home().join("skills");
-        let mut skill_reg = openfang_skills::registry::SkillRegistry::new(skills_dir.clone());
+        let skills_dir = cli_openparlant_home().join("skills");
+        let mut skill_reg = openparlant_skills::registry::SkillRegistry::new(skills_dir.clone());
         skill_reg.load_bundled();
         let bundled_count = skill_reg.count();
         if !json {
@@ -2652,11 +2652,11 @@ decay_rate = 0.05
         let mut injection_warnings = 0;
         for skill in &skills {
             if let Some(ref prompt) = skill.manifest.prompt_context {
-                let warnings = openfang_skills::verify::SkillVerifier::scan_prompt_content(prompt);
+                let warnings = openparlant_skills::verify::SkillVerifier::scan_prompt_content(prompt);
                 let has_critical = warnings.iter().any(|w| {
                     matches!(
                         w.severity,
-                        openfang_skills::verify::WarningSeverity::Critical
+                        openparlant_skills::verify::WarningSeverity::Critical
                     )
                 });
                 if has_critical {
@@ -2685,9 +2685,9 @@ decay_rate = 0.05
         if !json {
             println!("\n  Extensions:");
         }
-        let openfang_dir = cli_openfang_home();
+        let openparlant_dir = cli_openparlant_home();
         let mut ext_registry =
-            openfang_extensions::registry::IntegrationRegistry::new(&openfang_dir);
+            openparlant_extensions::registry::IntegrationRegistry::new(&openparlant_dir);
         ext_registry.load_bundled();
         let _ = ext_registry.load_installed();
         let template_count = ext_registry.template_count();
@@ -3404,9 +3404,9 @@ fn boot_kernel(config: Option<PathBuf>) -> OpenFangKernel {
 
 fn cmd_migrate(args: MigrateArgs) {
     let source = match args.from {
-        MigrateSourceArg::Openclaw => openfang_migrate::MigrateSource::OpenClaw,
-        MigrateSourceArg::Langchain => openfang_migrate::MigrateSource::LangChain,
-        MigrateSourceArg::Autogpt => openfang_migrate::MigrateSource::AutoGpt,
+        MigrateSourceArg::Openclaw => openparlant_migrate::MigrateSource::OpenClaw,
+        MigrateSourceArg::Langchain => openparlant_migrate::MigrateSource::LangChain,
+        MigrateSourceArg::Autogpt => openparlant_migrate::MigrateSource::AutoGpt,
     };
 
     let source_dir = args.source_dir.unwrap_or_else(|| {
@@ -3415,27 +3415,27 @@ fn cmd_migrate(args: MigrateArgs) {
             std::process::exit(1);
         });
         match source {
-            openfang_migrate::MigrateSource::OpenClaw => home.join(".openclaw"),
-            openfang_migrate::MigrateSource::LangChain => home.join(".langchain"),
-            openfang_migrate::MigrateSource::AutoGpt => home.join("Auto-GPT"),
+            openparlant_migrate::MigrateSource::OpenClaw => home.join(".openclaw"),
+            openparlant_migrate::MigrateSource::LangChain => home.join(".langchain"),
+            openparlant_migrate::MigrateSource::AutoGpt => home.join("Auto-GPT"),
         }
     });
 
-    let target_dir = cli_openfang_home();
+    let target_dir = cli_openparlant_home();
 
     println!("Migrating from {} ({})...", source, source_dir.display());
     if args.dry_run {
         println!("  (dry run — no changes will be made)\n");
     }
 
-    let options = openfang_migrate::MigrateOptions {
+    let options = openparlant_migrate::MigrateOptions {
         source,
         source_dir,
         target_dir,
         dry_run: args.dry_run,
     };
 
-    match openfang_migrate::run_migration(&options) {
+    match openparlant_migrate::run_migration(&options) {
         Ok(report) => {
             report.print_summary();
 
@@ -3461,7 +3461,7 @@ fn cmd_migrate(args: MigrateArgs) {
 // ---------------------------------------------------------------------------
 
 fn cmd_skill_install(source: &str) {
-    let home = openfang_home();
+    let home = openparlant_home();
     let skills_dir = home.join("skills");
     std::fs::create_dir_all(&skills_dir).unwrap_or_else(|e| {
         eprintln!("Error creating skills directory: {e}");
@@ -3474,14 +3474,14 @@ fn cmd_skill_install(source: &str) {
         let manifest_path = source_path.join("skill.toml");
         if !manifest_path.exists() {
             // Check if it's an OpenClaw skill
-            if openfang_skills::openclaw_compat::detect_openclaw_skill(&source_path) {
+            if openparlant_skills::openclaw_compat::detect_openclaw_skill(&source_path) {
                 println!("Detected OpenClaw skill format. Converting...");
-                match openfang_skills::openclaw_compat::convert_openclaw_skill(&source_path) {
+                match openparlant_skills::openclaw_compat::convert_openclaw_skill(&source_path) {
                     Ok(manifest) => {
                         let dest = skills_dir.join(&manifest.skill.name);
                         // Copy skill directory
                         copy_dir_recursive(&source_path, &dest);
-                        if let Err(e) = openfang_skills::openclaw_compat::write_openfang_manifest(
+                        if let Err(e) = openparlant_skills::openclaw_compat::write_openparlant_manifest(
                             &dest, &manifest,
                         ) {
                             eprintln!("Failed to write manifest: {e}");
@@ -3505,7 +3505,7 @@ fn cmd_skill_install(source: &str) {
             eprintln!("Error reading skill.toml: {e}");
             std::process::exit(1);
         });
-        let manifest: openfang_skills::SkillManifest =
+        let manifest: openparlant_skills::SkillManifest =
             toml::from_str(&toml_str).unwrap_or_else(|e| {
                 eprintln!("Error parsing skill.toml: {e}");
                 std::process::exit(1);
@@ -3521,8 +3521,8 @@ fn cmd_skill_install(source: &str) {
         // Remote install from FangHub
         println!("Installing {source} from FangHub...");
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let client = openfang_skills::marketplace::MarketplaceClient::new(
-            openfang_skills::marketplace::MarketplaceConfig::default(),
+        let client = openparlant_skills::marketplace::MarketplaceClient::new(
+            openparlant_skills::marketplace::MarketplaceConfig::default(),
         );
         match rt.block_on(client.install(source, &skills_dir)) {
             Ok(version) => println!("Installed {source} {version}"),
@@ -3535,10 +3535,10 @@ fn cmd_skill_install(source: &str) {
 }
 
 fn cmd_skill_list() {
-    let home = openfang_home();
+    let home = openparlant_home();
     let skills_dir = home.join("skills");
 
-    let mut registry = openfang_skills::registry::SkillRegistry::new(skills_dir);
+    let mut registry = openparlant_skills::registry::SkillRegistry::new(skills_dir);
     match registry.load_all() {
         Ok(0) => println!("No skills installed."),
         Ok(count) => {
@@ -3566,10 +3566,10 @@ fn cmd_skill_list() {
 }
 
 fn cmd_skill_remove(name: &str) {
-    let home = openfang_home();
+    let home = openparlant_home();
     let skills_dir = home.join("skills");
 
-    let mut registry = openfang_skills::registry::SkillRegistry::new(skills_dir);
+    let mut registry = openparlant_skills::registry::SkillRegistry::new(skills_dir);
     let _ = registry.load_all();
     match registry.remove(name) {
         Ok(()) => println!("Removed skill: {name}"),
@@ -3582,8 +3582,8 @@ fn cmd_skill_remove(name: &str) {
 
 fn cmd_skill_search(query: &str) {
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let client = openfang_skills::marketplace::MarketplaceClient::new(
-        openfang_skills::marketplace::MarketplaceConfig::default(),
+    let client = openparlant_skills::marketplace::MarketplaceClient::new(
+        openparlant_skills::marketplace::MarketplaceConfig::default(),
     );
     match rt.block_on(client.search(query)) {
         Ok(results) if results.is_empty() => println!("No skills found for \"{query}\"."),
@@ -3615,7 +3615,7 @@ fn cmd_skill_create() {
         runtime
     };
 
-    let home = openfang_home();
+    let home = openparlant_home();
     let skill_dir = home.join("skills").join(&name);
     std::fs::create_dir_all(skill_dir.join("src")).unwrap_or_else(|e| {
         eprintln!("Error creating skill directory: {e}");
@@ -3699,7 +3699,7 @@ if __name__ == "__main__":
 // ---------------------------------------------------------------------------
 
 fn cmd_channel_list() {
-    let home = openfang_home();
+    let home = openparlant_home();
     let config_path = home.join("config.toml");
 
     if !config_path.exists() {
@@ -4025,7 +4025,7 @@ fn cmd_channel_setup(channel: Option<&str>) {
 
 /// Offer to append a channel config block to config.toml if it doesn't already exist.
 fn maybe_write_channel_config(channel: &str, config_block: &str) {
-    let home = openfang_home();
+    let home = openparlant_home();
     let config_path = home.join("config.toml");
 
     if !config_path.exists() {
@@ -4531,7 +4531,7 @@ pub(crate) fn start_daemon_background() -> Result<String, String> {
 // ---------------------------------------------------------------------------
 
 fn cmd_config_show() {
-    let home = openfang_home();
+    let home = openparlant_home();
     let config_path = home.join("config.toml");
 
     if !config_path.exists() {
@@ -4550,7 +4550,7 @@ fn cmd_config_show() {
 }
 
 fn cmd_config_edit() {
-    let home = openfang_home();
+    let home = openparlant_home();
     let config_path = home.join("config.toml");
 
     let editor = std::env::var("EDITOR")
@@ -4580,7 +4580,7 @@ fn cmd_config_edit() {
 }
 
 fn cmd_config_get(key: &str) {
-    let home = openfang_home();
+    let home = openparlant_home();
     let config_path = home.join("config.toml");
 
     if !config_path.exists() {
@@ -4624,7 +4624,7 @@ fn cmd_config_get(key: &str) {
 }
 
 fn cmd_config_set(key: &str, value: &str) {
-    let home = openfang_home();
+    let home = openparlant_home();
     let config_path = home.join("config.toml");
 
     if !config_path.exists() {
@@ -4747,7 +4747,7 @@ fn cmd_config_set(key: &str, value: &str) {
 }
 
 fn cmd_config_unset(key: &str) {
-    let home = openfang_home();
+    let home = openparlant_home();
     let config_path = home.join("config.toml");
 
     if !config_path.exists() {
@@ -4851,10 +4851,10 @@ fn cmd_config_delete_key(provider: &str) {
 
     // Remove from vault (best-effort)
     {
-        let home = openfang_home();
+        let home = openparlant_home();
         let vault_path = home.join("vault.enc");
         if vault_path.exists() {
-            let mut vault = openfang_extensions::vault::CredentialVault::new(vault_path);
+            let mut vault = openparlant_extensions::vault::CredentialVault::new(vault_path);
             if vault.unlock().is_ok() {
                 let _ = vault.remove(&env_var);
             }
@@ -4896,12 +4896,12 @@ fn cmd_config_test_key(provider: &str) {
 fn save_credential_prefer_vault(env_var: &str, value: &str) {
     use zeroize::Zeroizing;
 
-    let home = openfang_home();
+    let home = openparlant_home();
     let vault_path = home.join("vault.enc");
     if !vault_path.exists() {
         return;
     }
-    let mut vault = openfang_extensions::vault::CredentialVault::new(vault_path);
+    let mut vault = openparlant_extensions::vault::CredentialVault::new(vault_path);
     if vault.unlock().is_err() {
         return;
     }
@@ -4922,7 +4922,7 @@ fn cmd_quick_chat(config: Option<PathBuf>, agent: Option<String>) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-pub(crate) fn openfang_home() -> PathBuf {
+pub(crate) fn openparlant_home() -> PathBuf {
     if let Ok(home) = std::env::var("OPENFANG_HOME") {
         return PathBuf::from(home);
     }
@@ -4962,8 +4962,8 @@ pub(crate) fn copy_dir_recursive(src: &PathBuf, dst: &PathBuf) {
 // ---------------------------------------------------------------------------
 
 fn cmd_integration_add(name: &str, key: Option<&str>) {
-    let home = openfang_home();
-    let mut registry = openfang_extensions::registry::IntegrationRegistry::new(&home);
+    let home = openparlant_home();
+    let mut registry = openparlant_extensions::registry::IntegrationRegistry::new(&home);
     registry.load_bundled();
     let _ = registry.load_installed();
 
@@ -4984,7 +4984,7 @@ fn cmd_integration_add(name: &str, key: Option<&str>) {
     let dotenv_path = home.join(".env");
     let vault_path = home.join("vault.enc");
     let vault = if vault_path.exists() {
-        let mut v = openfang_extensions::vault::CredentialVault::new(vault_path);
+        let mut v = openparlant_extensions::vault::CredentialVault::new(vault_path);
         if v.unlock().is_ok() {
             Some(v)
         } else {
@@ -4994,7 +4994,7 @@ fn cmd_integration_add(name: &str, key: Option<&str>) {
         None
     };
     let mut resolver =
-        openfang_extensions::credentials::CredentialResolver::new(vault, Some(&dotenv_path))
+        openparlant_extensions::credentials::CredentialResolver::new(vault, Some(&dotenv_path))
             .with_interactive(true);
 
     // Build provided keys map
@@ -5006,7 +5006,7 @@ fn cmd_integration_add(name: &str, key: Option<&str>) {
         }
     }
 
-    match openfang_extensions::installer::install_integration(
+    match openparlant_extensions::installer::install_integration(
         &mut registry,
         &mut resolver,
         name,
@@ -5014,10 +5014,10 @@ fn cmd_integration_add(name: &str, key: Option<&str>) {
     ) {
         Ok(result) => {
             match &result.status {
-                openfang_extensions::IntegrationStatus::Ready => {
+                openparlant_extensions::IntegrationStatus::Ready => {
                     ui::success(&result.message);
                 }
-                openfang_extensions::IntegrationStatus::Setup => {
+                openparlant_extensions::IntegrationStatus::Setup => {
                     println!("{}", result.message.yellow());
                     println!("\nTo add credentials:");
                     for env in &template.required_env {
@@ -5048,12 +5048,12 @@ fn cmd_integration_add(name: &str, key: Option<&str>) {
 }
 
 fn cmd_integration_remove(name: &str) {
-    let home = openfang_home();
-    let mut registry = openfang_extensions::registry::IntegrationRegistry::new(&home);
+    let home = openparlant_home();
+    let mut registry = openparlant_extensions::registry::IntegrationRegistry::new(&home);
     registry.load_bundled();
     let _ = registry.load_installed();
 
-    match openfang_extensions::installer::remove_integration(&mut registry, name) {
+    match openparlant_extensions::installer::remove_integration(&mut registry, name) {
         Ok(msg) => {
             ui::success(&msg);
             // Hot-reload daemon
@@ -5072,19 +5072,19 @@ fn cmd_integration_remove(name: &str) {
 }
 
 fn cmd_integrations_list(query: Option<&str>) {
-    let home = openfang_home();
-    let mut registry = openfang_extensions::registry::IntegrationRegistry::new(&home);
+    let home = openparlant_home();
+    let mut registry = openparlant_extensions::registry::IntegrationRegistry::new(&home);
     registry.load_bundled();
     let _ = registry.load_installed();
 
     let dotenv_path = home.join(".env");
     let resolver =
-        openfang_extensions::credentials::CredentialResolver::new(None, Some(&dotenv_path));
+        openparlant_extensions::credentials::CredentialResolver::new(None, Some(&dotenv_path));
 
     let entries = if let Some(q) = query {
-        openfang_extensions::installer::search_integrations(&registry, q)
+        openparlant_extensions::installer::search_integrations(&registry, q)
     } else {
-        openfang_extensions::installer::list_integrations(&registry, &resolver)
+        openparlant_extensions::installer::list_integrations(&registry, &resolver)
     };
 
     if entries.is_empty() {
@@ -5099,7 +5099,7 @@ fn cmd_integrations_list(query: Option<&str>) {
     // Group by category
     let mut by_category: std::collections::BTreeMap<
         String,
-        Vec<&openfang_extensions::installer::IntegrationListEntry>,
+        Vec<&openparlant_extensions::installer::IntegrationListEntry>,
     > = std::collections::BTreeMap::new();
     for entry in &entries {
         by_category
@@ -5112,15 +5112,15 @@ fn cmd_integrations_list(query: Option<&str>) {
         println!("\n{}", format!("  {category}").bold());
         for item in items {
             let status_badge = match &item.status {
-                openfang_extensions::IntegrationStatus::Ready => "[Ready]".green().to_string(),
-                openfang_extensions::IntegrationStatus::Setup => "[Setup]".yellow().to_string(),
-                openfang_extensions::IntegrationStatus::Available => {
+                openparlant_extensions::IntegrationStatus::Ready => "[Ready]".green().to_string(),
+                openparlant_extensions::IntegrationStatus::Setup => "[Setup]".yellow().to_string(),
+                openparlant_extensions::IntegrationStatus::Available => {
                     "[Available]".dimmed().to_string()
                 }
-                openfang_extensions::IntegrationStatus::Error(msg) => {
+                openparlant_extensions::IntegrationStatus::Error(msg) => {
                     format!("[Error: {msg}]").red().to_string()
                 }
-                openfang_extensions::IntegrationStatus::Disabled => {
+                openparlant_extensions::IntegrationStatus::Disabled => {
                     "[Disabled]".dimmed().to_string()
                 }
             };
@@ -5138,8 +5138,8 @@ fn cmd_integrations_list(query: Option<&str>) {
             .iter()
             .filter(|e| matches!(
                 e.status,
-                openfang_extensions::IntegrationStatus::Ready
-                    | openfang_extensions::IntegrationStatus::Setup
+                openparlant_extensions::IntegrationStatus::Ready
+                    | openparlant_extensions::IntegrationStatus::Setup
             ))
             .count()
     );
@@ -5151,9 +5151,9 @@ fn cmd_integrations_list(query: Option<&str>) {
 // ---------------------------------------------------------------------------
 
 fn cmd_vault_init() {
-    let home = openfang_home();
+    let home = openparlant_home();
     let vault_path = home.join("vault.enc");
-    let mut vault = openfang_extensions::vault::CredentialVault::new(vault_path);
+    let mut vault = openparlant_extensions::vault::CredentialVault::new(vault_path);
 
     match vault.init() {
         Ok(()) => ui::success("Credential vault initialized."),
@@ -5167,9 +5167,9 @@ fn cmd_vault_init() {
 fn cmd_vault_set(key: &str) {
     use zeroize::Zeroizing;
 
-    let home = openfang_home();
+    let home = openparlant_home();
     let vault_path = home.join("vault.enc");
-    let mut vault = openfang_extensions::vault::CredentialVault::new(vault_path);
+    let mut vault = openparlant_extensions::vault::CredentialVault::new(vault_path);
 
     if !vault.exists() {
         ui::error("Vault not initialized. Run: openparlant vault init");
@@ -5197,9 +5197,9 @@ fn cmd_vault_set(key: &str) {
 }
 
 fn cmd_vault_list() {
-    let home = openfang_home();
+    let home = openparlant_home();
     let vault_path = home.join("vault.enc");
-    let mut vault = openfang_extensions::vault::CredentialVault::new(vault_path);
+    let mut vault = openparlant_extensions::vault::CredentialVault::new(vault_path);
 
     if !vault.exists() {
         println!("Vault not initialized. Run: openparlant vault init");
@@ -5223,9 +5223,9 @@ fn cmd_vault_list() {
 }
 
 fn cmd_vault_remove(key: &str) {
-    let home = openfang_home();
+    let home = openparlant_home();
     let vault_path = home.join("vault.enc");
-    let mut vault = openfang_extensions::vault::CredentialVault::new(vault_path);
+    let mut vault = openparlant_extensions::vault::CredentialVault::new(vault_path);
 
     if !vault.exists() {
         ui::error("Vault not initialized.");
@@ -5254,10 +5254,10 @@ fn cmd_scaffold(kind: ScaffoldKind) {
     let cwd = std::env::current_dir().unwrap_or_default();
     let result = match kind {
         ScaffoldKind::Skill => {
-            openfang_extensions::installer::scaffold_skill(&cwd.join("my-skill"))
+            openparlant_extensions::installer::scaffold_skill(&cwd.join("my-skill"))
         }
         ScaffoldKind::Integration => {
-            openfang_extensions::installer::scaffold_integration(&cwd.join("my-integration"))
+            openparlant_extensions::installer::scaffold_integration(&cwd.join("my-integration"))
         }
     };
     match result {
@@ -5312,7 +5312,7 @@ fn cmd_models_list(provider_filter: Option<&str>, json: bool) {
         }
     } else {
         // Standalone: use ModelCatalog directly
-        let catalog = openfang_runtime::model_catalog::ModelCatalog::new();
+        let catalog = openparlant_runtime::model_catalog::ModelCatalog::new();
         let models = catalog.list_models();
         if json {
             let arr: Vec<serde_json::Value> = models
@@ -5377,7 +5377,7 @@ fn cmd_models_aliases(json: bool) {
             );
         }
     } else {
-        let catalog = openfang_runtime::model_catalog::ModelCatalog::new();
+        let catalog = openparlant_runtime::model_catalog::ModelCatalog::new();
         let aliases = catalog.list_aliases();
         if json {
             let obj: serde_json::Map<String, serde_json::Value> = aliases
@@ -5428,7 +5428,7 @@ fn cmd_models_providers(json: bool) {
             );
         }
     } else {
-        let catalog = openfang_runtime::model_catalog::ModelCatalog::new();
+        let catalog = openparlant_runtime::model_catalog::ModelCatalog::new();
         let providers = catalog.list_providers();
         if json {
             let arr: Vec<serde_json::Value> = providers
@@ -5488,7 +5488,7 @@ fn cmd_models_set(model: Option<String>) {
 
 /// Interactive model picker — shows numbered list, accepts number or model ID.
 fn pick_model() -> String {
-    let catalog = openfang_runtime::model_catalog::ModelCatalog::new();
+    let catalog = openparlant_runtime::model_catalog::ModelCatalog::new();
     let models = catalog.list_models();
 
     if models.is_empty() {
@@ -5499,7 +5499,7 @@ fn pick_model() -> String {
     // Group by provider for display
     let mut by_provider: std::collections::BTreeMap<
         String,
-        Vec<&openfang_types::model_catalog::ModelCatalogEntry>,
+        Vec<&openparlant_types::model_catalog::ModelCatalogEntry>,
     > = std::collections::BTreeMap::new();
     for m in models {
         by_provider.entry(m.provider.clone()).or_default().push(m);
@@ -5776,7 +5776,7 @@ fn cmd_sessions(agent: Option<&str>, json: bool) {
 }
 
 fn cmd_logs(lines: usize, follow: bool) {
-    let log_path = cli_openfang_home().join("tui.log");
+    let log_path = cli_openparlant_home().join("tui.log");
 
     if !log_path.exists() {
         ui::error_with_fix(
@@ -6306,18 +6306,18 @@ fn cmd_system_version(json: bool) {
 }
 
 fn cmd_reset(confirm: bool) {
-    let openfang_dir = cli_openfang_home();
+    let openparlant_dir = cli_openparlant_home();
 
-    if !openfang_dir.exists() {
+    if !openparlant_dir.exists() {
         println!(
             "Nothing to reset — {} does not exist.",
-            openfang_dir.display()
+            openparlant_dir.display()
         );
         return;
     }
 
     if !confirm {
-        println!("  This will delete all data in {}", openfang_dir.display());
+        println!("  This will delete all data in {}", openparlant_dir.display());
         println!("  Including: config, database, agent manifests, credentials.");
         println!();
         let answer = prompt_input("  Are you sure? Type 'yes' to confirm: ");
@@ -6327,10 +6327,10 @@ fn cmd_reset(confirm: bool) {
         }
     }
 
-    match std::fs::remove_dir_all(&openfang_dir) {
-        Ok(()) => ui::success(&format!("Removed {}", openfang_dir.display())),
+    match std::fs::remove_dir_all(&openparlant_dir) {
+        Ok(()) => ui::success(&format!("Removed {}", openparlant_dir.display())),
         Err(e) => {
-            ui::error(&format!("Failed to remove {}: {e}", openfang_dir.display()));
+            ui::error(&format!("Failed to remove {}: {e}", openparlant_dir.display()));
             std::process::exit(1);
         }
     }
@@ -6341,7 +6341,7 @@ fn cmd_reset(confirm: bool) {
 // ---------------------------------------------------------------------------
 
 fn cmd_uninstall(confirm: bool, keep_config: bool) {
-    let openfang_dir = cli_openfang_home();
+    let openparlant_dir = cli_openparlant_home();
     let exe_path = std::env::current_exe().ok();
 
     // Step 1: Show what will be removed
@@ -6353,14 +6353,14 @@ fn cmd_uninstall(confirm: bool, keep_config: bool) {
             .red()
     );
     println!();
-    if openfang_dir.exists() {
+    if openparlant_dir.exists() {
         if keep_config {
             println!(
                 "  • Remove data in {} (keeping config files)",
-                openfang_dir.display()
+                openparlant_dir.display()
             );
         } else {
-            println!("  • Remove {}", openfang_dir.display());
+            println!("  • Remove {}", openparlant_dir.display());
         }
     }
     if let Some(ref exe) = exe_path {
@@ -6401,9 +6401,9 @@ fn cmd_uninstall(confirm: bool, keep_config: bool) {
         std::thread::sleep(std::time::Duration::from_secs(1));
         // Force kill if still alive
         if find_daemon().is_some() {
-            if let Some(info) = read_daemon_info(&openfang_dir) {
+            if let Some(info) = read_daemon_info(&openparlant_dir) {
                 force_kill_pid(info.pid);
-                let _ = std::fs::remove_file(openfang_dir.join("daemon.json"));
+                let _ = std::fs::remove_file(openparlant_dir.join("daemon.json"));
             }
         }
     }
@@ -6420,14 +6420,14 @@ fn cmd_uninstall(confirm: bool, keep_config: bool) {
     }
 
     // Step 6: Remove ~/.openparlant/ data
-    if openfang_dir.exists() {
+    if openparlant_dir.exists() {
         if keep_config {
-            remove_dir_except_config(&openfang_dir);
+            remove_dir_except_config(&openparlant_dir);
             ui::success("Removed data (kept config files)");
         } else {
-            match std::fs::remove_dir_all(&openfang_dir) {
-                Ok(()) => ui::success(&format!("Removed {}", openfang_dir.display())),
-                Err(e) => ui::error(&format!("Failed to remove {}: {e}", openfang_dir.display())),
+            match std::fs::remove_dir_all(&openparlant_dir) {
+                Ok(()) => ui::success(&format!("Removed {}", openparlant_dir.display())),
+                Err(e) => ui::error(&format!("Failed to remove {}: {e}", openparlant_dir.display())),
             }
         }
     }
@@ -6518,7 +6518,7 @@ fn remove_autostart_entries(home: &std::path::Path) {
 
 /// Remove lines from shell config files that add openparlant to PATH.
 #[allow(unused_variables)]
-fn clean_path_entries(home: &std::path::Path, openfang_dir: &str) {
+fn clean_path_entries(home: &std::path::Path, openparlant_dir: &str) {
     #[cfg(not(windows))]
     {
         let shell_files = [
@@ -6538,7 +6538,7 @@ fn clean_path_entries(home: &std::path::Path, openfang_dir: &str) {
             };
             let filtered: Vec<&str> = content
                 .lines()
-                .filter(|line| !is_openfang_path_line(line, openfang_dir))
+                .filter(|line| !is_openparlant_path_line(line, openparlant_dir))
                 .collect();
             if filtered.len() < content.lines().count() {
                 let new_content = filtered.join("\n");
@@ -6570,7 +6570,7 @@ fn clean_path_entries(home: &std::path::Path, openfang_dir: &str) {
                 let current = String::from_utf8_lossy(&out.stdout);
                 let current = current.trim();
                 if !current.is_empty() {
-                    let dir_lower = openfang_dir.to_lowercase();
+                    let dir_lower = openparlant_dir.to_lowercase();
                     let filtered: Vec<&str> = current
                         .split(';')
                         .filter(|entry| {
@@ -6600,10 +6600,10 @@ fn clean_path_entries(home: &std::path::Path, openfang_dir: &str) {
 /// Returns true if a shell config line is an openparlant PATH export.
 /// Must match BOTH an openparlant reference AND a PATH-setting pattern.
 #[cfg(any(not(windows), test))]
-fn is_openfang_path_line(line: &str, openfang_dir: &str) -> bool {
+fn is_openparlant_path_line(line: &str, openparlant_dir: &str) -> bool {
     let lower = line.to_lowercase();
-    let has_openfang = lower.contains("openparlant") || lower.contains(&openfang_dir.to_lowercase());
-    if !has_openfang {
+    let has_openparlant = lower.contains("openparlant") || lower.contains(&openparlant_dir.to_lowercase());
+    if !has_openparlant {
         return false;
     }
     // Match common PATH-setting patterns
@@ -6615,9 +6615,9 @@ fn is_openfang_path_line(line: &str, openfang_dir: &str) -> bool {
 }
 
 /// Remove everything in ~/.openparlant/ except config files.
-fn remove_dir_except_config(openfang_dir: &std::path::Path) {
+fn remove_dir_except_config(openparlant_dir: &std::path::Path) {
     let keep = ["config.toml", ".env", "secrets.env"];
-    let Ok(entries) = std::fs::read_dir(openfang_dir) else {
+    let Ok(entries) = std::fs::read_dir(openparlant_dir) else {
         return;
     };
     for entry in entries.flatten() {
@@ -6691,7 +6691,7 @@ mod tests {
     #[test]
     fn test_doctor_skill_registry_loads_bundled() {
         let skills_dir = std::env::temp_dir().join("openparlant-doctor-test-skills");
-        let mut skill_reg = openfang_skills::registry::SkillRegistry::new(skills_dir);
+        let mut skill_reg = openparlant_skills::registry::SkillRegistry::new(skills_dir);
         let count = skill_reg.load_bundled();
         assert!(count > 0, "Should load bundled skills");
         assert_eq!(skill_reg.count(), count);
@@ -6701,7 +6701,7 @@ mod tests {
     fn test_doctor_extension_registry_loads_bundled() {
         let tmp = std::env::temp_dir().join("openparlant-doctor-test-ext");
         let _ = std::fs::create_dir_all(&tmp);
-        let mut ext_reg = openfang_extensions::registry::IntegrationRegistry::new(&tmp);
+        let mut ext_reg = openparlant_extensions::registry::IntegrationRegistry::new(&tmp);
         let count = ext_reg.load_bundled();
         assert!(count > 0, "Should load bundled integration templates");
         assert_eq!(ext_reg.template_count(), count);
@@ -6710,9 +6710,9 @@ mod tests {
     #[test]
     fn test_doctor_config_deser_default() {
         // Default KernelConfig should serialize/deserialize round-trip
-        let config = openfang_types::config::KernelConfig::default();
+        let config = openparlant_types::config::KernelConfig::default();
         let toml_str = toml::to_string_pretty(&config).unwrap();
-        let parsed: openfang_types::config::KernelConfig = toml::from_str(&toml_str).unwrap();
+        let parsed: openparlant_types::config::KernelConfig = toml::from_str(&toml_str).unwrap();
         assert_eq!(parsed.api_listen, config.api_listen);
     }
 
@@ -6727,7 +6727,7 @@ provider = "groq"
 model = "llama-3.3-70b-versatile"
 api_key_env = "GROQ_API_KEY"
 "#;
-        let config: openfang_types::config::KernelConfig = toml::from_str(config_toml).unwrap();
+        let config: openparlant_types::config::KernelConfig = toml::from_str(config_toml).unwrap();
         assert_eq!(config.include.len(), 2);
         assert_eq!(config.include[0], "providers.toml");
         assert_eq!(config.include[1], "agents.toml");
@@ -6748,10 +6748,10 @@ provider = "groq"
 model = "llama-3.3-70b-versatile"
 api_key_env = "GROQ_API_KEY"
 "#;
-        let config: openfang_types::config::KernelConfig = toml::from_str(config_toml).unwrap();
+        let config: openparlant_types::config::KernelConfig = toml::from_str(config_toml).unwrap();
         assert_eq!(
             config.exec_policy.mode,
-            openfang_types::config::ExecSecurityMode::Allowlist
+            openparlant_types::config::ExecSecurityMode::Allowlist
         );
         assert_eq!(config.exec_policy.safe_bins.len(), 3);
         assert_eq!(config.exec_policy.timeout_secs, 30);
@@ -6776,11 +6776,11 @@ type = "stdio"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-github"]
 "#;
-        let config: openfang_types::config::KernelConfig = toml::from_str(config_toml).unwrap();
+        let config: openparlant_types::config::KernelConfig = toml::from_str(config_toml).unwrap();
         assert_eq!(config.mcp_servers.len(), 1);
         assert_eq!(config.mcp_servers[0].name, "github");
         match &config.mcp_servers[0].transport {
-            openfang_types::config::McpTransportEntry::Stdio { command, args } => {
+            openparlant_types::config::McpTransportEntry::Stdio { command, args } => {
                 assert_eq!(command, "npx");
                 assert_eq!(args.len(), 2);
             }
@@ -6791,14 +6791,14 @@ args = ["-y", "@modelcontextprotocol/server-github"]
     #[test]
     fn test_doctor_skill_injection_scan_clean() {
         let clean_content = "This is a normal skill prompt with helpful instructions.";
-        let warnings = openfang_skills::verify::SkillVerifier::scan_prompt_content(clean_content);
+        let warnings = openparlant_skills::verify::SkillVerifier::scan_prompt_content(clean_content);
         assert!(warnings.is_empty(), "Clean content should have no warnings");
     }
 
     #[test]
     fn test_doctor_hook_event_variants() {
         // Verify all 4 hook event types are constructable
-        use openfang_types::agent::HookEvent;
+        use openparlant_types::agent::HookEvent;
         let events = [
             HookEvent::BeforeToolCall,
             HookEvent::AfterToolCall,
@@ -6812,39 +6812,39 @@ args = ["-y", "@modelcontextprotocol/server-github"]
 
     #[test]
     fn test_uninstall_path_line_filter() {
-        use super::is_openfang_path_line;
+        use super::is_openparlant_path_line;
         let dir = "/home/user/.openparlant/bin";
 
         // Should match: openparlant PATH exports
-        assert!(is_openfang_path_line(
+        assert!(is_openparlant_path_line(
             r#"export PATH="$HOME/.openparlant/bin:$PATH""#,
             dir
         ));
-        assert!(is_openfang_path_line(
+        assert!(is_openparlant_path_line(
             r#"export PATH="/home/user/.openparlant/bin:$PATH""#,
             dir
         ));
-        assert!(is_openfang_path_line(
+        assert!(is_openparlant_path_line(
             "set -gx PATH $HOME/.openparlant/bin $PATH",
             dir
         ));
-        assert!(is_openfang_path_line(
+        assert!(is_openparlant_path_line(
             "fish_add_path $HOME/.openparlant/bin",
             dir
         ));
 
         // Should NOT match: unrelated PATH exports
-        assert!(!is_openfang_path_line(
+        assert!(!is_openparlant_path_line(
             r#"export PATH="$HOME/.cargo/bin:$PATH""#,
             dir
         ));
-        assert!(!is_openfang_path_line(
+        assert!(!is_openparlant_path_line(
             r#"export PATH="/usr/local/bin:$PATH""#,
             dir
         ));
 
         // Should NOT match: openparlant lines that aren't PATH-related
-        assert!(!is_openfang_path_line("# openparlant config", dir));
-        assert!(!is_openfang_path_line("alias of=openparlant", dir));
+        assert!(!is_openparlant_path_line("# openparlant config", dir));
+        assert!(!is_openparlant_path_line("alias of=openparlant", dir));
     }
 }

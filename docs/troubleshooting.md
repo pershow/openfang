@@ -272,7 +272,7 @@ python -m vllm.entrypoints.openai.api_server --model ...
 
 Check logs for the specific error:
 ```bash
-RUST_LOG=openfang_channels=debug openparlant start
+RUST_LOG=openparlant_channels=debug openparlant start
 ```
 
 ---
@@ -542,7 +542,7 @@ OpenParlant can import OpenClaw configs: `openparlant migrate --from openclaw`
 ### How do I enable debug logging for a specific crate?
 
 ```bash
-RUST_LOG=openfang_runtime=debug,openfang_channels=info openparlant start
+RUST_LOG=openparlant_runtime=debug,openparlant_channels=info openparlant start
 ```
 
 ### Can I use OpenParlant as a library?

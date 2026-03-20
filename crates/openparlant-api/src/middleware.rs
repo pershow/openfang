@@ -214,7 +214,7 @@ pub async fn auth(
         .unwrap_or_default()
 }
 
-/// Extract the `openfang_session` cookie value from a request.
+/// Extract the `openparlant_session` cookie value from a request.
 fn extract_session_cookie(request: &Request<Body>) -> Option<String> {
     request
         .headers()
@@ -223,7 +223,7 @@ fn extract_session_cookie(request: &Request<Body>) -> Option<String> {
         .and_then(|cookies| {
             cookies.split(';').find_map(|c| {
                 c.trim()
-                    .strip_prefix("openfang_session=")
+                    .strip_prefix("openparlant_session=")
                     .map(|v| v.to_string())
             })
         })

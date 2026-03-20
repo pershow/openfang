@@ -635,7 +635,7 @@ impl ClawHubClient {
         all_warnings.extend(manifest_warnings);
 
         // Step 7: Write skill.toml
-        openclaw_compat::write_openfang_manifest(&skill_dir, &manifest)?;
+        openclaw_compat::write_openparlant_manifest(&skill_dir, &manifest)?;
 
         let result = ClawHubInstallResult {
             skill_name: manifest.skill.name.clone(),

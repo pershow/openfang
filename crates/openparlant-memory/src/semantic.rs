@@ -8,9 +8,9 @@
 //! When no embeddings are available, falls back to LIKE matching.
 
 use chrono::Utc;
-use openfang_types::agent::AgentId;
-use openfang_types::error::{OpenFangError, OpenFangResult};
-use openfang_types::memory::{MemoryFilter, MemoryFragment, MemoryId, MemorySource};
+use openparlant_types::agent::AgentId;
+use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::memory::{MemoryFilter, MemoryFragment, MemoryId, MemorySource};
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -210,7 +210,7 @@ impl SemanticStore {
                 .map(MemoryId)
                 .map_err(|e| OpenFangError::Memory(e.to_string()))?;
             let agent_id = uuid::Uuid::parse_str(&agent_str)
-                .map(openfang_types::agent::AgentId)
+                .map(openparlant_types::agent::AgentId)
                 .map_err(|e| OpenFangError::Memory(e.to_string()))?;
             let source: MemorySource =
                 serde_json::from_str(&source_str).unwrap_or(MemorySource::System);

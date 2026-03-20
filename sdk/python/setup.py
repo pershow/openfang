@@ -4,7 +4,7 @@ setup(
     name="openparlant",
     version="0.1.0",
     description="Official Python client for the OpenParlant Agent OS REST API",
-    py_modules=["openfang_sdk", "openfang_client"],
+    py_modules=["openparlant_sdk", "openparlant_client"],
     python_requires=">=3.8",
     classifiers=[
         "Programming Language :: Python :: 3",

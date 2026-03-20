@@ -40,7 +40,7 @@ The desktop app follows a straightforward embedded-server pattern:
 3. **Port binding** -- A `std::net::TcpListener` binds to `127.0.0.1:0` on the main thread, which lets the OS assign a random free port. This ensures the port number is known before any window is created.
 4. **Server thread** -- A dedicated OS thread named `"openparlant-server"` is spawned. It creates its own `tokio::runtime::Builder::new_multi_thread()` runtime and runs:
    - `kernel.start_background_agents()` -- heartbeat monitor, autonomous agents, etc.
-   - `run_embedded_server()` -- builds the axum router via `openfang_api::server::build_router()`, converts the `std::net::TcpListener` to a `tokio::net::TcpListener`, and serves with graceful shutdown.
+   - `run_embedded_server()` -- builds the axum router via `openparlant_api::server::build_router()`, converts the `std::net::TcpListener` to a `tokio::net::TcpListener`, and serves with graceful shutdown.
 5. **Tauri app** -- The Tauri builder is assembled with plugins, managed state, IPC commands, system tray, and a WebView window pointing at `http://127.0.0.1:{port}`.
 6. **Event loop** -- Tauri runs its native event loop. On exit, `server_handle.shutdown()` is called to stop the embedded server and kernel.
 

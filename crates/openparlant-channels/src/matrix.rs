@@ -383,7 +383,7 @@ impl ChannelAdapter for MatrixAdapter {
                                     sender: ChannelUser {
                                         platform_id: room_id.clone(),
                                         display_name: sender.to_string(),
-                                        openfang_user: None,
+                                        openparlant_user: None,
                                     },
                                     content: msg_content,
                                     target_agent: None,

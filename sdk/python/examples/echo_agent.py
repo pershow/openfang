@@ -4,9 +4,9 @@
 import sys
 import os
 
-# Add parent directory to path for openfang_sdk import
+# Add parent directory to path for openparlant_sdk import
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from openfang_sdk import Agent
+from openparlant_sdk import Agent
 
 agent = Agent()
 

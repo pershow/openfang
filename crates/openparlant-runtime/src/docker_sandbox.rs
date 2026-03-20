@@ -3,7 +3,7 @@
 //! Provides secure command execution inside Docker containers with strict
 //! resource limits, network isolation, and capability dropping.
 
-use openfang_types::config::DockerSandboxConfig;
+use openparlant_types::config::DockerSandboxConfig;
 use std::path::Path;
 use std::time::Duration;
 use tracing::{debug, warn};

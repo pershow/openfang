@@ -248,7 +248,7 @@ impl ChannelAdapter for GotifyAdapter {
                                                 } else {
                                                     title.clone()
                                                 },
-                                                openfang_user: None,
+                                                openparlant_user: None,
                                             },
                                             content,
                                             target_agent: None,

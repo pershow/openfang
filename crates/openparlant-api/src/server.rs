@@ -7,7 +7,7 @@ use crate::routes::{self, AppState};
 use crate::webchat;
 use crate::ws;
 use axum::Router;
-use openfang_kernel::OpenFangKernel;
+use openparlant_kernel::OpenFangKernel;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
@@ -50,7 +50,7 @@ pub async fn build_router(
         channels_config: tokio::sync::RwLock::new(channels_config),
         shutdown_notify: Arc::new(tokio::sync::Notify::new()),
         clawhub_cache: dashmap::DashMap::new(),
-        provider_probe_cache: openfang_runtime::provider_health::ProbeCache::new(),
+        provider_probe_cache: openparlant_runtime::provider_health::ProbeCache::new(),
     });
 
     // CORS: allow localhost origins by default. If API key is set, the API

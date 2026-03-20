@@ -157,7 +157,7 @@ impl SkillRegistry {
                                 "Auto-converting SKILL.md to OpenParlant format"
                             );
                             if let Err(e) =
-                                openclaw_compat::write_openfang_manifest(&path, &converted.manifest)
+                                openclaw_compat::write_openparlant_manifest(&path, &converted.manifest)
                             {
                                 warn!("Failed to write skill.toml for {}: {e}", path.display());
                                 continue;
@@ -335,7 +335,7 @@ impl SkillRegistry {
                             }
 
                             if let Err(e) =
-                                openclaw_compat::write_openfang_manifest(&path, &converted.manifest)
+                                openclaw_compat::write_openparlant_manifest(&path, &converted.manifest)
                             {
                                 warn!("Failed to write skill.toml for {}: {e}", path.display());
                                 continue;

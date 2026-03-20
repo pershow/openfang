@@ -6,10 +6,10 @@
 //! Run: cargo test -p openparlant-api --test load_test -- --nocapture
 
 use axum::Router;
-use openfang_api::middleware;
-use openfang_api::routes::{self, AppState};
-use openfang_kernel::OpenFangKernel;
-use openfang_types::config::{DefaultModelConfig, KernelConfig};
+use openparlant_api::middleware;
+use openparlant_api::routes::{self, AppState};
+use openparlant_kernel::OpenFangKernel;
+use openparlant_types::config::{DefaultModelConfig, KernelConfig};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tower_http::cors::CorsLayer;
@@ -58,7 +58,7 @@ async fn start_test_server() -> TestServer {
         channels_config: tokio::sync::RwLock::new(Default::default()),
         shutdown_notify: Arc::new(tokio::sync::Notify::new()),
         clawhub_cache: dashmap::DashMap::new(),
-        provider_probe_cache: openfang_runtime::provider_health::ProbeCache::new(),
+        provider_probe_cache: openparlant_runtime::provider_health::ProbeCache::new(),
     });
 
     let app = Router::new()
@@ -573,7 +573,7 @@ async fn load_metrics_sustained() {
             .unwrap();
         assert_eq!(res.status().as_u16(), 200);
         let body = res.text().await.unwrap();
-        assert!(body.contains("openfang_agents_active"));
+        assert!(body.contains("openparlant_agents_active"));
     }
 
     let elapsed = start.elapsed();

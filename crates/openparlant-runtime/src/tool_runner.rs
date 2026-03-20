@@ -6,10 +6,10 @@
 use crate::kernel_handle::KernelHandle;
 use crate::mcp;
 use crate::web_search::{parse_ddg_results, WebToolsContext};
-use openfang_skills::registry::SkillRegistry;
-use openfang_types::taint::{TaintLabel, TaintSink, TaintedValue};
-use openfang_types::tool::{ToolDefinition, ToolResult};
-use openfang_types::tool_compat::normalize_tool_name;
+use openparlant_skills::registry::SkillRegistry;
+use openparlant_types::taint::{TaintLabel, TaintSink, TaintedValue};
+use openparlant_types::tool::{ToolDefinition, ToolResult};
+use openparlant_types::tool_compat::normalize_tool_name;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -110,9 +110,9 @@ pub async fn execute_tool(
     allowed_env_vars: Option<&[String]>,
     workspace_root: Option<&Path>,
     media_engine: Option<&crate::media_understanding::MediaEngine>,
-    exec_policy: Option<&openfang_types::config::ExecPolicy>,
+    exec_policy: Option<&openparlant_types::config::ExecPolicy>,
     tts_engine: Option<&crate::tts::TtsEngine>,
-    docker_config: Option<&openfang_types::config::DockerSandboxConfig>,
+    docker_config: Option<&openparlant_types::config::DockerSandboxConfig>,
     process_manager: Option<&crate::process_manager::ProcessManager>,
 ) -> ToolResult {
     // Normalize the tool name through compat mappings so LLM-hallucinated aliases
@@ -141,7 +141,7 @@ pub async fn execute_tool(
             let summary = format!(
                 "{}: {}",
                 tool_name,
-                openfang_types::truncate_str(&input_str, 200)
+                openparlant_types::truncate_str(&input_str, 200)
             );
             match kh.request_approval(agent_id_str, tool_name, &summary).await {
                 Ok(true) => {
@@ -246,7 +246,7 @@ pub async fn execute_tool(
             }
             // Skip heuristic taint patterns for Full exec policy (e.g. hand agents that need curl)
             let is_full_exec = exec_policy
-                .is_some_and(|p| p.mode == openfang_types::config::ExecSecurityMode::Full);
+                .is_some_and(|p| p.mode == openparlant_types::config::ExecSecurityMode::Full);
             if !is_full_exec {
                 if let Some(violation) = check_taint_shell_exec(command) {
                     return ToolResult {
@@ -483,7 +483,7 @@ pub async fn execute_tool(
             else if let Some(registry) = skill_registry {
                 if let Some(skill) = registry.find_tool_provider(other) {
                     debug!(tool = other, skill = %skill.manifest.skill.name, "Dispatching to skill");
-                    match openfang_skills::loader::execute_skill_tool(
+                    match openparlant_skills::loader::execute_skill_tool(
                         &skill.manifest,
                         &skill.path,
                         other,
@@ -1452,7 +1452,7 @@ async fn tool_shell_exec(
     input: &serde_json::Value,
     allowed_env: &[String],
     workspace_root: Option<&Path>,
-    exec_policy: Option<&openfang_types::config::ExecPolicy>,
+    exec_policy: Option<&openparlant_types::config::ExecPolicy>,
 ) -> Result<String, String> {
     let command = input["command"]
         .as_str()
@@ -1470,7 +1470,7 @@ async fn tool_shell_exec(
     // In Full mode: User explicitly opted into unrestricted shell access,
     // so we use sh -c / cmd /C as before.
     let use_direct_exec = exec_policy
-        .map(|p| p.mode == openfang_types::config::ExecSecurityMode::Allowlist)
+        .map(|p| p.mode == openparlant_types::config::ExecSecurityMode::Allowlist)
         .unwrap_or(true); // Default to safe mode
 
     let mut cmd = if use_direct_exec {
@@ -1798,8 +1798,8 @@ async fn tool_event_publish(
 // Knowledge graph tools
 // ---------------------------------------------------------------------------
 
-fn parse_entity_type(s: &str) -> openfang_types::memory::EntityType {
-    use openfang_types::memory::EntityType;
+fn parse_entity_type(s: &str) -> openparlant_types::memory::EntityType {
+    use openparlant_types::memory::EntityType;
     match s.to_lowercase().as_str() {
         "person" => EntityType::Person,
         "organization" | "org" => EntityType::Organization,
@@ -1813,8 +1813,8 @@ fn parse_entity_type(s: &str) -> openfang_types::memory::EntityType {
     }
 }
 
-fn parse_relation_type(s: &str) -> openfang_types::memory::RelationType {
-    use openfang_types::memory::RelationType;
+fn parse_relation_type(s: &str) -> openparlant_types::memory::RelationType {
+    use openparlant_types::memory::RelationType;
     match s.to_lowercase().as_str() {
         "works_at" | "worksat" => RelationType::WorksAt,
         "knows_about" | "knowsabout" | "knows" => RelationType::KnowsAbout,
@@ -1845,7 +1845,7 @@ async fn tool_knowledge_add_entity(
         .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
         .unwrap_or_default();
 
-    let entity = openfang_types::memory::Entity {
+    let entity = openparlant_types::memory::Entity {
         id: String::new(), // kernel/store assigns a real ID
         entity_type: parse_entity_type(entity_type_str),
         name: name.to_string(),
@@ -1879,7 +1879,7 @@ async fn tool_knowledge_add_relation(
         .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
         .unwrap_or_default();
 
-    let relation = openfang_types::memory::Relation {
+    let relation = openparlant_types::memory::Relation {
         source: source.to_string(),
         relation: parse_relation_type(relation_str),
         target: target.to_string(),
@@ -1904,7 +1904,7 @@ async fn tool_knowledge_query(
     let relation = input["relation"].as_str().map(parse_relation_type);
     let max_depth = input["max_depth"].as_u64().unwrap_or(1) as u32;
 
-    let pattern = openfang_types::memory::GraphPattern {
+    let pattern = openparlant_types::memory::GraphPattern {
         source,
         relation,
         target,
@@ -2056,7 +2056,7 @@ fn parse_time_to_hour(s: &str) -> Result<u32, String> {
     Ok(hour)
 }
 
-const SCHEDULES_KEY: &str = "__openfang_schedules";
+const SCHEDULES_KEY: &str = "__openparlant_schedules";
 
 async fn tool_schedule_create(
     input: &serde_json::Value,
@@ -2750,10 +2750,10 @@ async fn tool_media_describe(
         _ => return Err(format!("Unsupported image format: .{ext}")),
     };
 
-    let attachment = openfang_types::media::MediaAttachment {
-        media_type: openfang_types::media::MediaType::Image,
+    let attachment = openparlant_types::media::MediaAttachment {
+        media_type: openparlant_types::media::MediaType::Image,
         mime_type: mime.to_string(),
-        source: openfang_types::media::MediaSource::Base64 {
+        source: openparlant_types::media::MediaSource::Base64 {
             data: base64::engine::general_purpose::STANDARD.encode(&data),
             mime_type: mime.to_string(),
         },
@@ -2795,10 +2795,10 @@ async fn tool_media_transcribe(
         _ => return Err(format!("Unsupported audio format: .{ext}")),
     };
 
-    let attachment = openfang_types::media::MediaAttachment {
-        media_type: openfang_types::media::MediaType::Audio,
+    let attachment = openparlant_types::media::MediaAttachment {
+        media_type: openparlant_types::media::MediaType::Audio,
         mime_type: mime.to_string(),
-        source: openfang_types::media::MediaSource::Base64 {
+        source: openparlant_types::media::MediaSource::Base64 {
             data: base64::engine::general_purpose::STANDARD.encode(&data),
             mime_type: mime.to_string(),
         },
@@ -2824,9 +2824,9 @@ async fn tool_image_generate(
 
     let model_str = input["model"].as_str().unwrap_or("dall-e-3");
     let model = match model_str {
-        "dall-e-3" | "dalle3" | "dalle-3" => openfang_types::media::ImageGenModel::DallE3,
-        "dall-e-2" | "dalle2" | "dalle-2" => openfang_types::media::ImageGenModel::DallE2,
-        "gpt-image-1" | "gpt_image_1" => openfang_types::media::ImageGenModel::GptImage1,
+        "dall-e-3" | "dalle3" | "dalle-3" => openparlant_types::media::ImageGenModel::DallE3,
+        "dall-e-2" | "dalle2" | "dalle-2" => openparlant_types::media::ImageGenModel::DallE2,
+        "gpt-image-1" | "gpt_image_1" => openparlant_types::media::ImageGenModel::GptImage1,
         _ => {
             return Err(format!(
                 "Unknown image model: {model_str}. Use 'dall-e-3', 'dall-e-2', or 'gpt-image-1'."
@@ -2838,7 +2838,7 @@ async fn tool_image_generate(
     let quality = input["quality"].as_str().unwrap_or("hd").to_string();
     let count = input["count"].as_u64().unwrap_or(1).min(4) as u8;
 
-    let request = openfang_types::media::ImageGenRequest {
+    let request = openparlant_types::media::ImageGenRequest {
         prompt: prompt.to_string(),
         model,
         size,
@@ -2866,7 +2866,7 @@ async fn tool_image_generate(
     let mut image_urls: Vec<String> = Vec::new();
     {
         use base64::Engine;
-        let upload_dir = std::env::temp_dir().join("openfang_uploads");
+        let upload_dir = std::env::temp_dir().join("openparlant_uploads");
         let _ = std::fs::create_dir_all(&upload_dir);
         for img in &result.images {
             let file_id = uuid::Uuid::new_v4().to_string();
@@ -2971,7 +2971,7 @@ async fn tool_speech_to_text(
         _ => "audio/mpeg",
     };
 
-    use openfang_types::media::{MediaAttachment, MediaSource, MediaType};
+    use openparlant_types::media::{MediaAttachment, MediaSource, MediaType};
     let attachment = MediaAttachment {
         media_type: MediaType::Audio,
         mime_type: mime_type.to_string(),
@@ -3002,7 +3002,7 @@ async fn tool_speech_to_text(
 
 async fn tool_docker_exec(
     input: &serde_json::Value,
-    docker_config: Option<&openfang_types::config::DockerSandboxConfig>,
+    docker_config: Option<&openparlant_types::config::DockerSandboxConfig>,
     workspace_root: Option<&Path>,
     caller_agent_id: Option<&str>,
 ) -> Result<String, String> {
@@ -3363,7 +3363,7 @@ mod tests {
     #[tokio::test]
     async fn test_file_read_missing() {
         let bad_path = std::env::temp_dir()
-            .join("openfang_test_nonexistent_99999")
+            .join("openparlant_test_nonexistent_99999")
             .join("file.txt");
         let result = execute_tool(
             "test-id",
@@ -3580,7 +3580,7 @@ mod tests {
         let allowed = vec!["file_read".to_string()];
         // Use a cross-platform nonexistent path
         let bad_path = std::env::temp_dir()
-            .join("openfang_test_nonexistent_12345")
+            .join("openparlant_test_nonexistent_12345")
             .join("file.txt");
         let result = execute_tool(
             "test-id",
@@ -3975,7 +3975,7 @@ mod tests {
             "html": "<h1>Test Canvas</h1><p>Hello world</p>",
             "title": "Test"
         });
-        let tmp = std::env::temp_dir().join("openfang_canvas_test");
+        let tmp = std::env::temp_dir().join("openparlant_canvas_test");
         let _ = std::fs::create_dir_all(&tmp);
         let result = tool_canvas_present(&input, Some(tmp.as_path())).await;
         assert!(result.is_ok());

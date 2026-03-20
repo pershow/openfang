@@ -260,11 +260,11 @@ if __name__ == "__main__":
 
 ### Using the OpenParlant Python SDK
 
-For more advanced skills, use the Python SDK (`sdk/python/openfang_sdk.py`):
+For more advanced skills, use the Python SDK (`sdk/python/openparlant_sdk.py`):
 
 ```python
 #!/usr/bin/env python3
-from openfang_sdk import SkillHandler
+from openparlant_sdk import SkillHandler
 
 handler = SkillHandler()
 

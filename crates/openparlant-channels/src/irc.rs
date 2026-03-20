@@ -206,7 +206,7 @@ fn parse_privmsg(line: &IrcLine, bot_nick: &str) -> Option<ChannelMessage> {
         sender: ChannelUser {
             platform_id,
             display_name: sender_nick.to_string(),
-            openfang_user: None,
+            openparlant_user: None,
         },
         content,
         target_agent: None,

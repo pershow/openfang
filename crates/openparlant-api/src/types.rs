@@ -82,7 +82,7 @@ pub struct AgentUpdateRequest {
 /// Request to change an agent's operational mode.
 #[derive(Debug, Deserialize)]
 pub struct SetModeRequest {
-    pub mode: openfang_types::agent::AgentMode,
+    pub mode: openparlant_types::agent::AgentMode,
 }
 
 /// Request to run a migration.

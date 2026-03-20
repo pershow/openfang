@@ -1,9 +1,9 @@
 //! Session management — load/save conversation history.
 
 use chrono::Utc;
-use openfang_types::agent::{AgentId, SessionId};
-use openfang_types::error::{OpenFangError, OpenFangResult};
-use openfang_types::message::{ContentBlock, Message, MessageContent, Role};
+use openparlant_types::agent::{AgentId, SessionId};
+use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::message::{ContentBlock, Message, MessageContent, Role};
 use rusqlite::Connection;
 use std::io::Write;
 use std::path::Path;
@@ -436,15 +436,15 @@ impl SessionStore {
                 }
                 for msg in compacting {
                     let role = match msg.role {
-                        openfang_types::message::Role::User => "User",
-                        openfang_types::message::Role::Assistant => "Assistant",
-                        openfang_types::message::Role::System => "System",
+                        openparlant_types::message::Role::User => "User",
+                        openparlant_types::message::Role::Assistant => "Assistant",
+                        openparlant_types::message::Role::System => "System",
                     };
                     let text = msg.content.text_content();
                     if !text.is_empty() {
                         // Truncate individual messages in summary to keep it compact (UTF-8 safe)
                         let truncated = if text.len() > 200 {
-                            format!("{}...", openfang_types::truncate_str(&text, 200))
+                            format!("{}...", openparlant_types::truncate_str(&text, 200))
                         } else {
                             text
                         };
@@ -589,7 +589,7 @@ impl SessionStore {
                             ContentBlock::Thinking { thinking } => {
                                 text_parts.push(format!(
                                     "[thinking: {}]",
-                                    openfang_types::truncate_str(thinking, 200)
+                                    openparlant_types::truncate_str(thinking, 200)
                                 ));
                             }
                             ContentBlock::Unknown => {}
@@ -782,10 +782,10 @@ mod tests {
         let mut session = store.create_session(agent_id).unwrap();
         session
             .messages
-            .push(openfang_types::message::Message::user("Hello"));
+            .push(openparlant_types::message::Message::user("Hello"));
         session
             .messages
-            .push(openfang_types::message::Message::assistant("Hi there!"));
+            .push(openparlant_types::message::Message::assistant("Hi there!"));
         store.save_session(&session).unwrap();
 
         let dir = tempfile::TempDir::new().unwrap();

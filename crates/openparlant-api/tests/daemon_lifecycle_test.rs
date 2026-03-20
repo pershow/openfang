@@ -4,11 +4,11 @@
 //! and graceful shutdown sequence.
 
 use axum::Router;
-use openfang_api::middleware;
-use openfang_api::routes::{self, AppState};
-use openfang_api::server::{read_daemon_info, DaemonInfo};
-use openfang_kernel::OpenFangKernel;
-use openfang_types::config::{DefaultModelConfig, KernelConfig};
+use openparlant_api::middleware;
+use openparlant_api::routes::{self, AppState};
+use openparlant_api::server::{read_daemon_info, DaemonInfo};
+use openparlant_kernel::OpenFangKernel;
+use openparlant_types::config::{DefaultModelConfig, KernelConfig};
 use std::sync::Arc;
 use std::time::Instant;
 use tower_http::cors::CorsLayer;
@@ -114,7 +114,7 @@ async fn test_full_daemon_lifecycle() {
         channels_config: tokio::sync::RwLock::new(Default::default()),
         shutdown_notify: Arc::new(tokio::sync::Notify::new()),
         clawhub_cache: dashmap::DashMap::new(),
-        provider_probe_cache: openfang_runtime::provider_health::ProbeCache::new(),
+        provider_probe_cache: openparlant_runtime::provider_health::ProbeCache::new(),
     });
 
     let app = Router::new()
@@ -239,7 +239,7 @@ async fn test_server_immediate_responsiveness() {
         channels_config: tokio::sync::RwLock::new(Default::default()),
         shutdown_notify: Arc::new(tokio::sync::Notify::new()),
         clawhub_cache: dashmap::DashMap::new(),
-        provider_probe_cache: openfang_runtime::provider_health::ProbeCache::new(),
+        provider_probe_cache: openparlant_runtime::provider_health::ProbeCache::new(),
     });
 
     let app = Router::new()

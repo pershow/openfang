@@ -167,7 +167,7 @@ impl ChannelAdapter for NostrAdapter {
         let pubkey = self.derive_pubkey();
         info!(
             "Nostr adapter starting (pubkey: {}...)",
-            openfang_types::truncate_str(&pubkey, 16)
+            openparlant_types::truncate_str(&pubkey, 16)
         );
 
         if self.relays.is_empty() {
@@ -342,9 +342,9 @@ impl ChannelAdapter for NostrAdapter {
                                 platform_id: sender_pubkey.clone(),
                                 display_name: format!(
                                     "{}...",
-                                    openfang_types::truncate_str(&sender_pubkey, 8)
+                                    openparlant_types::truncate_str(&sender_pubkey, 8)
                                 ),
-                                openfang_user: None,
+                                openparlant_user: None,
                             },
                             content: msg_content,
                             target_agent: None,

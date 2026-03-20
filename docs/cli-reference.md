@@ -52,7 +52,7 @@ These options apply to all commands.
 
 | Variable | Description |
 |---|---|
-| `RUST_LOG` | Controls log verbosity (e.g. `info`, `debug`, `openfang_kernel=trace`). |
+| `RUST_LOG` | Controls log verbosity (e.g. `info`, `debug`, `openparlant_kernel=trace`). |
 | `OPENFANG_AGENTS_DIR` | Override the agent templates directory. |
 | `EDITOR` / `VISUAL` | Editor used by `openparlant config edit`. Falls back to `notepad` (Windows) or `vi` (Unix). |
 
@@ -270,7 +270,7 @@ openparlant completion <SHELL>
 openparlant completion bash > ~/.bash_completion.d/openparlant
 
 # Zsh
-openparlant completion zsh > ~/.zfunc/_openfang
+openparlant completion zsh > ~/.zfunc/_openparlant
 
 # Fish
 openparlant completion fish > ~/.config/fish/completions/openparlant.fish
@@ -1061,7 +1061,7 @@ openparlant mcp
 **Behavior:**
 
 - Exposes running OpenParlant agents as MCP tools via JSON-RPC 2.0 over stdin/stdout with Content-Length framing.
-- Each agent becomes a callable tool named `openfang_agent_<name>` (hyphens replaced with underscores).
+- Each agent becomes a callable tool named `openparlant_agent_<name>` (hyphens replaced with underscores).
 - Connects to a running daemon via HTTP if available; otherwise boots an in-process kernel.
 - Protocol version: `2024-11-05`.
 - Maximum message size: 10MB (security limit).
@@ -1326,7 +1326,7 @@ openparlant doctor --json
 ```bash
 # Generate and install completions for your shell
 openparlant completion bash >> ~/.bashrc
-openparlant completion zsh > "${fpath[1]}/_openfang"
+openparlant completion zsh > "${fpath[1]}/_openparlant"
 openparlant completion fish > ~/.config/fish/completions/openparlant.fish
 ```
 

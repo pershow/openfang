@@ -6,7 +6,7 @@
 //! This module provides a reusable handler function — the CLI team
 //! wires it into a stdio transport.
 
-use openfang_types::tool::ToolDefinition;
+use openparlant_types::tool::ToolDefinition;
 use serde_json::json;
 
 /// MCP protocol version supported by this server.

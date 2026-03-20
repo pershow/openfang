@@ -3,8 +3,8 @@
 //! Stores entities and relations with support for graph pattern queries.
 
 use chrono::Utc;
-use openfang_types::error::{OpenFangError, OpenFangResult};
-use openfang_types::memory::{
+use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::memory::{
     Entity, EntityType, GraphMatch, GraphPattern, Relation, RelationType,
 };
 use rusqlite::Connection;

@@ -3,7 +3,7 @@
 //! Supports config includes: the `include` field specifies additional TOML files
 //! to load and deep-merge before the root config (root overrides includes).
 
-use openfang_types::config::KernelConfig;
+use openparlant_types::config::KernelConfig;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use tracing::info;
@@ -246,13 +246,13 @@ pub fn deep_merge_toml(base: &mut toml::Value, overlay: &toml::Value) {
 ///
 /// Respects `OPENFANG_HOME` env var (e.g. `OPENFANG_HOME=/opt/openparlant`).
 pub fn default_config_path() -> PathBuf {
-    openfang_home().join("config.toml")
+    openparlant_home().join("config.toml")
 }
 
 /// Get the OpenParlant home directory.
 ///
 /// Priority: `OPENFANG_HOME` env var > `~/.openparlant`.
-pub fn openfang_home() -> PathBuf {
+pub fn openparlant_home() -> PathBuf {
     if let Ok(home) = std::env::var("OPENFANG_HOME") {
         return PathBuf::from(home);
     }
