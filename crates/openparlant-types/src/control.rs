@@ -87,6 +87,67 @@ uuid_id!(GuidelineId);
 uuid_id!(JourneyId);
 uuid_id!(TraceId);
 
+/// Persisted control scope definition.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ControlScope {
+    pub scope_id: ScopeId,
+    pub name: String,
+    pub scope_type: String,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Persisted observation matcher definition.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ObservationDefinition {
+    pub observation_id: ObservationId,
+    pub scope_id: ScopeId,
+    pub name: String,
+    pub matcher_type: String,
+    pub matcher_config: serde_json::Value,
+    pub priority: i32,
+    pub enabled: bool,
+}
+
+/// Persisted guideline definition.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GuidelineDefinition {
+    pub guideline_id: GuidelineId,
+    pub scope_id: ScopeId,
+    pub name: String,
+    pub condition_ref: String,
+    pub action_text: String,
+    pub composition_mode: String,
+    pub priority: i32,
+    pub enabled: bool,
+}
+
+/// Persisted journey definition.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct JourneyDefinition {
+    pub journey_id: JourneyId,
+    pub scope_id: ScopeId,
+    pub name: String,
+    pub trigger_config: serde_json::Value,
+    pub completion_rule: Option<String>,
+    pub enabled: bool,
+}
+
+/// Persisted trace record for a compiled turn.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TurnTraceRecord {
+    pub trace_id: TraceId,
+    pub scope_id: ScopeId,
+    pub session_id: SessionId,
+    pub agent_id: AgentId,
+    pub channel_type: String,
+    pub request_message_ref: Option<String>,
+    pub compiled_context_hash: Option<String>,
+    pub response_mode: ResponseMode,
+    pub created_at: DateTime<Utc>,
+}
+
 /// Canonicalized inbound message used by the control plane.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CanonicalMessage {
@@ -236,6 +297,32 @@ pub enum ResponseMode {
     CannedOnly,
 }
 
+impl ResponseMode {
+    /// Stable snake_case storage representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Freeform => "freeform",
+            Self::Guided => "guided",
+            Self::Strict => "strict",
+            Self::CannedOnly => "canned_only",
+        }
+    }
+}
+
+impl FromStr for ResponseMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "freeform" => Ok(Self::Freeform),
+            "guided" => Ok(Self::Guided),
+            "strict" => Ok(Self::Strict),
+            "canned_only" => Ok(Self::CannedOnly),
+            other => Err(format!("unknown response mode: {other}")),
+        }
+    }
+}
+
 /// Trace metadata emitted at compile time.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditMeta {
@@ -321,6 +408,7 @@ pub struct ToolCallRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TurnOutcome {
     pub trace_id: TraceId,
+    pub scope_id: ScopeId,
     pub response_text: String,
     pub tool_calls: Vec<ToolCallRecord>,
     pub handoff_suggested: bool,
@@ -330,6 +418,7 @@ impl Default for TurnOutcome {
     fn default() -> Self {
         Self {
             trace_id: TraceId::new(),
+            scope_id: ScopeId::default(),
             response_text: String::new(),
             tool_calls: Vec::new(),
             handoff_suggested: false,
@@ -345,6 +434,39 @@ pub trait TurnControlCoordinator: Send + Sync {
 
     /// Persist control-plane state after the runtime loop completes.
     async fn after_response(&self, outcome: &TurnOutcome) -> Result<()>;
+}
+
+// ─── Explainability / trace sub-records ──────────────────────────────────────
+
+/// Persisted per-turn policy match record.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolicyMatchRecord {
+    pub record_id: TraceId,
+    pub trace_id: TraceId,
+    pub observation_hits_json: String,
+    pub guideline_hits_json: String,
+    pub guideline_exclusions_json: String,
+}
+
+/// Persisted per-turn journey transition record.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JourneyTransitionRecord {
+    pub record_id: TraceId,
+    pub trace_id: TraceId,
+    pub journey_instance_id: String,
+    pub before_state_id: Option<String>,
+    pub after_state_id: Option<String>,
+    pub decision_json: String,
+}
+
+/// Persisted per-turn tool authorization record.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolAuthorizationRecord {
+    pub record_id: TraceId,
+    pub trace_id: TraceId,
+    pub allowed_tools_json: String,
+    pub authorization_reasons_json: String,
+    pub approval_requirements_json: String,
 }
 
 #[cfg(test)]
@@ -363,5 +485,15 @@ mod tests {
         assert_eq!(msg.text, "hello");
         assert!(msg.attachments.is_empty());
         assert_eq!(msg.sender_type.as_deref(), Some("user"));
+    }
+
+    #[test]
+    fn response_mode_round_trips_to_storage_string() {
+        assert_eq!(ResponseMode::Guided.as_str(), "guided");
+        assert_eq!(
+            ResponseMode::from_str("canned_only").unwrap(),
+            ResponseMode::CannedOnly
+        );
+        assert!(ResponseMode::from_str("invalid").is_err());
     }
 }

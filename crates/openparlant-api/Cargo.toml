@@ -16,6 +16,11 @@ openparlant-skills = { path = "../openparlant-skills" }
 openparlant-hands = { path = "../openparlant-hands" }
 openparlant-extensions = { path = "../openparlant-extensions" }
 openparlant-migrate = { path = "../openparlant-migrate" }
+openparlant-control = { path = "../openparlant-control" }
+openparlant-policy = { path = "../openparlant-policy" }
+openparlant-journey = { path = "../openparlant-journey" }
+openparlant-context = { path = "../openparlant-context" }
+rusqlite = { workspace = true }
 dashmap = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }

@@ -161,6 +161,10 @@ pub struct OpenFangKernel {
     agent_msg_locks: dashmap::DashMap<AgentId, Arc<tokio::sync::Mutex<()>>>,
     /// Weak self-reference for trigger dispatch (set after Arc wrapping).
     self_handle: OnceLock<Weak<OpenFangKernel>>,
+    /// Optional control-plane coordinator — if set, compile_turn is called before each
+    /// LLM loop and its output is injected into the system prompt.
+    pub control_coordinator:
+        OnceLock<Arc<dyn openparlant_types::control::TurnControlCoordinator>>,
 }
 
 /// Bounded in-memory delivery receipt tracker.
@@ -1049,6 +1053,7 @@ impl OpenFangKernel {
             default_model_override: std::sync::RwLock::new(None),
             agent_msg_locks: dashmap::DashMap::new(),
             self_handle: OnceLock::new(),
+            control_coordinator: OnceLock::new(),
         };
 
         // Restore persisted agents from SQLite
@@ -2345,7 +2350,7 @@ impl OpenFangKernel {
                 })
                 .collect();
 
-            let prompt_ctx = openparlant_runtime::prompt_builder::PromptContext {
+            let mut prompt_ctx = openparlant_runtime::prompt_builder::PromptContext {
                 agent_name: manifest.name.clone(),
                 agent_description: manifest.description.clone(),
                 base_system_prompt: manifest.model.system_prompt.clone(),
@@ -2418,6 +2423,63 @@ impl OpenFangKernel {
                 sender_id,
                 sender_name,
             };
+
+            // ── Control plane injection ────────────────────────────────────────────
+            // If a TurnControlCoordinator is installed, compile the turn context and
+            // append system_constraints + active_guidelines to the base system prompt.
+            if let Some(coordinator) = self.control_coordinator.get() {
+                use openparlant_types::control::{CanonicalMessage, ScopeId, TurnInput};
+
+                let scope_id = ScopeId::new(agent_id.to_string());
+                let canonical_msg = CanonicalMessage::text(
+                    scope_id.clone(),
+                    prompt_ctx.channel_type.clone().unwrap_or_else(|| "web".into()),
+                    message,
+                );
+                let turn_input = TurnInput {
+                    scope_id,
+                    agent_id,
+                    session_id: entry.session_id,
+                    message: canonical_msg,
+                };
+
+                match coordinator.compile_turn(turn_input).await {
+                    Ok(ctx) => {
+                        if !ctx.active_guidelines.is_empty() {
+                            let mut injected = String::new();
+                            injected.push_str("\n\n## Active Guidelines\n");
+                            for g in &ctx.active_guidelines {
+                                injected.push_str(&format!(
+                                    "- **{}** (priority {}): {}\n",
+                                    g.name, g.priority, g.action_text
+                                ));
+                            }
+                            // Append allowed-tool restriction note if not all tools are open
+                            if !ctx.allowed_tools.is_empty() {
+                                injected.push_str("\n## Allowed Tools\n");
+                                injected.push_str(&format!(
+                                    "You may only use the following tools in this turn: {}.\n",
+                                    ctx.allowed_tools.join(", ")
+                                ));
+                            }
+                            prompt_ctx.base_system_prompt.push_str(&injected);
+                        }
+                        tracing::debug!(
+                            agent_id = %agent_id,
+                            guidelines = ctx.active_guidelines.len(),
+                            "control-plane context injected into system prompt"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            agent_id = %agent_id,
+                            error = %e,
+                            "compile_turn failed, continuing without control-plane context"
+                        );
+                    }
+                }
+            }
+
             manifest.model.system_prompt =
                 openparlant_runtime::prompt_builder::build_system_prompt(&prompt_ctx);
             // Store canonical context separately for injection as user message

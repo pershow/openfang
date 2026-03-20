@@ -60,6 +60,7 @@ uuid = { version = "1", features = ["v4", "v5", "serde"] }
 
 # Database
 rusqlite = { version = "0.31", features = ["bundled", "serde_json"] }
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "uuid", "chrono", "macros"] }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

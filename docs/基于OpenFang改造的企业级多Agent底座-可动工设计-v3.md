@@ -237,23 +237,27 @@ graph TD
     HP --> AR
 ```
 
+
+
 ---
 
 ## 7. 分层与模块职责
 
-| 层 | 模块 | 职责 | MVP 实现策略 |
-|---|---|---|---|
-| 接入层 | Channel Gateway | 渠道消息接入与标准化 | 复用现有 channels 和 adapters |
-| 会话层 | Session Binding Layer | 外部会话映射到内部 session | 新增绑定表，尽量不改现有 session 主表 |
-| 控制层 | Observation Matcher | 检测当前轮语义信号 | 新增 crate |
-| 控制层 | Policy Resolver | 规则匹配、冲突消解、关系处理 | 新增 crate |
-| 控制层 | Journey Runtime | SOP 状态推进与约束计算 | 新增 crate |
-| 控制层 | Knowledge Compiler | retriever / glossary / variables / canned response 编译 | 新增 crate |
-| 控制层 | Tool Exposure Resolver | 计算本轮 allowed tools 与 approval requirements | 新增 crate |
-| 执行层 | Current Agent Runtime Loop | LLM 调用、消息循环、工具回填 | 复用当前 runtime |
-| 执行层 | Current Tool Runner | tool 执行与 allowlist enforcement | 复用当前 tool runner |
-| 治理层 | Approval Manager | 人工审批 | 复用当前 approval manager，扩展上下文来源 |
-| 治理层 | Trace / Replay / Explainability | 记录本轮为什么这么做 | 新增 trace 表与 UI 面板 |
+
+| 层   | 模块                              | 职责                                                    | MVP 实现策略                      |
+| --- | ------------------------------- | ----------------------------------------------------- | ----------------------------- |
+| 接入层 | Channel Gateway                 | 渠道消息接入与标准化                                            | 复用现有 channels 和 adapters      |
+| 会话层 | Session Binding Layer           | 外部会话映射到内部 session                                     | 新增绑定表，尽量不改现有 session 主表       |
+| 控制层 | Observation Matcher             | 检测当前轮语义信号                                             | 新增 crate                      |
+| 控制层 | Policy Resolver                 | 规则匹配、冲突消解、关系处理                                        | 新增 crate                      |
+| 控制层 | Journey Runtime                 | SOP 状态推进与约束计算                                         | 新增 crate                      |
+| 控制层 | Knowledge Compiler              | retriever / glossary / variables / canned response 编译 | 新增 crate                      |
+| 控制层 | Tool Exposure Resolver          | 计算本轮 allowed tools 与 approval requirements            | 新增 crate                      |
+| 执行层 | Current Agent Runtime Loop      | LLM 调用、消息循环、工具回填                                      | 复用当前 runtime                  |
+| 执行层 | Current Tool Runner             | tool 执行与 allowlist enforcement                        | 复用当前 tool runner              |
+| 治理层 | Approval Manager                | 人工审批                                                  | 复用当前 approval manager，扩展上下文来源 |
+| 治理层 | Trace / Replay / Explainability | 记录本轮为什么这么做                                            | 新增 trace 表与 UI 面板             |
+
 
 ---
 

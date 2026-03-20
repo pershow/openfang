@@ -1,0 +1,872 @@
+//! Control-plane REST handlers — /api/control/*
+//!
+//! Phase 1 目标：把 observations / guidelines / journeys / glossary /
+//! context_variables / canned_responses 的 CRUD 暴露出来，
+//! 同时提供 POST /api/control/test/compile-turn 调试端点。
+
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use axum::Json;
+use chrono::Utc;
+use openparlant_types::control::{
+    CanonicalMessage, ControlScope, GuidelineDefinition, GuidelineId, JourneyDefinition, JourneyId,
+    ObservationDefinition, ObservationId, ScopeId, TurnInput,
+};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+use crate::routes::AppState;
+
+// ─── Helper ───────────────────────────────────────────────────────────────────
+
+fn internal(e: impl std::fmt::Display) -> (StatusCode, Json<serde_json::Value>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(serde_json::json!({"error": e.to_string()})),
+    )
+}
+
+fn not_found(what: &str) -> (StatusCode, Json<serde_json::Value>) {
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({"error": format!("{what} not found")})),
+    )
+}
+
+// ─── Control Scopes ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct CreateScopeRequest {
+    pub name: String,
+    #[serde(default = "default_scope_type")]
+    pub scope_type: String,
+}
+fn default_scope_type() -> String {
+    "agent".to_string()
+}
+
+/// POST /api/control/scopes
+pub async fn create_scope(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CreateScopeRequest>,
+) -> impl IntoResponse {
+    let now = Utc::now();
+    let scope_id = ScopeId::new(uuid::Uuid::new_v4().to_string());
+    let scope = ControlScope {
+        scope_id: scope_id.clone(),
+        name: req.name,
+        scope_type: req.scope_type,
+        status: "active".to_string(),
+        created_at: now,
+        updated_at: now,
+    };
+    match state.control_store.upsert_scope(&scope) {
+        Ok(()) => (StatusCode::CREATED, Json(serde_json::json!(scope))),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/scopes/:scope_id
+pub async fn get_scope(
+    State(state): State<Arc<AppState>>,
+    Path(scope_id): Path<String>,
+) -> impl IntoResponse {
+    let sid = ScopeId::new(scope_id);
+    match state.control_store.get_scope(&sid) {
+        Ok(Some(s)) => (StatusCode::OK, Json(serde_json::json!(s))),
+        Ok(None) => not_found("scope"),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/scopes
+pub async fn list_scopes(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match state.control_store.list_scopes() {
+        Ok(scopes) => (StatusCode::OK, Json(serde_json::json!(scopes))),
+        Err(e) => internal(e),
+    }
+}
+
+// ─── Observations ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct CreateObservationRequest {
+    pub scope_id: String,
+    pub name: String,
+    #[serde(default = "default_matcher_type")]
+    pub matcher_type: String,
+    #[serde(default)]
+    pub matcher_config: serde_json::Value,
+    #[serde(default)]
+    pub priority: i32,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+fn default_matcher_type() -> String {
+    "keyword".to_string()
+}
+fn default_true() -> bool {
+    true
+}
+
+/// POST /api/control/observations
+pub async fn create_observation(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CreateObservationRequest>,
+) -> impl IntoResponse {
+    let obs = ObservationDefinition {
+        observation_id: ObservationId(uuid::Uuid::new_v4()),
+        scope_id: ScopeId::new(req.scope_id),
+        name: req.name,
+        matcher_type: req.matcher_type,
+        matcher_config: req.matcher_config,
+        priority: req.priority,
+        enabled: req.enabled,
+    };
+    match state.policy_store.upsert_observation(&obs) {
+        Ok(()) => (StatusCode::CREATED, Json(serde_json::json!(obs))),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/scopes/:scope_id/observations
+pub async fn list_observations(
+    State(state): State<Arc<AppState>>,
+    Path(scope_id): Path<String>,
+) -> impl IntoResponse {
+    let sid = ScopeId::new(scope_id);
+    match state.policy_store.list_observations(&sid, false) {
+        Ok(obs) => (StatusCode::OK, Json(serde_json::json!(obs))),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/observations/:observation_id
+pub async fn get_observation(
+    State(state): State<Arc<AppState>>,
+    Path(observation_id): Path<String>,
+) -> impl IntoResponse {
+    let oid = match uuid::Uuid::parse_str(&observation_id) {
+        Ok(u) => ObservationId(u),
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid observation ID"})),
+            )
+        }
+    };
+    match state.policy_store.get_observation(oid) {
+        Ok(Some(o)) => (StatusCode::OK, Json(serde_json::json!(o))),
+        Ok(None) => not_found("observation"),
+        Err(e) => internal(e),
+    }
+}
+
+// ─── Guidelines ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct CreateGuidelineRequest {
+    pub scope_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub condition_ref: String,
+    pub action_text: String,
+    #[serde(default = "default_composition_mode")]
+    pub composition_mode: String,
+    #[serde(default)]
+    pub priority: i32,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+fn default_composition_mode() -> String {
+    "append".to_string()
+}
+
+/// POST /api/control/guidelines
+pub async fn create_guideline(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CreateGuidelineRequest>,
+) -> impl IntoResponse {
+    let g = GuidelineDefinition {
+        guideline_id: GuidelineId(uuid::Uuid::new_v4()),
+        scope_id: ScopeId::new(req.scope_id),
+        name: req.name,
+        condition_ref: req.condition_ref,
+        action_text: req.action_text,
+        composition_mode: req.composition_mode,
+        priority: req.priority,
+        enabled: req.enabled,
+    };
+    match state.policy_store.upsert_guideline(&g) {
+        Ok(()) => (StatusCode::CREATED, Json(serde_json::json!(g))),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/scopes/:scope_id/guidelines
+pub async fn list_guidelines(
+    State(state): State<Arc<AppState>>,
+    Path(scope_id): Path<String>,
+) -> impl IntoResponse {
+    let sid = ScopeId::new(scope_id);
+    match state.policy_store.list_guidelines(&sid, false) {
+        Ok(gs) => (StatusCode::OK, Json(serde_json::json!(gs))),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/guidelines/:guideline_id
+pub async fn get_guideline(
+    State(state): State<Arc<AppState>>,
+    Path(guideline_id): Path<String>,
+) -> impl IntoResponse {
+    let gid = match uuid::Uuid::parse_str(&guideline_id) {
+        Ok(u) => GuidelineId(u),
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid guideline ID"})),
+            )
+        }
+    };
+    match state.policy_store.get_guideline(gid) {
+        Ok(Some(g)) => (StatusCode::OK, Json(serde_json::json!(g))),
+        Ok(None) => not_found("guideline"),
+        Err(e) => internal(e),
+    }
+}
+
+// ─── Journeys ─────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct CreateJourneyRequest {
+    pub scope_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub trigger_config: serde_json::Value,
+    pub completion_rule: Option<String>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+/// POST /api/control/journeys
+pub async fn create_journey(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CreateJourneyRequest>,
+) -> impl IntoResponse {
+    let j = JourneyDefinition {
+        journey_id: JourneyId(uuid::Uuid::new_v4()),
+        scope_id: ScopeId::new(req.scope_id),
+        name: req.name,
+        trigger_config: req.trigger_config,
+        completion_rule: req.completion_rule,
+        enabled: req.enabled,
+    };
+    match state.journey_store.upsert_journey(&j) {
+        Ok(()) => (StatusCode::CREATED, Json(serde_json::json!(j))),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/scopes/:scope_id/journeys
+pub async fn list_journeys(
+    State(state): State<Arc<AppState>>,
+    Path(scope_id): Path<String>,
+) -> impl IntoResponse {
+    let sid = ScopeId::new(scope_id);
+    match state.journey_store.list_journeys_sync(&sid, false) {
+        Ok(js) => (StatusCode::OK, Json(serde_json::json!(js))),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/journeys/:journey_id
+pub async fn get_journey(
+    State(state): State<Arc<AppState>>,
+    Path(journey_id): Path<String>,
+) -> impl IntoResponse {
+    let jid = match uuid::Uuid::parse_str(&journey_id) {
+        Ok(u) => JourneyId(u),
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid journey ID"})),
+            )
+        }
+    };
+    match state.journey_store.get_journey_sync(&jid) {
+        Ok(Some(j)) => (StatusCode::OK, Json(serde_json::json!(j))),
+        Ok(None) => not_found("journey"),
+        Err(e) => internal(e),
+    }
+}
+
+// ─── Glossary terms ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GlossaryTermRequest {
+    pub scope_id: String,
+    pub name: String,
+    pub description: String,
+    #[serde(default)]
+    pub synonyms: Vec<String>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+/// POST /api/control/glossary-terms
+pub async fn create_glossary_term(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<GlossaryTermRequest>,
+) -> impl IntoResponse {
+    let synonyms_json = serde_json::to_string(&req.synonyms).unwrap_or_else(|_| "[]".to_string());
+    let term_id = uuid::Uuid::new_v4().to_string();
+    let scope_id_clone = req.scope_id.clone();
+    let name_clone = req.name.clone();
+    let conn = state.db_conn.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let c = conn.lock().map_err(|e| e.to_string())?;
+        c.execute(
+            "INSERT INTO glossary_terms (term_id, scope_id, name, description, synonyms_json, enabled)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(term_id) DO UPDATE SET
+                name = excluded.name,
+                description = excluded.description,
+                synonyms_json = excluded.synonyms_json,
+                enabled = excluded.enabled",
+            rusqlite::params![term_id, req.scope_id, req.name, req.description, synonyms_json, req.enabled as i64],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok::<_, String>(term_id)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(id)) => (
+            StatusCode::CREATED,
+            Json(serde_json::json!({"term_id": id, "scope_id": scope_id_clone, "name": name_clone})),
+        ),
+        Ok(Err(e)) => internal(e),
+        Err(e) => internal(e),
+    }
+}
+
+// ─── Context variables ────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ContextVariableRequest {
+    pub scope_id: String,
+    pub name: String,
+    #[serde(default = "default_static")]
+    pub value_source_type: String,
+    /// For static: `{"value": "..."}`.  For other types: provider-specific config.
+    #[serde(default)]
+    pub value_source_config: serde_json::Value,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+fn default_static() -> String {
+    "static".to_string()
+}
+
+/// POST /api/control/context-variables
+pub async fn create_context_variable(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<ContextVariableRequest>,
+) -> impl IntoResponse {
+    let config_json = serde_json::to_string(&req.value_source_config)
+        .unwrap_or_else(|_| "{}".to_string());
+    let var_id = uuid::Uuid::new_v4().to_string();
+    let scope_id_clone = req.scope_id.clone();
+    let name_clone = req.name.clone();
+    let conn = state.db_conn.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let c = conn.lock().map_err(|e| e.to_string())?;
+        c.execute(
+            "INSERT INTO context_variables (variable_id, scope_id, name, value_source_type, value_source_config, enabled)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(variable_id) DO UPDATE SET
+                name = excluded.name,
+                value_source_type = excluded.value_source_type,
+                value_source_config = excluded.value_source_config,
+                enabled = excluded.enabled",
+            rusqlite::params![var_id, req.scope_id, req.name, req.value_source_type, config_json, req.enabled as i64],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok::<_, String>(var_id)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(id)) => (
+            StatusCode::CREATED,
+            Json(serde_json::json!({"variable_id": id, "scope_id": scope_id_clone, "name": name_clone})),
+        ),
+        Ok(Err(e)) => internal(e),
+        Err(e) => internal(e),
+    }
+}
+
+// ─── Canned responses ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CannedResponseRequest {
+    pub scope_id: String,
+    pub name: String,
+    pub template_text: String,
+    #[serde(default)]
+    pub priority: i32,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+/// POST /api/control/canned-responses
+pub async fn create_canned_response(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CannedResponseRequest>,
+) -> impl IntoResponse {
+    let resp_id = uuid::Uuid::new_v4().to_string();
+    let scope_id_clone = req.scope_id.clone();
+    let name_clone = req.name.clone();
+    let conn = state.db_conn.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let c = conn.lock().map_err(|e| e.to_string())?;
+        c.execute(
+            "INSERT INTO canned_responses (response_id, scope_id, name, template_text, priority, enabled)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(response_id) DO UPDATE SET
+                name = excluded.name,
+                template_text = excluded.template_text,
+                priority = excluded.priority,
+                enabled = excluded.enabled",
+            rusqlite::params![resp_id, req.scope_id, req.name, req.template_text, req.priority, req.enabled as i64],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok::<_, String>(resp_id)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(id)) => (
+            StatusCode::CREATED,
+            Json(serde_json::json!({"response_id": id, "scope_id": scope_id_clone, "name": name_clone})),
+        ),
+        Ok(Err(e)) => internal(e),
+        Err(e) => internal(e),
+    }
+}
+
+// ─── Test: compile-turn ───────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct CompileTurnRequest {
+    pub scope_id: String,
+    pub agent_id: String,
+    pub session_id: String,
+    pub message: String,
+    #[serde(default = "default_channel")]
+    pub channel_type: String,
+}
+fn default_channel() -> String {
+    "web".to_string()
+}
+
+/// POST /api/control/test/compile-turn
+///
+/// Dry-run the control-plane compilation and return `CompiledTurnContext`
+/// without calling the agent loop.  Useful for debugging policy / journey /
+/// knowledge injection.
+pub async fn test_compile_turn(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CompileTurnRequest>,
+) -> impl IntoResponse {
+    let scope_id = ScopeId::new(req.scope_id.clone());
+    let agent_id: openparlant_types::agent::AgentId = match req.agent_id.parse() {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid agent ID"})),
+            )
+        }
+    };
+    let session_id = match uuid::Uuid::parse_str(&req.session_id) {
+        Ok(u) => openparlant_types::agent::SessionId(u),
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid session ID"})),
+            )
+        }
+    };
+
+    let message = CanonicalMessage::text(scope_id.clone(), req.channel_type.clone(), req.message);
+    let input = TurnInput {
+        scope_id,
+        agent_id,
+        session_id,
+        message,
+    };
+
+    match state.control_coordinator.compile_turn(input).await {
+        Ok(ctx) => (StatusCode::OK, Json(serde_json::json!(ctx))),
+        Err(e) => internal(e),
+    }
+}
+
+// ─── Trace / explainability ───────────────────────────────────────────────────
+
+/// GET /api/sessions/:session_id/control-trace
+pub async fn session_control_trace(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+) -> impl IntoResponse {
+    let sid = match uuid::Uuid::parse_str(&session_id) {
+        Ok(u) => openparlant_types::agent::SessionId(u),
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid session ID"})),
+            )
+        }
+    };
+    match state.control_store.list_turn_traces_by_session(sid, 50) {
+        Ok(traces) => (StatusCode::OK, Json(serde_json::json!(traces))),
+        Err(e) => internal(e),
+    }
+}
+
+// ─── Guideline Relationships ──────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GuidelineRelationshipRequest {
+    pub scope_id: String,
+    pub from_guideline_id: String,
+    pub to_guideline_id: String,
+    /// "overrides" | "complements" | "conflicts_with" | "requires"
+    pub relation_type: String,
+}
+
+/// POST /api/control/guideline-relationships
+pub async fn create_guideline_relationship(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<GuidelineRelationshipRequest>,
+) -> impl IntoResponse {
+    let rel_id = uuid::Uuid::new_v4().to_string();
+    let conn = state.db_conn.clone();
+    let scope_id_r = req.scope_id.clone();
+    let from_r = req.from_guideline_id.clone();
+    let to_r = req.to_guideline_id.clone();
+    let rel_type_r = req.relation_type.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let c = conn.lock().map_err(|e| e.to_string())?;
+        c.execute(
+            "INSERT INTO guideline_relationships
+                (relationship_id, scope_id, from_guideline_id, to_guideline_id, relation_type)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(scope_id, from_guideline_id, to_guideline_id, relation_type) DO NOTHING",
+            rusqlite::params![rel_id, scope_id_r, from_r, to_r, rel_type_r],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok::<_, String>(rel_id)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(id)) => (StatusCode::CREATED, Json(serde_json::json!({
+            "relationship_id": id,
+            "scope_id": req.scope_id,
+            "from_guideline_id": req.from_guideline_id,
+            "to_guideline_id": req.to_guideline_id,
+            "relation_type": req.relation_type,
+        }))),
+        Ok(Err(e)) => internal(e),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/scopes/:scope_id/guideline-relationships
+pub async fn list_guideline_relationships(
+    State(state): State<Arc<AppState>>,
+    Path(scope_id): Path<String>,
+) -> impl IntoResponse {
+    let conn = state.db_conn.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let c = conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = c
+            .prepare(
+                "SELECT relationship_id, scope_id, from_guideline_id, to_guideline_id, relation_type
+                 FROM guideline_relationships WHERE scope_id = ?1
+                 ORDER BY relation_type, from_guideline_id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![scope_id], |row| {
+                Ok(serde_json::json!({
+                    "relationship_id": row.get::<_, String>(0)?,
+                    "scope_id": row.get::<_, String>(1)?,
+                    "from_guideline_id": row.get::<_, String>(2)?,
+                    "to_guideline_id": row.get::<_, String>(3)?,
+                    "relation_type": row.get::<_, String>(4)?,
+                }))
+            })
+            .map_err(|e| e.to_string())?;
+        let items: Vec<_> = rows.filter_map(|r| r.ok()).collect();
+        Ok::<_, String>(items)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(items)) => (StatusCode::OK, Json(serde_json::json!(items))),
+        Ok(Err(e)) => internal(e),
+        Err(e) => internal(e),
+    }
+}
+
+// ─── Journey States ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JourneyStateRequest {
+    pub name: String,
+    pub description: Option<String>,
+    #[serde(default)]
+    pub required_fields: Vec<String>,
+}
+
+/// POST /api/control/journeys/:journey_id/states
+pub async fn create_journey_state(
+    State(state): State<Arc<AppState>>,
+    Path(journey_id): Path<String>,
+    Json(req): Json<JourneyStateRequest>,
+) -> impl IntoResponse {
+    let state_id = uuid::Uuid::new_v4().to_string();
+    let req_fields_json =
+        serde_json::to_string(&req.required_fields).unwrap_or_else(|_| "[]".into());
+    let conn = state.db_conn.clone();
+    let name_clone = req.name.clone();
+    let jid_clone = journey_id.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let c = conn.lock().map_err(|e| e.to_string())?;
+        c.execute(
+            "INSERT INTO journey_states (state_id, journey_id, name, description, required_fields)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(journey_id, name) DO UPDATE SET
+                description = excluded.description,
+                required_fields = excluded.required_fields",
+            rusqlite::params![state_id, jid_clone, req.name, req.description, req_fields_json],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok::<_, String>(state_id)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(id)) => (StatusCode::CREATED, Json(serde_json::json!({
+            "state_id": id,
+            "journey_id": journey_id,
+            "name": name_clone,
+        }))),
+        Ok(Err(e)) => internal(e),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/journeys/:journey_id/states
+pub async fn list_journey_states(
+    State(state): State<Arc<AppState>>,
+    Path(journey_id): Path<String>,
+) -> impl IntoResponse {
+    let conn = state.db_conn.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let c = conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = c
+            .prepare(
+                "SELECT state_id, journey_id, name, description, required_fields
+                 FROM journey_states WHERE journey_id = ?1 ORDER BY name ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![journey_id], |row| {
+                let rf_json: String = row.get(4).unwrap_or_else(|_| "[]".into());
+                let required_fields: Vec<String> =
+                    serde_json::from_str(&rf_json).unwrap_or_default();
+                Ok(serde_json::json!({
+                    "state_id": row.get::<_, String>(0)?,
+                    "journey_id": row.get::<_, String>(1)?,
+                    "name": row.get::<_, String>(2)?,
+                    "description": row.get::<_, Option<String>>(3)?,
+                    "required_fields": required_fields,
+                }))
+            })
+            .map_err(|e| e.to_string())?;
+        let items: Vec<_> = rows.filter_map(|r| r.ok()).collect();
+        Ok::<_, String>(items)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(items)) => (StatusCode::OK, Json(serde_json::json!(items))),
+        Ok(Err(e)) => internal(e),
+        Err(e) => internal(e),
+    }
+}
+
+// ─── Journey Transitions ──────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JourneyTransitionRequest {
+    pub from_state_id: String,
+    pub to_state_id: String,
+    #[serde(default)]
+    pub condition_config: serde_json::Value,
+    /// "auto" | "observation" | "manual"
+    #[serde(default = "default_transition_type")]
+    pub transition_type: String,
+}
+fn default_transition_type() -> String {
+    "auto".to_string()
+}
+
+/// POST /api/control/journeys/:journey_id/transitions
+pub async fn create_journey_transition(
+    State(state): State<Arc<AppState>>,
+    Path(journey_id): Path<String>,
+    Json(req): Json<JourneyTransitionRequest>,
+) -> impl IntoResponse {
+    let trans_id = uuid::Uuid::new_v4().to_string();
+    let cond_json =
+        serde_json::to_string(&req.condition_config).unwrap_or_else(|_| "{}".into());
+    let conn = state.db_conn.clone();
+    let jid_clone = journey_id.clone();
+    let from_clone = req.from_state_id.clone();
+    let to_clone = req.to_state_id.clone();
+    let type_clone = req.transition_type.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let c = conn.lock().map_err(|e| e.to_string())?;
+        c.execute(
+            "INSERT INTO journey_transitions
+                (transition_id, journey_id, from_state_id, to_state_id, condition_config, transition_type)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(journey_id, from_state_id, to_state_id, transition_type) DO UPDATE SET
+                condition_config = excluded.condition_config",
+            rusqlite::params![trans_id, jid_clone, from_clone, to_clone, cond_json, type_clone],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok::<_, String>(trans_id)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(id)) => (StatusCode::CREATED, Json(serde_json::json!({
+            "transition_id": id,
+            "journey_id": journey_id,
+            "from_state_id": req.from_state_id,
+            "to_state_id": req.to_state_id,
+            "transition_type": req.transition_type,
+        }))),
+        Ok(Err(e)) => internal(e),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/journeys/:journey_id/transitions
+pub async fn list_journey_transitions(
+    State(state): State<Arc<AppState>>,
+    Path(journey_id): Path<String>,
+) -> impl IntoResponse {
+    let conn = state.db_conn.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let c = conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = c
+            .prepare(
+                "SELECT transition_id, journey_id, from_state_id, to_state_id,
+                        condition_config, transition_type
+                 FROM journey_transitions WHERE journey_id = ?1
+                 ORDER BY from_state_id, transition_type",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![journey_id], |row| {
+                let cond_str: String = row.get(4).unwrap_or_else(|_| "{}".into());
+                let condition_config: serde_json::Value =
+                    serde_json::from_str(&cond_str).unwrap_or_default();
+                Ok(serde_json::json!({
+                    "transition_id": row.get::<_, String>(0)?,
+                    "journey_id": row.get::<_, String>(1)?,
+                    "from_state_id": row.get::<_, String>(2)?,
+                    "to_state_id": row.get::<_, String>(3)?,
+                    "condition_config": condition_config,
+                    "transition_type": row.get::<_, String>(5)?,
+                }))
+            })
+            .map_err(|e| e.to_string())?;
+        let items: Vec<_> = rows.filter_map(|r| r.ok()).collect();
+        Ok::<_, String>(items)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(items)) => (StatusCode::OK, Json(serde_json::json!(items))),
+        Ok(Err(e)) => internal(e),
+        Err(e) => internal(e),
+    }
+}
+
+// ─── Session Journey State ────────────────────────────────────────────────────
+
+/// GET /api/sessions/:session_id/journey-state
+///
+/// Returns the active journey instance (if any) for this session,
+/// including the current state details.
+pub async fn session_journey_state(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+) -> impl IntoResponse {
+    let conn = state.db_conn.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let c = conn.lock().map_err(|e| e.to_string())?;
+
+        // Find the active journey instance for this session
+        let row = c.query_row(
+            "SELECT ji.journey_instance_id, ji.journey_id, ji.current_state_id,
+                    ji.status, ji.state_payload, ji.updated_at,
+                    j.name as journey_name,
+                    js.name as state_name, js.description as state_description
+             FROM journey_instances ji
+             LEFT JOIN journeys j ON j.journey_id = ji.journey_id
+             LEFT JOIN journey_states js ON js.state_id = ji.current_state_id
+             WHERE ji.session_id = ?1 AND ji.status = 'active'
+             ORDER BY ji.updated_at DESC LIMIT 1",
+            rusqlite::params![session_id],
+            |row| {
+                Ok(serde_json::json!({
+                    "journey_instance_id": row.get::<_, String>(0)?,
+                    "journey_id": row.get::<_, String>(1)?,
+                    "current_state_id": row.get::<_, String>(2)?,
+                    "status": row.get::<_, String>(3)?,
+                    "state_payload": row.get::<_, String>(4).unwrap_or_default(),
+                    "updated_at": row.get::<_, String>(5).unwrap_or_default(),
+                    "journey_name": row.get::<_, Option<String>>(6)?,
+                    "state_name": row.get::<_, Option<String>>(7)?,
+                    "state_description": row.get::<_, Option<String>>(8)?,
+                }))
+            },
+        );
+
+        match row {
+            Ok(v) => Ok::<_, String>(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    })
+    .await;
+
+    match result {
+        Ok(Ok(Some(data))) => (StatusCode::OK, Json(serde_json::json!({"active": true, "journey": data}))),
+        Ok(Ok(None)) => (StatusCode::OK, Json(serde_json::json!({"active": false, "journey": null}))),
+        Ok(Err(e)) => internal(e),
+        Err(e) => internal(e),
+    }
+}
+

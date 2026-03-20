@@ -40,6 +40,17 @@ pub struct AppState {
     /// Avoids blocking the `/api/providers` endpoint on TCP timeouts to
     /// unreachable local services. 60-second TTL.
     pub provider_probe_cache: openparlant_runtime::provider_health::ProbeCache,
+    // ── Control plane ─────────────────────────────────────────────────────────
+    /// Shared raw SQLite connection used by control-plane rusqlite stores.
+    pub db_conn: Arc<std::sync::Mutex<rusqlite::Connection>>,
+    /// TurnControlCoordinator — compiles control context before the LLM loop.
+    pub control_coordinator: Arc<dyn openparlant_types::control::TurnControlCoordinator>,
+    /// ControlStore for turn traces and explainability records.
+    pub control_store: openparlant_control::ControlStore,
+    /// PolicyStore for observations and guidelines.
+    pub policy_store: openparlant_policy::PolicyStore,
+    /// JourneyStore for journey definitions and instances.
+    pub journey_store: openparlant_journey::JourneyStore,
 }
 
 /// POST /api/agents — Spawn a new agent.

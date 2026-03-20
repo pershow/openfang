@@ -1,0 +1,255 @@
+//! Orchestrates control-plane compilation around the existing runtime loop.
+
+mod store;
+
+use anyhow::Result;
+use async_trait::async_trait;
+use chrono::Utc;
+use openparlant_context::{KnowledgeBundle, KnowledgeCompiler, NoopKnowledgeCompiler};
+use openparlant_journey::{JourneyRuntime, NoopJourneyRuntime};
+use openparlant_policy::{
+    NoopObservationMatcher, NoopPolicyResolver, ObservationMatcher, PolicyResolver,
+};
+use openparlant_types::control::{
+    AuditMeta, CompiledTurnContext, PolicyMatchRecord, ResponseMode, ToolAuthorization,
+    ToolAuthorizationRecord, TurnControlCoordinator, TurnInput, TurnOutcome,
+};
+pub use store::ControlStore;
+use tracing::{debug, warn};
+
+/// Default coordinator wiring together policy, journey, and context compilation.
+///
+/// `store` is optional – if supplied, every `compile_turn` writes a `turn_trace`
+/// and every `after_response` writes the three explainability sub-records.
+pub struct DefaultTurnControlCoordinator<OM, PR, JR, KC> {
+    observation_matcher: OM,
+    policy_resolver: PR,
+    journey_runtime: JR,
+    knowledge_compiler: KC,
+    store: Option<ControlStore>,
+}
+
+impl<OM, PR, JR, KC> DefaultTurnControlCoordinator<OM, PR, JR, KC> {
+    pub fn new(
+        observation_matcher: OM,
+        policy_resolver: PR,
+        journey_runtime: JR,
+        knowledge_compiler: KC,
+    ) -> Self {
+        Self {
+            observation_matcher,
+            policy_resolver,
+            journey_runtime,
+            knowledge_compiler,
+            store: None,
+        }
+    }
+
+    /// Attach a `ControlStore` so that turn traces are persisted.
+    pub fn with_store(mut self, store: ControlStore) -> Self {
+        self.store = Some(store);
+        self
+    }
+}
+
+impl
+    DefaultTurnControlCoordinator<
+        NoopObservationMatcher,
+        NoopPolicyResolver,
+        NoopJourneyRuntime,
+        NoopKnowledgeCompiler,
+    >
+{
+    /// Create a no-op coordinator useful for incremental integration.
+    pub fn noop() -> Self {
+        Self::new(
+            NoopObservationMatcher,
+            NoopPolicyResolver,
+            NoopJourneyRuntime,
+            NoopKnowledgeCompiler,
+        )
+    }
+}
+
+#[async_trait]
+impl<OM, PR, JR, KC> TurnControlCoordinator for DefaultTurnControlCoordinator<OM, PR, JR, KC>
+where
+    OM: ObservationMatcher,
+    PR: PolicyResolver,
+    JR: JourneyRuntime,
+    KC: KnowledgeCompiler,
+{
+    async fn compile_turn(&self, input: TurnInput) -> Result<CompiledTurnContext> {
+        let observations = self
+            .observation_matcher
+            .match_observations(&input.scope_id, &input.message)
+            .await?;
+        let policy = self
+            .policy_resolver
+            .resolve_policy(&input.scope_id, &input.message, &observations)
+            .await?;
+        let journey = self
+            .journey_runtime
+            .resolve_journey(&input.scope_id, &input.message)
+            .await?;
+        let knowledge = self
+            .knowledge_compiler
+            .compile_knowledge(
+                &input.scope_id,
+                &input.message,
+                journey.active_journey.as_ref(),
+            )
+            .await?;
+
+        let allowed_tools: Vec<String> = policy
+            .tool_authorizations
+            .iter()
+            .map(|auth| auth.tool_name.clone())
+            .collect();
+        let response_mode = infer_response_mode(&knowledge, &policy.tool_authorizations);
+
+        let audit_meta = AuditMeta {
+            scope_id: input.scope_id.clone(),
+            compiled_at: Utc::now(),
+            ..AuditMeta::default()
+        };
+
+        debug!(
+            scope = %input.scope_id,
+            trace_id = %audit_meta.trace_id,
+            observations = observations.len(),
+            guidelines = policy.active_guidelines.len(),
+            tools = allowed_tools.len(),
+            "compiled turn context"
+        );
+
+        // Persist turn trace (best-effort – failure is logged, not propagated)
+        if let Some(store) = &self.store {
+            use openparlant_types::control::TurnTraceRecord;
+            let trace = TurnTraceRecord {
+                trace_id: audit_meta.trace_id,
+                scope_id: input.scope_id.clone(),
+                session_id: input.session_id,
+                agent_id: input.agent_id,
+                channel_type: input.message.channel_type.clone(),
+                request_message_ref: input.message.external_message_id.clone(),
+                compiled_context_hash: None,
+                response_mode,
+                created_at: audit_meta.compiled_at,
+            };
+            if let Err(e) = store.upsert_turn_trace(&trace) {
+                warn!(trace_id = %audit_meta.trace_id, error = %e, "failed to persist turn trace");
+            }
+        }
+
+        Ok(CompiledTurnContext {
+            agent_id: input.agent_id,
+            session_id: input.session_id,
+            canonical_message: input.message,
+            active_observations: observations,
+            active_guidelines: policy.active_guidelines,
+            excluded_guidelines: policy.excluded_guidelines,
+            active_journey: journey.active_journey,
+            retrieved_chunks: knowledge.retrieved_chunks,
+            glossary_terms: knowledge.glossary_terms,
+            context_variables: knowledge.context_variables,
+            canned_response_candidates: knowledge.canned_response_candidates,
+            allowed_tools,
+            tool_authorizations: policy.tool_authorizations,
+            response_mode,
+            audit_meta,
+        })
+    }
+
+    async fn after_response(&self, outcome: &TurnOutcome) -> Result<()> {
+        let journey_update = self
+            .journey_runtime
+            .apply_outcome(&outcome.scope_id, outcome)
+            .await?;
+
+        debug!(
+            trace_id = %outcome.trace_id,
+            tool_calls = outcome.tool_calls.len(),
+            handoff_suggested = outcome.handoff_suggested,
+            journey_updated = journey_update.is_some(),
+            "recorded turn outcome"
+        );
+
+        // Persist explainability sub-records (best-effort)
+        if let Some(store) = &self.store {
+            let rec_id = openparlant_types::control::TraceId::new();
+            let pmr = PolicyMatchRecord {
+                record_id: rec_id,
+                trace_id: outcome.trace_id,
+                observation_hits_json: "[]".to_string(),
+                guideline_hits_json: "[]".to_string(),
+                guideline_exclusions_json: "[]".to_string(),
+            };
+            if let Err(e) = store.upsert_policy_match_record(&pmr) {
+                warn!(trace_id = %outcome.trace_id, error = %e, "failed to persist policy match record");
+            }
+
+            let tar = ToolAuthorizationRecord {
+                record_id: openparlant_types::control::TraceId::new(),
+                trace_id: outcome.trace_id,
+                allowed_tools_json: serde_json::to_string(
+                    &outcome
+                        .tool_calls
+                        .iter()
+                        .map(|tc| &tc.tool_name)
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap_or_default(),
+                authorization_reasons_json: "{}".to_string(),
+                approval_requirements_json: "{}".to_string(),
+            };
+            if let Err(e) = store.upsert_tool_authorization_record(&tar) {
+                warn!(trace_id = %outcome.trace_id, error = %e, "failed to persist tool auth record");
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn infer_response_mode(
+    knowledge: &KnowledgeBundle,
+    tool_authorizations: &[ToolAuthorization],
+) -> ResponseMode {
+    if !knowledge.canned_response_candidates.is_empty() {
+        return ResponseMode::CannedOnly;
+    }
+    if tool_authorizations
+        .iter()
+        .any(|auth| auth.requires_approval)
+    {
+        return ResponseMode::Strict;
+    }
+    if !knowledge.glossary_terms.is_empty() || !knowledge.context_variables.is_empty() {
+        return ResponseMode::Guided;
+    }
+    ResponseMode::Freeform
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use openparlant_types::agent::{AgentId, SessionId};
+    use openparlant_types::control::{CanonicalMessage, ScopeId, TurnInput};
+
+    #[tokio::test]
+    async fn noop_coordinator_compiles_empty_context() {
+        let coordinator = DefaultTurnControlCoordinator::noop();
+        let input = TurnInput {
+            scope_id: ScopeId::default(),
+            agent_id: AgentId::new(),
+            session_id: SessionId::new(),
+            message: CanonicalMessage::text(ScopeId::default(), "web", "hello"),
+        };
+
+        let ctx = coordinator.compile_turn(input).await.unwrap();
+        assert!(ctx.active_observations.is_empty());
+        assert!(ctx.allowed_tools.is_empty());
+        assert_eq!(ctx.response_mode, ResponseMode::Freeform);
+    }
+}

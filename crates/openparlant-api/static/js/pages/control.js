@@ -1,0 +1,395 @@
+// OpenParlant Control Plane — Observations / Guidelines / Journeys + Debug
+'use strict';
+
+function controlPage() {
+  return {
+    // ── Tab routing ──────────────────────────────────────────────────────────
+    tab: 'debug',  // 'debug' | 'observations' | 'guidelines' | 'journeys' | 'knowledge'
+
+    // ── Scope selection ──────────────────────────────────────────────────────
+    scopes: [],
+    selectedScope: '',
+    newScopeName: '',
+    creatingScope: false,
+
+    // ── Debug / compile-turn ─────────────────────────────────────────────────
+    debugAgentId: '',
+    debugSessionId: '',
+    debugMessage: 'Hello, what can you help me with?',
+    debugResult: null,
+    debugLoading: false,
+    debugError: '',
+
+    // ── Observations ─────────────────────────────────────────────────────────
+    observations: [],
+    obsLoading: false,
+    obsForm: { name: '', matcher_type: 'keyword', priority: 0, enabled: true, matcher_config: '{}' },
+    obsCreating: false,
+
+    // ── Guidelines ───────────────────────────────────────────────────────────
+    guidelines: [],
+    glLoading: false,
+    glForm: { name: '', condition_ref: '', action_text: '', composition_mode: 'append', priority: 0, enabled: true },
+    glCreating: false,
+
+    // ── Journeys ─────────────────────────────────────────────────────────────
+    journeys: [],
+    jrLoading: false,
+    jrForm: { name: '', trigger_config: '{}', completion_rule: '', enabled: true },
+    jrCreating: false,
+    expandedJourney: null,
+    journeyStates: {},
+    journeyTransitions: {},
+    stateForm: { name: '', description: '', required_fields: '' },
+    stateCreating: false,
+    transitionForm: { from_state_id: '', to_state_id: '', transition_type: 'auto', condition_config: '{}' },
+    transitionCreating: false,
+
+    // ── Knowledge ────────────────────────────────────────────────────────────
+    glossaryForm: { name: '', description: '', synonyms: '' },
+    glossaryCreating: false,
+    varForm: { name: '', value_source_type: 'static', value_source_config: '{"value":""}' },
+    varCreating: false,
+    cannedForm: { name: '', template_text: '', priority: 0 },
+    cannedCreating: false,
+
+    // ────────────────────────────────────────────────────────────────────────
+
+    async init() {
+      await this.loadScopes();
+      // Pre-fill agent/session from URL hash params if present
+      var hash = window.location.hash.replace('#control', '');
+      var params = new URLSearchParams(hash.replace(/^[?&]/, '?'));
+      if (params.get('agent')) this.debugAgentId = params.get('agent');
+      if (params.get('session')) this.debugSessionId = params.get('session');
+    },
+
+    // ── Scopes ───────────────────────────────────────────────────────────────
+
+    async loadScopes() {
+      try {
+        var data = await OpenFangAPI.get('/api/control/scopes');
+        this.scopes = data || [];
+        if (!this.selectedScope && this.scopes.length > 0) {
+          this.selectedScope = this.scopes[0].scope_id;
+          await this.onScopeChange();
+        }
+      } catch (e) {
+        console.warn('control: loadScopes failed', e);
+      }
+    },
+
+    async createScope() {
+      if (!this.newScopeName.trim()) return;
+      this.creatingScope = true;
+      try {
+        var s = await OpenFangAPI.post('/api/control/scopes', { name: this.newScopeName.trim() });
+        this.scopes.push(s);
+        this.selectedScope = s.scope_id;
+        this.newScopeName = '';
+        await this.onScopeChange();
+      } catch (e) {
+        alert('Failed to create scope: ' + e.message);
+      } finally {
+        this.creatingScope = false;
+      }
+    },
+
+    async onScopeChange() {
+      if (!this.selectedScope) return;
+      await Promise.all([this.loadObservations(), this.loadGuidelines(), this.loadJourneys()]);
+    },
+
+    // ── Compile-turn Debug ───────────────────────────────────────────────────
+
+    async runCompileTurn() {
+      if (!this.debugAgentId.trim() || !this.debugSessionId.trim()) {
+        this.debugError = 'Agent ID and Session ID are required';
+        return;
+      }
+      this.debugLoading = true;
+      this.debugError = '';
+      this.debugResult = null;
+      try {
+        var result = await OpenFangAPI.post('/api/control/test/compile-turn', {
+          scope_id: this.selectedScope || this.debugAgentId,
+          agent_id: this.debugAgentId.trim(),
+          session_id: this.debugSessionId.trim(),
+          message: this.debugMessage,
+          channel_type: 'web',
+        });
+        this.debugResult = result;
+      } catch (e) {
+        this.debugError = e.message || String(e);
+      } finally {
+        this.debugLoading = false;
+      }
+    },
+
+    // Count helper
+    countItems(arr) { return Array.isArray(arr) ? arr.length : 0; },
+
+    badgeClass(n) {
+      if (n === 0) return 'badge badge-muted';
+      return 'badge badge-ok';
+    },
+
+    // ── Observations ─────────────────────────────────────────────────────────
+
+    async loadObservations() {
+      if (!this.selectedScope) return;
+      this.obsLoading = true;
+      try {
+        this.observations = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/observations') || [];
+      } catch (e) {
+        this.observations = [];
+      } finally {
+        this.obsLoading = false;
+      }
+    },
+
+    async createObservation() {
+      if (!this.obsForm.name.trim() || !this.selectedScope) return;
+      this.obsCreating = true;
+      try {
+        var cfg = {};
+        try { cfg = JSON.parse(this.obsForm.matcher_config || '{}'); } catch (_) {}
+        var obs = await OpenFangAPI.post('/api/control/observations', {
+          scope_id: this.selectedScope,
+          name: this.obsForm.name,
+          matcher_type: this.obsForm.matcher_type,
+          matcher_config: cfg,
+          priority: Number(this.obsForm.priority) || 0,
+          enabled: this.obsForm.enabled,
+        });
+        this.observations.push(obs);
+        this.obsForm = { name: '', matcher_type: 'keyword', priority: 0, enabled: true, matcher_config: '{}' };
+      } catch (e) {
+        alert('Failed to create observation: ' + e.message);
+      } finally {
+        this.obsCreating = false;
+      }
+    },
+
+    // ── Guidelines ───────────────────────────────────────────────────────────
+
+    async loadGuidelines() {
+      if (!this.selectedScope) return;
+      this.glLoading = true;
+      try {
+        this.guidelines = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/guidelines') || [];
+      } catch (e) {
+        this.guidelines = [];
+      } finally {
+        this.glLoading = false;
+      }
+    },
+
+    async createGuideline() {
+      if (!this.glForm.name.trim() || !this.glForm.action_text.trim() || !this.selectedScope) return;
+      this.glCreating = true;
+      try {
+        var g = await OpenFangAPI.post('/api/control/guidelines', {
+          scope_id: this.selectedScope,
+          name: this.glForm.name,
+          condition_ref: this.glForm.condition_ref,
+          action_text: this.glForm.action_text,
+          composition_mode: this.glForm.composition_mode,
+          priority: Number(this.glForm.priority) || 0,
+          enabled: this.glForm.enabled,
+        });
+        this.guidelines.push(g);
+        this.glForm = { name: '', condition_ref: '', action_text: '', composition_mode: 'append', priority: 0, enabled: true };
+      } catch (e) {
+        alert('Failed to create guideline: ' + e.message);
+      } finally {
+        this.glCreating = false;
+      }
+    },
+
+    // ── Journeys ─────────────────────────────────────────────────────────────
+
+    async loadJourneys() {
+      if (!this.selectedScope) return;
+      this.jrLoading = true;
+      try {
+        this.journeys = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/journeys') || [];
+      } catch (e) {
+        this.journeys = [];
+      } finally {
+        this.jrLoading = false;
+      }
+    },
+
+    async createJourney() {
+      if (!this.jrForm.name.trim() || !this.selectedScope) return;
+      this.jrCreating = true;
+      try {
+        var cfg = {};
+        try { cfg = JSON.parse(this.jrForm.trigger_config || '{}'); } catch (_) {}
+        var j = await OpenFangAPI.post('/api/control/journeys', {
+          scope_id: this.selectedScope,
+          name: this.jrForm.name,
+          trigger_config: cfg,
+          completion_rule: this.jrForm.completion_rule || null,
+          enabled: this.jrForm.enabled,
+        });
+        this.journeys.push(j);
+        this.jrForm = { name: '', trigger_config: '{}', completion_rule: '', enabled: true };
+      } catch (e) {
+        alert('Failed to create journey: ' + e.message);
+      } finally {
+        this.jrCreating = false;
+      }
+    },
+
+    async toggleJourneyExpand(jid) {
+      if (this.expandedJourney === jid) {
+        this.expandedJourney = null;
+        return;
+      }
+      this.expandedJourney = jid;
+      await this.loadJourneyStates(jid);
+      await this.loadJourneyTransitions(jid);
+    },
+
+    async loadJourneyStates(jid) {
+      try {
+        var data = await OpenFangAPI.get('/api/control/journeys/' + jid + '/states');
+        this.journeyStates = Object.assign({}, this.journeyStates, { [jid]: data || [] });
+      } catch (e) {
+        this.journeyStates = Object.assign({}, this.journeyStates, { [jid]: [] });
+      }
+    },
+
+    async loadJourneyTransitions(jid) {
+      try {
+        var data = await OpenFangAPI.get('/api/control/journeys/' + jid + '/transitions');
+        this.journeyTransitions = Object.assign({}, this.journeyTransitions, { [jid]: data || [] });
+      } catch (e) {
+        this.journeyTransitions = Object.assign({}, this.journeyTransitions, { [jid]: [] });
+      }
+    },
+
+    async createJourneyState(jid) {
+      if (!this.stateForm.name.trim()) return;
+      this.stateCreating = true;
+      try {
+        var fields = this.stateForm.required_fields
+          ? this.stateForm.required_fields.split(',').map(function(s) { return s.trim(); }).filter(Boolean)
+          : [];
+        var s = await OpenFangAPI.post('/api/control/journeys/' + jid + '/states', {
+          name: this.stateForm.name,
+          description: this.stateForm.description || null,
+          required_fields: fields,
+        });
+        var cur = (this.journeyStates[jid] || []).slice();
+        cur.push(s);
+        this.journeyStates = Object.assign({}, this.journeyStates, { [jid]: cur });
+        this.stateForm = { name: '', description: '', required_fields: '' };
+      } catch (e) {
+        alert('Failed to create state: ' + e.message);
+      } finally {
+        this.stateCreating = false;
+      }
+    },
+
+    async createJourneyTransition(jid) {
+      if (!this.transitionForm.from_state_id || !this.transitionForm.to_state_id) return;
+      this.transitionCreating = true;
+      try {
+        var cfg = {};
+        try { cfg = JSON.parse(this.transitionForm.condition_config || '{}'); } catch (_) {}
+        var t = await OpenFangAPI.post('/api/control/journeys/' + jid + '/transitions', {
+          from_state_id: this.transitionForm.from_state_id,
+          to_state_id: this.transitionForm.to_state_id,
+          transition_type: this.transitionForm.transition_type,
+          condition_config: cfg,
+        });
+        var cur = (this.journeyTransitions[jid] || []).slice();
+        cur.push(t);
+        this.journeyTransitions = Object.assign({}, this.journeyTransitions, { [jid]: cur });
+        this.transitionForm = { from_state_id: '', to_state_id: '', transition_type: 'auto', condition_config: '{}' };
+      } catch (e) {
+        alert('Failed to create transition: ' + e.message);
+      } finally {
+        this.transitionCreating = false;
+      }
+    },
+
+    // ── Knowledge ────────────────────────────────────────────────────────────
+
+    async createGlossaryTerm() {
+      if (!this.glossaryForm.name.trim() || !this.selectedScope) return;
+      this.glossaryCreating = true;
+      try {
+        var syns = this.glossaryForm.synonyms
+          ? this.glossaryForm.synonyms.split(',').map(function(s) { return s.trim(); }).filter(Boolean)
+          : [];
+        await OpenFangAPI.post('/api/control/glossary-terms', {
+          scope_id: this.selectedScope,
+          name: this.glossaryForm.name,
+          description: this.glossaryForm.description,
+          synonyms: syns,
+        });
+        this.glossaryForm = { name: '', description: '', synonyms: '' };
+        alert('Glossary term created');
+      } catch (e) {
+        alert('Failed: ' + e.message);
+      } finally {
+        this.glossaryCreating = false;
+      }
+    },
+
+    async createContextVariable() {
+      if (!this.varForm.name.trim() || !this.selectedScope) return;
+      this.varCreating = true;
+      try {
+        var cfg = {};
+        try { cfg = JSON.parse(this.varForm.value_source_config || '{}'); } catch (_) {}
+        await OpenFangAPI.post('/api/control/context-variables', {
+          scope_id: this.selectedScope,
+          name: this.varForm.name,
+          value_source_type: this.varForm.value_source_type,
+          value_source_config: cfg,
+        });
+        this.varForm = { name: '', value_source_type: 'static', value_source_config: '{"value":""}' };
+        alert('Context variable created');
+      } catch (e) {
+        alert('Failed: ' + e.message);
+      } finally {
+        this.varCreating = false;
+      }
+    },
+
+    async createCannedResponse() {
+      if (!this.cannedForm.name.trim() || !this.cannedForm.template_text.trim() || !this.selectedScope) return;
+      this.cannedCreating = true;
+      try {
+        await OpenFangAPI.post('/api/control/canned-responses', {
+          scope_id: this.selectedScope,
+          name: this.cannedForm.name,
+          template_text: this.cannedForm.template_text,
+          priority: Number(this.cannedForm.priority) || 0,
+        });
+        this.cannedForm = { name: '', template_text: '', priority: 0 };
+        alert('Canned response created');
+      } catch (e) {
+        alert('Failed: ' + e.message);
+      } finally {
+        this.cannedCreating = false;
+      }
+    },
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    formatJson(obj) {
+      try { return JSON.stringify(obj, null, 2); } catch (_) { return String(obj); }
+    },
+
+    responseModeBadge(mode) {
+      var map = { 'free': 'badge-ok', 'constrained': 'badge-warn', 'canned_only': 'badge-err', 'silent': 'badge-muted' };
+      return 'badge ' + (map[mode] || 'badge-muted');
+    },
+  };
+}

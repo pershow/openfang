@@ -165,6 +165,22 @@
         </template>
       </div>
 
+      <!-- Control Plane -->
+      <div class="nav-section" x-data="{ collapsed: false }" aria-label="Control Plane">
+        <div class="nav-section-title" @click="collapsed = !collapsed">
+          <span class="nav-label">Control Plane</span>
+          <span class="nav-section-chevron" :style="collapsed ? '' : 'transform:rotate(90deg)'">&rsaquo;</span>
+        </div>
+        <template x-if="!collapsed">
+          <div x-transition>
+            <a class="nav-item" :class="{ active: page === 'control' }" @click="navigate('control')" :aria-current="page === 'control' ? 'page' : false">
+              <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+              <span class="nav-label">Policies</span>
+            </a>
+          </div>
+        </template>
+      </div>
+
       <!-- System -->
       <div class="nav-section" x-data="{ collapsed: false }" aria-label="System">
         <div class="nav-section-title" @click="collapsed = !collapsed">
@@ -5050,6 +5066,434 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
   </main>
 </div>
+
+<!-- Control Plane Page -->
+<template x-if="page === 'control'" x-data>
+  <div x-data="controlPage()" x-init="init()" class="page-container">
+
+    <!-- Header -->
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Control Plane</h1>
+        <p class="page-subtitle">Manage observations, guidelines, journeys, and knowledge — then debug with compile-turn.</p>
+      </div>
+    </div>
+
+    <!-- Scope selector -->
+    <div class="card mb-4">
+      <div class="card-body flex gap-3 items-center flex-wrap">
+        <label class="text-sm font-medium" style="min-width:60px">Scope</label>
+        <select class="input" style="max-width:300px" x-model="selectedScope" @change="onScopeChange()">
+          <option value="">— select scope —</option>
+          <template x-for="s in scopes" :key="s.scope_id">
+            <option :value="s.scope_id" x-text="s.name + ' (' + s.scope_id.substring(0,8) + '...')" ></option>
+          </template>
+        </select>
+        <div class="flex gap-2 items-center">
+          <input class="input" placeholder="New scope name…" x-model="newScopeName" @keyup.enter="createScope()" style="width:180px">
+          <button class="btn btn-primary btn-sm" @click="createScope()" :disabled="creatingScope || !newScopeName.trim()">
+            <span x-show="!creatingScope">+ Scope</span>
+            <span x-show="creatingScope">…</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab bar -->
+    <div class="tabs mb-4">
+      <button class="tab-btn" :class="{ active: tab === 'debug' }" @click="tab='debug'">🔍 Debug</button>
+      <button class="tab-btn" :class="{ active: tab === 'observations' }" @click="tab='observations'; loadObservations()">Observations</button>
+      <button class="tab-btn" :class="{ active: tab === 'guidelines' }" @click="tab='guidelines'; loadGuidelines()">Guidelines</button>
+      <button class="tab-btn" :class="{ active: tab === 'journeys' }" @click="tab='journeys'; loadJourneys()">Journeys</button>
+      <button class="tab-btn" :class="{ active: tab === 'knowledge' }" @click="tab='knowledge'">Knowledge</button>
+    </div>
+
+    <!-- ── Debug Tab ─────────────────────────────────────────────────────── -->
+    <template x-if="tab === 'debug'">
+      <div>
+        <div class="card mb-4">
+          <div class="card-header"><h3 class="card-title">Compile Turn (dry-run)</h3></div>
+          <div class="card-body flex flex-col gap-3">
+            <div class="flex gap-3 flex-wrap">
+              <div class="flex flex-col gap-1" style="flex:1;min-width:200px">
+                <label class="label text-xs">Agent ID</label>
+                <input class="input" x-model="debugAgentId" placeholder="uuid…">
+              </div>
+              <div class="flex flex-col gap-1" style="flex:1;min-width:200px">
+                <label class="label text-xs">Session ID</label>
+                <input class="input" x-model="debugSessionId" placeholder="uuid…">
+              </div>
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="label text-xs">Message</label>
+              <input class="input" x-model="debugMessage" placeholder="Test message…">
+            </div>
+            <div class="flex gap-2 items-center">
+              <button class="btn btn-primary" @click="runCompileTurn()" :disabled="debugLoading">
+                <span x-show="!debugLoading">▶ Compile Turn</span>
+                <span x-show="debugLoading">Compiling…</span>
+              </button>
+              <span class="text-sm text-muted" x-show="!selectedScope">⚠ No scope selected — using agent_id as scope</span>
+            </div>
+            <p class="text-sm text-danger" x-show="debugError" x-text="debugError"></p>
+          </div>
+        </div>
+
+        <!-- Result -->
+        <template x-if="debugResult">
+          <div class="flex flex-col gap-3">
+            <!-- Summary badges -->
+            <div class="card">
+              <div class="card-header"><h3 class="card-title">Compiled Turn Context</h3></div>
+              <div class="card-body flex flex-wrap gap-2">
+                <span :class="badgeClass(countItems(debugResult.active_observations))" x-text="countItems(debugResult.active_observations) + ' observations'"></span>
+                <span :class="badgeClass(countItems(debugResult.active_guidelines))" x-text="countItems(debugResult.active_guidelines) + ' guidelines'"></span>
+                <span :class="badgeClass(debugResult.active_journey ? 1 : 0)" x-text="debugResult.active_journey ? '1 journey active' : 'no journey'"></span>
+                <span :class="badgeClass(countItems(debugResult.retrieved_chunks))" x-text="countItems(debugResult.retrieved_chunks) + ' chunks'"></span>
+                <span :class="badgeClass(countItems(debugResult.glossary_terms))" x-text="countItems(debugResult.glossary_terms) + ' glossary'"></span>
+                <span :class="badgeClass(countItems(debugResult.context_variables))" x-text="countItems(debugResult.context_variables) + ' variables'"></span>
+                <span :class="badgeClass(countItems(debugResult.canned_response_candidates))" x-text="countItems(debugResult.canned_response_candidates) + ' canned'"></span>
+                <span :class="badgeClass(countItems(debugResult.allowed_tools))" x-text="countItems(debugResult.allowed_tools) + ' tools allowed'"></span>
+                <span :class="responseModeBadge(debugResult.response_mode)" x-text="'mode: ' + debugResult.response_mode"></span>
+              </div>
+            </div>
+
+            <!-- Active observations -->
+            <template x-if="debugResult.active_observations && debugResult.active_observations.length > 0">
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Active Observations</h3></div>
+                <div class="card-body">
+                  <table class="table table-sm">
+                    <thead><tr><th>Name</th><th>Confidence</th><th>Matched By</th></tr></thead>
+                    <tbody>
+                      <template x-for="o in debugResult.active_observations" :key="o.observation_id">
+                        <tr>
+                          <td x-text="o.name"></td>
+                          <td x-text="o.confidence != null ? (o.confidence * 100).toFixed(0) + '%' : '—'"></td>
+                          <td class="text-muted text-xs" x-text="o.matched_by"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </template>
+
+            <!-- Active guidelines -->
+            <template x-if="debugResult.active_guidelines && debugResult.active_guidelines.length > 0">
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Active Guidelines</h3></div>
+                <div class="card-body">
+                  <table class="table table-sm">
+                    <thead><tr><th>Name</th><th>Priority</th><th>Action</th></tr></thead>
+                    <tbody>
+                      <template x-for="g in debugResult.active_guidelines" :key="g.guideline_id">
+                        <tr>
+                          <td x-text="g.name"></td>
+                          <td x-text="g.priority"></td>
+                          <td class="text-sm" x-text="g.action_text"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </template>
+
+            <!-- Active journey -->
+            <template x-if="debugResult.active_journey">
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Active Journey</h3></div>
+                <div class="card-body flex gap-4 flex-wrap">
+                  <div><span class="text-xs text-muted">Journey</span><br><strong x-text="debugResult.active_journey.name"></strong></div>
+                  <div><span class="text-xs text-muted">Current State</span><br><strong x-text="debugResult.active_journey.current_state"></strong></div>
+                  <template x-if="debugResult.active_journey.missing_fields && debugResult.active_journey.missing_fields.length > 0">
+                    <div><span class="text-xs text-muted">Missing Fields</span><br>
+                      <span class="badge badge-warn" x-text="debugResult.active_journey.missing_fields.join(', ')"></span>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+
+            <!-- Audit meta -->
+            <div class="card">
+              <div class="card-header"><h3 class="card-title">Audit Meta</h3></div>
+              <div class="card-body">
+                <pre class="code-block text-xs" style="max-height:200px;overflow:auto" x-text="formatJson(debugResult.audit_meta)"></pre>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </template>
+
+    <!-- ── Observations Tab ──────────────────────────────────────────────── -->
+    <template x-if="tab === 'observations'">
+      <div>
+        <!-- Create form -->
+        <div class="card mb-4">
+          <div class="card-header"><h3 class="card-title">New Observation</h3></div>
+          <div class="card-body flex flex-col gap-3">
+            <div class="flex gap-3 flex-wrap">
+              <input class="input" placeholder="Name" x-model="obsForm.name" style="flex:1;min-width:160px">
+              <select class="input" x-model="obsForm.matcher_type" style="width:140px">
+                <option value="keyword">keyword</option>
+                <option value="regex">regex</option>
+                <option value="llm">llm</option>
+              </select>
+              <input class="input" placeholder="Priority" type="number" x-model="obsForm.priority" style="width:90px">
+              <label class="flex items-center gap-1 text-sm"><input type="checkbox" x-model="obsForm.enabled"> Enabled</label>
+            </div>
+            <input class="input font-mono text-xs" placeholder='Matcher config JSON, e.g. {"keywords":["hello"]}' x-model="obsForm.matcher_config">
+            <button class="btn btn-primary btn-sm" @click="createObservation()" :disabled="obsCreating || !obsForm.name.trim() || !selectedScope">
+              <span x-show="!obsCreating">+ Create Observation</span>
+              <span x-show="obsCreating">Creating…</span>
+            </button>
+            <p class="text-xs text-muted" x-show="!selectedScope">⚠ Select a scope first</p>
+          </div>
+        </div>
+        <!-- List -->
+        <div class="card">
+          <div class="card-header flex items-center justify-between">
+            <h3 class="card-title">Observations <span class="badge badge-muted ml-1" x-text="observations.length"></span></h3>
+            <button class="btn btn-ghost btn-sm" @click="loadObservations()">Refresh</button>
+          </div>
+          <div class="card-body">
+            <div x-show="obsLoading" class="text-muted text-sm">Loading…</div>
+            <div x-show="!obsLoading && observations.length === 0" class="text-muted text-sm">No observations yet.</div>
+            <table class="table table-sm" x-show="!obsLoading && observations.length > 0">
+              <thead><tr><th>Name</th><th>Matcher</th><th>Priority</th><th>Enabled</th></tr></thead>
+              <tbody>
+                <template x-for="o in observations" :key="o.observation_id">
+                  <tr>
+                    <td x-text="o.name"></td>
+                    <td class="text-xs" x-text="o.matcher_type"></td>
+                    <td x-text="o.priority"></td>
+                    <td><span :class="o.enabled ? 'badge badge-ok' : 'badge badge-muted'" x-text="o.enabled ? 'yes' : 'no'"></span></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- ── Guidelines Tab ───────────────────────────────────────────────── -->
+    <template x-if="tab === 'guidelines'">
+      <div>
+        <!-- Create form -->
+        <div class="card mb-4">
+          <div class="card-header"><h3 class="card-title">New Guideline</h3></div>
+          <div class="card-body flex flex-col gap-3">
+            <div class="flex gap-3 flex-wrap">
+              <input class="input" placeholder="Name" x-model="glForm.name" style="flex:1;min-width:160px">
+              <input class="input" placeholder="Condition ref (observation name or 'always')" x-model="glForm.condition_ref" style="flex:1;min-width:200px">
+            </div>
+            <textarea class="input" rows="3" placeholder="Action text — what the agent should do…" x-model="glForm.action_text"></textarea>
+            <div class="flex gap-3 flex-wrap">
+              <select class="input" x-model="glForm.composition_mode" style="width:130px">
+                <option value="append">append</option>
+                <option value="override">override</option>
+                <option value="prepend">prepend</option>
+              </select>
+              <input class="input" placeholder="Priority" type="number" x-model="glForm.priority" style="width:90px">
+              <label class="flex items-center gap-1 text-sm"><input type="checkbox" x-model="glForm.enabled"> Enabled</label>
+            </div>
+            <button class="btn btn-primary btn-sm" @click="createGuideline()" :disabled="glCreating || !glForm.name.trim() || !glForm.action_text.trim() || !selectedScope">
+              <span x-show="!glCreating">+ Create Guideline</span>
+              <span x-show="glCreating">Creating…</span>
+            </button>
+          </div>
+        </div>
+        <!-- List -->
+        <div class="card">
+          <div class="card-header flex items-center justify-between">
+            <h3 class="card-title">Guidelines <span class="badge badge-muted ml-1" x-text="guidelines.length"></span></h3>
+            <button class="btn btn-ghost btn-sm" @click="loadGuidelines()">Refresh</button>
+          </div>
+          <div class="card-body">
+            <div x-show="glLoading" class="text-muted text-sm">Loading…</div>
+            <div x-show="!glLoading && guidelines.length === 0" class="text-muted text-sm">No guidelines yet.</div>
+            <table class="table table-sm" x-show="!glLoading && guidelines.length > 0">
+              <thead><tr><th>Name</th><th>Condition</th><th>Priority</th><th>Mode</th><th>Enabled</th></tr></thead>
+              <tbody>
+                <template x-for="g in guidelines" :key="g.guideline_id">
+                  <tr>
+                    <td>
+                      <div x-text="g.name" class="font-medium text-sm"></div>
+                      <div class="text-xs text-muted" x-text="g.action_text.substring(0,80) + (g.action_text.length > 80 ? '…' : '')"></div>
+                    </td>
+                    <td class="text-xs" x-text="g.condition_ref || 'always'"></td>
+                    <td x-text="g.priority"></td>
+                    <td class="text-xs" x-text="g.composition_mode"></td>
+                    <td><span :class="g.enabled ? 'badge badge-ok' : 'badge badge-muted'" x-text="g.enabled ? 'yes' : 'no'"></span></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- ── Journeys Tab ──────────────────────────────────────────────────── -->
+    <template x-if="tab === 'journeys'">
+      <div>
+        <!-- Create form -->
+        <div class="card mb-4">
+          <div class="card-header"><h3 class="card-title">New Journey</h3></div>
+          <div class="card-body flex flex-col gap-3">
+            <div class="flex gap-3 flex-wrap">
+              <input class="input" placeholder="Journey name" x-model="jrForm.name" style="flex:1;min-width:160px">
+              <input class="input font-mono text-xs" placeholder='Trigger config JSON, e.g. {}' x-model="jrForm.trigger_config" style="flex:1;min-width:180px">
+              <label class="flex items-center gap-1 text-sm"><input type="checkbox" x-model="jrForm.enabled"> Enabled</label>
+            </div>
+            <button class="btn btn-primary btn-sm" @click="createJourney()" :disabled="jrCreating || !jrForm.name.trim() || !selectedScope">
+              <span x-show="!jrCreating">+ Create Journey</span>
+              <span x-show="jrCreating">Creating…</span>
+            </button>
+          </div>
+        </div>
+        <!-- List with expandable states/transitions -->
+        <div class="card">
+          <div class="card-header flex items-center justify-between">
+            <h3 class="card-title">Journeys <span class="badge badge-muted ml-1" x-text="journeys.length"></span></h3>
+            <button class="btn btn-ghost btn-sm" @click="loadJourneys()">Refresh</button>
+          </div>
+          <div class="card-body flex flex-col gap-2">
+            <div x-show="jrLoading" class="text-muted text-sm">Loading…</div>
+            <div x-show="!jrLoading && journeys.length === 0" class="text-muted text-sm">No journeys yet.</div>
+            <template x-for="j in journeys" :key="j.journey_id">
+              <div class="border rounded" style="border-color:var(--border)">
+                <!-- Journey header row -->
+                <div class="flex items-center gap-3 p-3 cursor-pointer" @click="toggleJourneyExpand(j.journey_id)">
+                  <span class="text-sm" x-text="expandedJourney === j.journey_id ? '▼' : '▶'"></span>
+                  <span class="font-medium" x-text="j.name"></span>
+                  <span :class="j.enabled ? 'badge badge-ok' : 'badge badge-muted'" x-text="j.enabled ? 'enabled' : 'disabled'"></span>
+                  <span class="text-xs text-muted ml-auto" x-text="j.journey_id.substring(0,8) + '…'"></span>
+                </div>
+                <!-- Expanded: states + transitions -->
+                <template x-if="expandedJourney === j.journey_id">
+                  <div class="px-4 pb-4 flex flex-col gap-4 border-t" style="border-color:var(--border)">
+                    <!-- States -->
+                    <div class="mt-3">
+                      <h4 class="text-sm font-medium mb-2">States <span class="badge badge-muted" x-text="(journeyStates[j.journey_id] || []).length"></span></h4>
+                      <table class="table table-sm mb-3" x-show="(journeyStates[j.journey_id] || []).length > 0">
+                        <thead><tr><th>Name</th><th>Description</th><th>State ID</th></tr></thead>
+                        <tbody>
+                          <template x-for="s in (journeyStates[j.journey_id] || [])" :key="s.state_id">
+                            <tr>
+                              <td class="font-medium" x-text="s.name"></td>
+                              <td class="text-xs text-muted" x-text="s.description || '—'"></td>
+                              <td class="font-mono text-xs" x-text="s.state_id.substring(0,12) + '…'"></td>
+                            </tr>
+                          </template>
+                        </tbody>
+                      </table>
+                      <!-- Add state form -->
+                      <div class="flex gap-2 flex-wrap">
+                        <input class="input input-sm" placeholder="State name" x-model="stateForm.name" style="width:140px">
+                        <input class="input input-sm" placeholder="Description" x-model="stateForm.description" style="flex:1;min-width:120px">
+                        <button class="btn btn-ghost btn-sm" @click="createJourneyState(j.journey_id)" :disabled="stateCreating || !stateForm.name.trim()">+ State</button>
+                      </div>
+                    </div>
+                    <!-- Transitions -->
+                    <div>
+                      <h4 class="text-sm font-medium mb-2">Transitions <span class="badge badge-muted" x-text="(journeyTransitions[j.journey_id] || []).length"></span></h4>
+                      <table class="table table-sm mb-3" x-show="(journeyTransitions[j.journey_id] || []).length > 0">
+                        <thead><tr><th>From State ID</th><th>→</th><th>To State ID</th><th>Type</th></tr></thead>
+                        <tbody>
+                          <template x-for="t in (journeyTransitions[j.journey_id] || [])" :key="t.transition_id">
+                            <tr>
+                              <td class="font-mono text-xs" x-text="t.from_state_id.substring(0,12) + '…'"></td>
+                              <td>→</td>
+                              <td class="font-mono text-xs" x-text="t.to_state_id.substring(0,12) + '…'"></td>
+                              <td class="badge badge-muted text-xs" x-text="t.transition_type"></td>
+                            </tr>
+                          </template>
+                        </tbody>
+                      </table>
+                      <!-- Add transition form -->
+                      <div class="flex gap-2 flex-wrap">
+                        <input class="input input-sm font-mono" placeholder="from_state_id" x-model="transitionForm.from_state_id" style="width:150px">
+                        <input class="input input-sm font-mono" placeholder="to_state_id" x-model="transitionForm.to_state_id" style="width:150px">
+                        <select class="input input-sm" x-model="transitionForm.transition_type" style="width:100px">
+                          <option value="auto">auto</option>
+                          <option value="observation">observation</option>
+                          <option value="manual">manual</option>
+                        </select>
+                        <button class="btn btn-ghost btn-sm" @click="createJourneyTransition(j.journey_id)" :disabled="transitionCreating || !transitionForm.from_state_id || !transitionForm.to_state_id">+ Transition</button>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- ── Knowledge Tab ─────────────────────────────────────────────────── -->
+    <template x-if="tab === 'knowledge'">
+      <div class="flex flex-col gap-4">
+        <!-- Glossary -->
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Glossary Terms</h3></div>
+          <div class="card-body flex flex-col gap-3">
+            <div class="flex gap-3 flex-wrap">
+              <input class="input" placeholder="Term name" x-model="glossaryForm.name" style="width:160px">
+              <input class="input" placeholder="Description" x-model="glossaryForm.description" style="flex:1;min-width:200px">
+              <input class="input" placeholder="Synonyms (comma-separated)" x-model="glossaryForm.synonyms" style="flex:1;min-width:200px">
+            </div>
+            <button class="btn btn-primary btn-sm" @click="createGlossaryTerm()" :disabled="glossaryCreating || !glossaryForm.name.trim() || !selectedScope">
+              <span x-show="!glossaryCreating">+ Add Glossary Term</span>
+              <span x-show="glossaryCreating">Saving…</span>
+            </button>
+          </div>
+        </div>
+        <!-- Context Variables -->
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Context Variables</h3></div>
+          <div class="card-body flex flex-col gap-3">
+            <div class="flex gap-3 flex-wrap">
+              <input class="input" placeholder="Variable name" x-model="varForm.name" style="width:160px">
+              <select class="input" x-model="varForm.value_source_type" style="width:120px">
+                <option value="static">static</option>
+                <option value="session">session</option>
+                <option value="api">api</option>
+              </select>
+              <input class="input font-mono text-xs" placeholder='Source config JSON, e.g. {"value":"hello"}' x-model="varForm.value_source_config" style="flex:1;min-width:220px">
+            </div>
+            <button class="btn btn-primary btn-sm" @click="createContextVariable()" :disabled="varCreating || !varForm.name.trim() || !selectedScope">
+              <span x-show="!varCreating">+ Add Variable</span>
+              <span x-show="varCreating">Saving…</span>
+            </button>
+          </div>
+        </div>
+        <!-- Canned Responses -->
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Canned Responses</h3></div>
+          <div class="card-body flex flex-col gap-3">
+            <div class="flex gap-3 flex-wrap">
+              <input class="input" placeholder="Response name" x-model="cannedForm.name" style="width:160px">
+              <input class="input" placeholder="Priority" type="number" x-model="cannedForm.priority" style="width:90px">
+            </div>
+            <textarea class="input" rows="4" placeholder="Template text… use {variable_name} for substitution" x-model="cannedForm.template_text"></textarea>
+            <button class="btn btn-primary btn-sm" @click="createCannedResponse()" :disabled="cannedCreating || !cannedForm.name.trim() || !cannedForm.template_text.trim() || !selectedScope">
+              <span x-show="!cannedCreating">+ Add Canned Response</span>
+              <span x-show="cannedCreating">Saving…</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </template>
+
+  </div>
+</template>
+
 
 <!-- Toast notification container -->
 <div id="toast-container" class="toast-container" aria-live="polite"></div>

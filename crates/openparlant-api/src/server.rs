@@ -1,16 +1,22 @@
 //! OpenParlant daemon server — boots the kernel and serves the HTTP API.
 
 use crate::channel_bridge;
+use crate::control_routes;
 use crate::middleware;
 use crate::rate_limiter;
 use crate::routes::{self, AppState};
 use crate::webchat;
 use crate::ws;
 use axum::Router;
+use openparlant_control::{ControlStore, DefaultTurnControlCoordinator};
+use openparlant_journey::{JourneyStore, SqliteJourneyRuntime};
 use openparlant_kernel::OpenFangKernel;
+use openparlant_memory::migration::run_migrations;
+use openparlant_policy::{PolicyStore, SqliteObservationMatcher, SqlitePolicyResolver};
+use rusqlite::Connection;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
@@ -42,6 +48,34 @@ pub async fn build_router(
     let bridge = channel_bridge::start_channel_bridge(kernel.clone()).await;
 
     let channels_config = kernel.config.channels.clone();
+    // ── Control plane bootstrap ───────────────────────────────────────────────
+    // Reuse the same on-disk database that openparlant-memory manages.
+    let db_path = kernel
+        .config
+        .memory
+        .sqlite_path
+        .clone()
+        .unwrap_or_else(|| kernel.config.data_dir.join("openparlant.db"));
+    let cp_conn = Connection::open(&db_path)
+        .unwrap_or_else(|_| Connection::open_in_memory().expect("in-memory SQLite fallback"));
+    // Run migrations so control-plane tables exist on first boot.
+    if let Err(e) = run_migrations(&cp_conn) {
+        tracing::warn!("control-plane migration warning: {e}");
+    }
+    let cp_conn = Arc::new(Mutex::new(cp_conn));
+
+    let control_store = ControlStore::new(cp_conn.clone());
+    let policy_store = PolicyStore::new(cp_conn.clone());
+    let journey_store = JourneyStore::new(cp_conn.clone());
+
+    let coordinator = DefaultTurnControlCoordinator::new(
+        SqliteObservationMatcher::new(cp_conn.clone()),
+        SqlitePolicyResolver::new(cp_conn.clone()),
+        SqliteJourneyRuntime::new(cp_conn.clone()),
+        openparlant_context::NoopKnowledgeCompiler,
+    )
+    .with_store(control_store.clone());
+
     let state = Arc::new(AppState {
         kernel: kernel.clone(),
         started_at: Instant::now(),
@@ -51,7 +85,17 @@ pub async fn build_router(
         shutdown_notify: Arc::new(tokio::sync::Notify::new()),
         clawhub_cache: dashmap::DashMap::new(),
         provider_probe_cache: openparlant_runtime::provider_health::ProbeCache::new(),
+        db_conn: cp_conn,
+        control_coordinator: Arc::new(coordinator),
+        control_store,
+        policy_store,
+        journey_store,
     });
+
+    // Wire the coordinator into the kernel so execute_llm_agent can call compile_turn.
+    let _ = kernel
+        .control_coordinator
+        .set(state.control_coordinator.clone());
 
     // CORS: allow localhost origins by default. If API key is set, the API
     // is protected anyway. For development, permissive CORS is convenient.
@@ -703,6 +747,28 @@ pub async fn build_router(
         .route("/api/auth/login", axum::routing::post(routes::auth_login))
         .route("/api/auth/logout", axum::routing::post(routes::auth_logout))
         .route("/api/auth/check", axum::routing::get(routes::auth_check))
+        // ── Control plane API ──────────────────────────────────────────────
+        .route("/api/control/scopes", axum::routing::get(control_routes::list_scopes).post(control_routes::create_scope))
+        .route("/api/control/scopes/{scope_id}", axum::routing::get(control_routes::get_scope))
+        .route("/api/control/scopes/{scope_id}/observations", axum::routing::get(control_routes::list_observations))
+        .route("/api/control/scopes/{scope_id}/guidelines", axum::routing::get(control_routes::list_guidelines))
+        .route("/api/control/scopes/{scope_id}/journeys", axum::routing::get(control_routes::list_journeys))
+        .route("/api/control/observations", axum::routing::post(control_routes::create_observation))
+        .route("/api/control/observations/{observation_id}", axum::routing::get(control_routes::get_observation))
+        .route("/api/control/guidelines", axum::routing::post(control_routes::create_guideline))
+        .route("/api/control/guidelines/{guideline_id}", axum::routing::get(control_routes::get_guideline))
+        .route("/api/control/journeys", axum::routing::post(control_routes::create_journey))
+        .route("/api/control/journeys/{journey_id}", axum::routing::get(control_routes::get_journey))
+        .route("/api/control/glossary-terms", axum::routing::post(control_routes::create_glossary_term))
+        .route("/api/control/context-variables", axum::routing::post(control_routes::create_context_variable))
+        .route("/api/control/canned-responses", axum::routing::post(control_routes::create_canned_response))
+        .route("/api/control/guideline-relationships", axum::routing::post(control_routes::create_guideline_relationship))
+        .route("/api/control/scopes/{scope_id}/guideline-relationships", axum::routing::get(control_routes::list_guideline_relationships))
+        .route("/api/control/journeys/{journey_id}/states", axum::routing::get(control_routes::list_journey_states).post(control_routes::create_journey_state))
+        .route("/api/control/journeys/{journey_id}/transitions", axum::routing::get(control_routes::list_journey_transitions).post(control_routes::create_journey_transition))
+        .route("/api/control/test/compile-turn", axum::routing::post(control_routes::test_compile_turn))
+        .route("/api/sessions/{session_id}/control-trace", axum::routing::get(control_routes::session_control_trace))
+        .route("/api/sessions/{session_id}/journey-state", axum::routing::get(control_routes::session_journey_state))
         .layer(axum::middleware::from_fn_with_state(
             auth_state,
             middleware::auth,

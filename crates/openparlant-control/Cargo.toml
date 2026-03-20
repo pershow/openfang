@@ -1,0 +1,23 @@
+[package]
+name = "openparlant-control"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Turn control coordinator for the OpenParlant conversational control layer"
+
+[dependencies]
+openparlant-types = { path = "../openparlant-types" }
+openparlant-policy = { path = "../openparlant-policy" }
+openparlant-journey = { path = "../openparlant-journey" }
+openparlant-context = { path = "../openparlant-context" }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+rusqlite = { workspace = true }
+tracing = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+openparlant-memory = { path = "../openparlant-memory" }
+tokio = { workspace = true }

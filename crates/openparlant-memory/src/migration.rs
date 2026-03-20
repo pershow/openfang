@@ -5,7 +5,7 @@
 use rusqlite::Connection;
 
 /// Current schema version.
-const SCHEMA_VERSION: u32 = 8;
+const SCHEMA_VERSION: u32 = 11;
 
 /// Run all migrations to bring the database up to date.
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -41,6 +41,18 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
 
     if current_version < 8 {
         migrate_v8(conn)?;
+    }
+
+    if current_version < 9 {
+        migrate_v9(conn)?;
+    }
+
+    if current_version < 10 {
+        migrate_v10(conn)?;
+    }
+
+    if current_version < 11 {
+        migrate_v11(conn)?;
     }
 
     set_schema_version(conn, SCHEMA_VERSION)?;
@@ -328,6 +340,354 @@ fn migrate_v8(conn: &Connection) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
+/// Version 9: Add first-batch control-plane tables for scopes, policy, journeys, and traces.
+fn migrate_v9(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS control_scopes (
+            scope_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            scope_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_control_scopes_type_status
+            ON control_scopes(scope_type, status);
+
+        CREATE TABLE IF NOT EXISTS session_bindings (
+            binding_id TEXT PRIMARY KEY,
+            scope_id TEXT NOT NULL,
+            channel_type TEXT NOT NULL,
+            external_user_id TEXT,
+            external_chat_id TEXT,
+            agent_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            manual_mode INTEGER NOT NULL DEFAULT 0 CHECK (manual_mode IN (0, 1)),
+            active_journey_instance_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_session_bindings_scope_channel
+            ON session_bindings(scope_id, channel_type);
+        CREATE INDEX IF NOT EXISTS idx_session_bindings_session
+            ON session_bindings(session_id);
+        CREATE INDEX IF NOT EXISTS idx_session_bindings_agent
+            ON session_bindings(agent_id);
+        CREATE INDEX IF NOT EXISTS idx_session_bindings_external
+            ON session_bindings(scope_id, channel_type, external_chat_id, external_user_id);
+
+        CREATE TABLE IF NOT EXISTS observations (
+            observation_id TEXT PRIMARY KEY,
+            scope_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            matcher_type TEXT NOT NULL,
+            matcher_config TEXT NOT NULL,
+            priority INTEGER NOT NULL DEFAULT 0,
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1))
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_observations_scope_name
+            ON observations(scope_id, name);
+        CREATE INDEX IF NOT EXISTS idx_observations_scope_enabled_priority
+            ON observations(scope_id, enabled, priority DESC);
+
+        CREATE TABLE IF NOT EXISTS guidelines (
+            guideline_id TEXT PRIMARY KEY,
+            scope_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            condition_ref TEXT NOT NULL,
+            action_text TEXT NOT NULL,
+            composition_mode TEXT NOT NULL,
+            priority INTEGER NOT NULL DEFAULT 0,
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1))
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_guidelines_scope_name
+            ON guidelines(scope_id, name);
+        CREATE INDEX IF NOT EXISTS idx_guidelines_scope_enabled_priority
+            ON guidelines(scope_id, enabled, priority DESC);
+
+        CREATE TABLE IF NOT EXISTS journeys (
+            journey_id TEXT PRIMARY KEY,
+            scope_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            trigger_config TEXT NOT NULL,
+            completion_rule TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1))
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_journeys_scope_name
+            ON journeys(scope_id, name);
+        CREATE INDEX IF NOT EXISTS idx_journeys_scope_enabled
+            ON journeys(scope_id, enabled);
+
+        CREATE TABLE IF NOT EXISTS turn_traces (
+            trace_id TEXT PRIMARY KEY,
+            scope_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            channel_type TEXT NOT NULL,
+            request_message_ref TEXT,
+            compiled_context_hash TEXT,
+            response_mode TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_turn_traces_session_created
+            ON turn_traces(session_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_turn_traces_scope_created
+            ON turn_traces(scope_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_turn_traces_agent_created
+            ON turn_traces(agent_id, created_at DESC);
+
+        INSERT OR IGNORE INTO migrations (version, applied_at, description)
+        VALUES (
+            9,
+            datetime('now'),
+            'Add control-plane seed tables for scopes, bindings, observations, guidelines, journeys, and traces'
+        );
+        ",
+    )?;
+    Ok(())
+}
+
+/// Version 10: Add journey graph and explainability record tables for the control plane.
+fn migrate_v10(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS guideline_relationships (
+            relationship_id TEXT PRIMARY KEY,
+            scope_id TEXT NOT NULL,
+            from_guideline_id TEXT NOT NULL,
+            to_guideline_id TEXT NOT NULL,
+            relation_type TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_guideline_relationships_edge
+            ON guideline_relationships(scope_id, from_guideline_id, to_guideline_id, relation_type);
+        CREATE INDEX IF NOT EXISTS idx_guideline_relationships_from
+            ON guideline_relationships(from_guideline_id);
+        CREATE INDEX IF NOT EXISTS idx_guideline_relationships_to
+            ON guideline_relationships(to_guideline_id);
+
+        CREATE TABLE IF NOT EXISTS journey_states (
+            state_id TEXT PRIMARY KEY,
+            journey_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            required_fields TEXT NOT NULL DEFAULT '[]'
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_journey_states_journey_name
+            ON journey_states(journey_id, name);
+        CREATE INDEX IF NOT EXISTS idx_journey_states_journey
+            ON journey_states(journey_id);
+
+        CREATE TABLE IF NOT EXISTS journey_transitions (
+            transition_id TEXT PRIMARY KEY,
+            journey_id TEXT NOT NULL,
+            from_state_id TEXT NOT NULL,
+            to_state_id TEXT NOT NULL,
+            condition_config TEXT NOT NULL DEFAULT '{}',
+            transition_type TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_journey_transitions_edge
+            ON journey_transitions(journey_id, from_state_id, to_state_id, transition_type);
+        CREATE INDEX IF NOT EXISTS idx_journey_transitions_journey_from
+            ON journey_transitions(journey_id, from_state_id);
+        CREATE INDEX IF NOT EXISTS idx_journey_transitions_to
+            ON journey_transitions(to_state_id);
+
+        CREATE TABLE IF NOT EXISTS journey_instances (
+            journey_instance_id TEXT PRIMARY KEY,
+            scope_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            journey_id TEXT NOT NULL,
+            current_state_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            state_payload TEXT NOT NULL DEFAULT '{}',
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_journey_instances_session
+            ON journey_instances(session_id);
+        CREATE INDEX IF NOT EXISTS idx_journey_instances_scope_status
+            ON journey_instances(scope_id, status);
+        CREATE INDEX IF NOT EXISTS idx_journey_instances_journey
+            ON journey_instances(journey_id);
+        CREATE INDEX IF NOT EXISTS idx_journey_instances_current_state
+            ON journey_instances(current_state_id);
+
+        CREATE TABLE IF NOT EXISTS policy_match_records (
+            record_id TEXT PRIMARY KEY,
+            trace_id TEXT NOT NULL,
+            observation_hits_json TEXT NOT NULL DEFAULT '[]',
+            guideline_hits_json TEXT NOT NULL DEFAULT '[]',
+            guideline_exclusions_json TEXT NOT NULL DEFAULT '[]'
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_policy_match_records_trace
+            ON policy_match_records(trace_id);
+
+        CREATE TABLE IF NOT EXISTS journey_transition_records (
+            record_id TEXT PRIMARY KEY,
+            trace_id TEXT NOT NULL,
+            journey_instance_id TEXT NOT NULL,
+            before_state_id TEXT,
+            after_state_id TEXT,
+            decision_json TEXT NOT NULL DEFAULT '{}'
+        );
+        CREATE INDEX IF NOT EXISTS idx_journey_transition_records_trace
+            ON journey_transition_records(trace_id);
+        CREATE INDEX IF NOT EXISTS idx_journey_transition_records_instance
+            ON journey_transition_records(journey_instance_id);
+
+        CREATE TABLE IF NOT EXISTS tool_authorization_records (
+            record_id TEXT PRIMARY KEY,
+            trace_id TEXT NOT NULL,
+            allowed_tools_json TEXT NOT NULL DEFAULT '[]',
+            authorization_reasons_json TEXT NOT NULL DEFAULT '{}',
+            approval_requirements_json TEXT NOT NULL DEFAULT '{}'
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_tool_authorization_records_trace
+            ON tool_authorization_records(trace_id);
+
+        CREATE TABLE IF NOT EXISTS handoff_records (
+            handoff_id TEXT PRIMARY KEY,
+            scope_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            summary TEXT,
+            status TEXT NOT NULL DEFAULT 'requested',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_handoff_records_session
+            ON handoff_records(session_id);
+        CREATE INDEX IF NOT EXISTS idx_handoff_records_scope_status
+            ON handoff_records(scope_id, status);
+
+        INSERT OR IGNORE INTO migrations (version, applied_at, description)
+        VALUES (
+            10,
+            datetime('now'),
+            'Add journey graph and explainability record tables for the control plane'
+        );
+        ",
+    )?;
+    Ok(())
+}
+
+/// Version 11: Add knowledge/context policy tables and release metadata for the control plane.
+fn migrate_v11(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS retrievers (
+            retriever_id TEXT PRIMARY KEY,
+            scope_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            retriever_type TEXT NOT NULL,
+            config_json TEXT NOT NULL DEFAULT '{}',
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1))
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_retrievers_scope_name
+            ON retrievers(scope_id, name);
+        CREATE INDEX IF NOT EXISTS idx_retrievers_scope_enabled
+            ON retrievers(scope_id, enabled);
+
+        CREATE TABLE IF NOT EXISTS retriever_bindings (
+            binding_id TEXT PRIMARY KEY,
+            scope_id TEXT NOT NULL,
+            retriever_id TEXT NOT NULL,
+            bind_type TEXT NOT NULL,
+            bind_ref TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_retriever_bindings_unique
+            ON retriever_bindings(scope_id, retriever_id, bind_type, bind_ref);
+        CREATE INDEX IF NOT EXISTS idx_retriever_bindings_scope_bind
+            ON retriever_bindings(scope_id, bind_type, bind_ref);
+        CREATE INDEX IF NOT EXISTS idx_retriever_bindings_retriever
+            ON retriever_bindings(retriever_id);
+
+        CREATE TABLE IF NOT EXISTS glossary_terms (
+            term_id TEXT PRIMARY KEY,
+            scope_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            synonyms_json TEXT NOT NULL DEFAULT '[]',
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1))
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_glossary_terms_scope_name
+            ON glossary_terms(scope_id, name);
+        CREATE INDEX IF NOT EXISTS idx_glossary_terms_scope_enabled
+            ON glossary_terms(scope_id, enabled);
+
+        CREATE TABLE IF NOT EXISTS context_variables (
+            variable_id TEXT PRIMARY KEY,
+            scope_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            value_source_type TEXT NOT NULL,
+            value_source_config TEXT NOT NULL DEFAULT '{}',
+            visibility_rule TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1))
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_context_variables_scope_name
+            ON context_variables(scope_id, name);
+        CREATE INDEX IF NOT EXISTS idx_context_variables_scope_enabled
+            ON context_variables(scope_id, enabled);
+        CREATE INDEX IF NOT EXISTS idx_context_variables_source_type
+            ON context_variables(value_source_type);
+
+        CREATE TABLE IF NOT EXISTS canned_responses (
+            response_id TEXT PRIMARY KEY,
+            scope_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            template_text TEXT NOT NULL,
+            trigger_rule TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1))
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_canned_responses_scope_name
+            ON canned_responses(scope_id, name);
+        CREATE INDEX IF NOT EXISTS idx_canned_responses_scope_enabled
+            ON canned_responses(scope_id, enabled);
+
+        CREATE TABLE IF NOT EXISTS tool_exposure_policies (
+            policy_id TEXT PRIMARY KEY,
+            scope_id TEXT NOT NULL,
+            tool_name TEXT NOT NULL,
+            skill_ref TEXT,
+            observation_ref TEXT,
+            journey_state_ref TEXT,
+            guideline_ref TEXT,
+            approval_mode TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1))
+        );
+        CREATE INDEX IF NOT EXISTS idx_tool_exposure_policies_scope_tool
+            ON tool_exposure_policies(scope_id, tool_name);
+        CREATE INDEX IF NOT EXISTS idx_tool_exposure_policies_scope_enabled
+            ON tool_exposure_policies(scope_id, enabled);
+        CREATE INDEX IF NOT EXISTS idx_tool_exposure_policies_scope_approval
+            ON tool_exposure_policies(scope_id, approval_mode);
+
+        CREATE TABLE IF NOT EXISTS control_releases (
+            release_id TEXT PRIMARY KEY,
+            scope_id TEXT NOT NULL,
+            version TEXT NOT NULL,
+            status TEXT NOT NULL,
+            published_by TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_control_releases_scope_version
+            ON control_releases(scope_id, version);
+        CREATE INDEX IF NOT EXISTS idx_control_releases_scope_status
+            ON control_releases(scope_id, status);
+        CREATE INDEX IF NOT EXISTS idx_control_releases_created
+            ON control_releases(created_at DESC);
+
+        INSERT OR IGNORE INTO migrations (version, applied_at, description)
+        VALUES (
+            11,
+            datetime('now'),
+            'Add knowledge, tool policy, and release tables for the control plane'
+        );
+        ",
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -352,6 +712,27 @@ mod tests {
         assert!(tables.contains(&"memories".to_string()));
         assert!(tables.contains(&"entities".to_string()));
         assert!(tables.contains(&"relations".to_string()));
+        assert!(tables.contains(&"control_scopes".to_string()));
+        assert!(tables.contains(&"session_bindings".to_string()));
+        assert!(tables.contains(&"observations".to_string()));
+        assert!(tables.contains(&"guidelines".to_string()));
+        assert!(tables.contains(&"journeys".to_string()));
+        assert!(tables.contains(&"turn_traces".to_string()));
+        assert!(tables.contains(&"guideline_relationships".to_string()));
+        assert!(tables.contains(&"journey_states".to_string()));
+        assert!(tables.contains(&"journey_transitions".to_string()));
+        assert!(tables.contains(&"journey_instances".to_string()));
+        assert!(tables.contains(&"policy_match_records".to_string()));
+        assert!(tables.contains(&"journey_transition_records".to_string()));
+        assert!(tables.contains(&"tool_authorization_records".to_string()));
+        assert!(tables.contains(&"handoff_records".to_string()));
+        assert!(tables.contains(&"retrievers".to_string()));
+        assert!(tables.contains(&"retriever_bindings".to_string()));
+        assert!(tables.contains(&"glossary_terms".to_string()));
+        assert!(tables.contains(&"context_variables".to_string()));
+        assert!(tables.contains(&"canned_responses".to_string()));
+        assert!(tables.contains(&"tool_exposure_policies".to_string()));
+        assert!(tables.contains(&"control_releases".to_string()));
     }
 
     #[test]

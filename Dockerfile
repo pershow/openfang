@@ -29,6 +29,6 @@ COPY --from=builder /build/target/release/openparlant /usr/local/bin/
 COPY --from=builder /build/agents /opt/openparlant/agents
 EXPOSE 4200
 VOLUME /data
-ENV OPENFANG_HOME=/data
+ENV OPENPARLANT_HOME=/data
 ENTRYPOINT ["openparlant"]
 CMD ["start"]
