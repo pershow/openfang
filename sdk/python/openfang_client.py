@@ -1,11 +1,11 @@
 """
-OpenFang Python Client — REST API client for controlling OpenFang remotely.
+OpenParlant Python Client — REST API client for controlling OpenParlant remotely.
 
 Usage:
 
-    from openfang_client import OpenFang
+    from openfang_client import OpenParlant
 
-    client = OpenFang("http://localhost:3000")
+    client = OpenParlant("http://localhost:3000")
 
     # Create an agent
     agent = client.agents.create(template="assistant")
@@ -21,7 +21,7 @@ Usage:
             print(event["delta"], end="", flush=True)
 
 Note: This is the REST API *client* library.
-      For writing Python agents that run inside OpenFang, see openfang_sdk.py instead.
+      For writing Python agents that run inside OpenParlant, see openfang_sdk.py instead.
 """
 
 import json
@@ -39,12 +39,12 @@ class OpenFangError(Exception):
 
 
 class _Resource:
-    def __init__(self, client: "OpenFang"):
+    def __init__(self, client: "OpenParlant"):
         self._c = client
 
 
-class OpenFang:
-    """OpenFang REST API client. Zero dependencies — uses only stdlib urllib."""
+class OpenParlant:
+    """OpenParlant REST API client. Zero dependencies — uses only stdlib urllib."""
 
     def __init__(self, base_url: str, headers: Optional[Dict[str, str]] = None):
         self.base_url = base_url.rstrip("/")

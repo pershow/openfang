@@ -1,9 +1,9 @@
 /**
- * @openfang/sdk — Official JavaScript client for the OpenFang Agent OS REST API.
+ * @openparlant/sdk — Official JavaScript client for the OpenParlant Agent OS REST API.
  *
  * Usage:
- *   const { OpenFang } = require("@openfang/sdk");
- *   const client = new OpenFang("http://localhost:3000");
+ *   const { OpenParlant } = require("@openparlant/sdk");
+ *   const client = new OpenParlant("http://localhost:3000");
  *
  *   const agent = await client.agents.create({ template: "assistant" });
  *   const reply = await client.agents.message(agent.id, "Hello!");
@@ -26,9 +26,9 @@ class OpenFangError extends Error {
   }
 }
 
-class OpenFang {
+class OpenParlant {
   /**
-   * @param {string} baseUrl - OpenFang server URL (e.g. "http://localhost:3000")
+   * @param {string} baseUrl - OpenParlant server URL (e.g. "http://localhost:3000")
    * @param {object} [opts]
    * @param {Record<string, string>} [opts.headers] - Extra headers for every request
    */
@@ -476,4 +476,4 @@ class ScheduleResource {
 
 // ── Exports ─────────────────────────────────────────────────────
 
-module.exports = { OpenFang: OpenFang, OpenFangError: OpenFangError };
+module.exports = { OpenParlant: OpenParlant, OpenFangError: OpenFangError };

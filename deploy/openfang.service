@@ -1,27 +1,27 @@
 [Unit]
-Description=OpenFang Agent OS Daemon
-Documentation=https://github.com/openfang-ai/openfang
+Description=OpenParlant Agent OS Daemon
+Documentation=https://github.com/openparlant-ai/openparlant
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=openfang
-Group=openfang
-ExecStart=/usr/local/bin/openfang start
+User=openparlant
+Group=openparlant
+ExecStart=/usr/local/bin/openparlant start
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
 
 # Environment
-EnvironmentFile=-/etc/openfang/env
-WorkingDirectory=/var/lib/openfang
+EnvironmentFile=-/etc/openparlant/env
+WorkingDirectory=/var/lib/openparlant
 
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/openfang
+ReadWritePaths=/var/lib/openparlant
 PrivateTmp=true
 ProtectKernelTunables=true
 ProtectKernelModules=true

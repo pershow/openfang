@@ -1,0 +1,38 @@
+[package]
+name = "openparlant-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Native desktop application for the OpenParlant Agent OS (Tauri 2.0)"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+openparlant-kernel = { path = "../openparlant-kernel" }
+openparlant-api = { path = "../openparlant-api" }
+openparlant-types = { path = "../openparlant-types" }
+tokio = { workspace = true }
+axum = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-notification = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-updater = "2"
+serde = { workspace = true }
+toml = { workspace = true }
+open = "5"
+
+[features]
+# Tauri uses custom-protocol in production builds
+custom-protocol = ["tauri/custom-protocol"]
+
+[[bin]]
+name = "openparlant-desktop"
+path = "src/main.rs"

@@ -1,0 +1,33 @@
+[package]
+name = "openparlant-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CLI tool for the OpenParlant Agent OS"
+
+[[bin]]
+name = "openparlant"
+path = "src/main.rs"
+
+[dependencies]
+openparlant-types = { path = "../openparlant-types" }
+openparlant-kernel = { path = "../openparlant-kernel" }
+openparlant-api = { path = "../openparlant-api" }
+openparlant-migrate = { path = "../openparlant-migrate" }
+openparlant-skills = { path = "../openparlant-skills" }
+openparlant-extensions = { path = "../openparlant-extensions" }
+zeroize = { workspace = true }
+tokio = { workspace = true }
+clap = { workspace = true }
+clap_complete = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+dirs = { workspace = true }
+reqwest = { workspace = true, features = ["blocking"] }
+openparlant-runtime = { path = "../openparlant-runtime" }
+uuid = { workspace = true }
+ratatui = { workspace = true }
+colored = { workspace = true }

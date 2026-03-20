@@ -23,7 +23,7 @@ export interface StreamEvent {
   [key: string]: unknown;
 }
 
-export class OpenFang {
+export class OpenParlant {
   baseUrl: string;
   agents: AgentResource;
   sessions: SessionResource;

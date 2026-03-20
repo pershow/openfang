@@ -52,7 +52,7 @@ async function startConnection() {
     auth: state,
     logger,
     printQRInTerminal: true,
-    browser: ['OpenFang', 'Desktop', '1.0.0'],
+    browser: ['OpenParlant', 'Desktop', '1.0.0'],
   });
 
   // Save credentials whenever they update
@@ -115,7 +115,7 @@ async function startConnection() {
     }
   });
 
-  // Incoming messages → forward to OpenFang
+  // Incoming messages → forward to OpenParlant
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
 
@@ -161,7 +161,7 @@ async function startConnection() {
         console.log(`[gateway] Incoming from ${pushName} (${phone}): ${text.substring(0, 80)}`);
       }
 
-      // Forward to OpenFang agent
+      // Forward to OpenParlant agent
       try {
         const response = await forwardToOpenFang(text, phone, pushName, metadata);
         if (response && sock) {
@@ -178,7 +178,7 @@ async function startConnection() {
 }
 
 // ---------------------------------------------------------------------------
-// Forward incoming message to OpenFang API, return agent response
+// Forward incoming message to OpenParlant API, return agent response
 // ---------------------------------------------------------------------------
 function forwardToOpenFang(text, phone, pushName, metadata) {
   return new Promise((resolve, reject) => {
@@ -223,7 +223,7 @@ function forwardToOpenFang(text, phone, pushName, metadata) {
     req.on('error', reject);
     req.on('timeout', () => {
       req.destroy();
-      reject(new Error('OpenFang API timeout'));
+      reject(new Error('OpenParlant API timeout'));
     });
     req.write(payload);
     req.end();
@@ -231,7 +231,7 @@ function forwardToOpenFang(text, phone, pushName, metadata) {
 }
 
 // ---------------------------------------------------------------------------
-// Send a message via Baileys (called by OpenFang for outgoing)
+// Send a message via Baileys (called by OpenParlant for outgoing)
 // ---------------------------------------------------------------------------
 async function sendMessage(to, text) {
   if (!sock || connStatus !== 'connected') {
@@ -358,7 +358,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`[gateway] WhatsApp Web gateway listening on http://127.0.0.1:${PORT}`);
-  console.log(`[gateway] OpenFang URL: ${OPENFANG_URL}`);
+  console.log(`[gateway] OpenParlant URL: ${OPENFANG_URL}`);
   console.log(`[gateway] Default agent: ${DEFAULT_AGENT}`);
 
   // Auto-connect if credentials already exist from a previous session
