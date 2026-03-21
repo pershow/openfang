@@ -247,6 +247,42 @@ impl PolicyStore {
         Ok(guidelines)
     }
 
+    // ── Guideline Relationships ───────────────────────────────────────────────
+
+    /// List all guideline relationships for a scope.
+    /// Returns tuples of `(relationship_id, from_guideline_id, to_guideline_id, relation_type)`.
+    pub fn list_guideline_relationships(
+        &self,
+        scope_id: &ScopeId,
+    ) -> OpenFangResult<Vec<(String, String, String, String)>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT relationship_id, from_guideline_id, to_guideline_id, relation_type
+                 FROM guideline_relationships
+                 WHERE scope_id = ?1",
+            )
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![scope_id.0.as_str()], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| OpenFangError::Memory(e.to_string()))?);
+        }
+        Ok(out)
+    }
+
     // ── Tool Exposure Policies ────────────────────────────────────────────────
 
     /// Insert a new tool-exposure policy.

@@ -8,11 +8,12 @@ use crate::routes::{self, AppState};
 use crate::webchat;
 use crate::ws;
 use axum::Router;
+use openparlant_context::SqliteKnowledgeCompiler;
 use openparlant_control::{ControlStore, DefaultTurnControlCoordinator};
 use openparlant_journey::{JourneyStore, SqliteJourneyRuntime};
 use openparlant_kernel::OpenFangKernel;
 use openparlant_memory::migration::run_migrations;
-use openparlant_policy::{PolicyStore, SqliteObservationMatcher, SqlitePolicyResolver};
+use openparlant_policy::{PolicyStore, SqliteObservationMatcher, SqlitePolicyResolver, SqliteToolGate};
 use rusqlite::Connection;
 use std::net::SocketAddr;
 use std::path::Path;
@@ -68,11 +69,18 @@ pub async fn build_router(
     let policy_store = PolicyStore::new(cp_conn.clone());
     let journey_store = JourneyStore::new(cp_conn.clone());
 
-    let coordinator = DefaultTurnControlCoordinator::new(
+    // Build a sqlx pool on the same DB file for async knowledge compilation.
+    let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
+    let sqlx_pool = sqlx::SqlitePool::connect(&db_url)
+        .await
+        .expect("sqlx pool for context store");
+
+    let coordinator = DefaultTurnControlCoordinator::new_with_gate(
         SqliteObservationMatcher::new(cp_conn.clone()),
         SqlitePolicyResolver::new(cp_conn.clone()),
         SqliteJourneyRuntime::new(cp_conn.clone()),
-        openparlant_context::NoopKnowledgeCompiler,
+        SqliteKnowledgeCompiler::new(sqlx_pool),
+        SqliteToolGate::new(cp_conn.clone()),
     )
     .with_store(control_store.clone());
 
@@ -780,6 +788,13 @@ pub async fn build_router(
         .route("/api/sessions/{session_id}/handoff", axum::routing::post(control_routes::create_handoff))
         .route("/api/sessions/{session_id}/handoffs", axum::routing::get(control_routes::list_handoffs))
         .route("/api/control/handoffs/{handoff_id}/status", axum::routing::patch(control_routes::update_handoff_status))
+        // ── Retrievers ───────────────────────────────────────────────────────
+        .route("/api/control/retrievers", axum::routing::post(control_routes::create_retriever))
+        .route("/api/control/scopes/{scope_id}/retrievers", axum::routing::get(control_routes::list_retrievers))
+        // ── Releases ─────────────────────────────────────────────────────────
+        .route("/api/control/releases/publish", axum::routing::post(control_routes::publish_release))
+        .route("/api/control/releases/rollback", axum::routing::post(control_routes::rollback_release))
+        .route("/api/control/scopes/{scope_id}/releases", axum::routing::get(control_routes::list_releases))
         .layer(axum::middleware::from_fn_with_state(
             auth_state,
             middleware::auth,

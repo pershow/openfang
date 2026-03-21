@@ -103,16 +103,88 @@ impl ContextStore {
 
     /// Placeholder: actually invoke retrievers and return chunks.
     ///
-    /// In Phase 2 this will dispatch on `retriever_type` (faq_sqlite, openai_embeddings, etc.).
-    /// For now returns an empty list so the pipeline compiles and runs end-to-end.
+    /// Dispatches on `retriever_type`:
+    /// - `"static"`: searches `config_json.items` (array of `{title, content}`) for keyword matches.
+    /// - `"faq_sqlite"`: searches `glossary_terms` for keyword matches and returns them as chunks.
+    /// - Other types: logged and skipped (Phase 2 will add embedding-based retrieval).
     pub async fn run_retrievers(
         &self,
         scope_id: &ScopeId,
-        _query: &str,
+        query: &str,
     ) -> Result<Vec<RetrievedChunk>> {
-        let _retrievers = self.list_retrievers(scope_id).await?;
-        // TODO Phase 2: dispatch each retriever by type and merge results.
-        Ok(Vec::new())
+        let retrievers = self.list_retrievers(scope_id).await?;
+        let query_lower = query.to_lowercase();
+        let mut chunks = Vec::new();
+
+        for retriever in &retrievers {
+            match retriever.retriever_type.as_str() {
+                "static" => {
+                    // Expect config_json = { "items": [ { "title": "...", "content": "..." }, ... ] }
+                    if let Some(items) = retriever.config_json.get("items").and_then(|v| v.as_array()) {
+                        for item in items {
+                            let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
+                            let content = item.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                            if title.to_lowercase().contains(&query_lower)
+                                || content.to_lowercase().contains(&query_lower)
+                            {
+                                chunks.push(RetrievedChunk {
+                                    source: format!("static:{}", retriever.name),
+                                    content: if content.is_empty() {
+                                        title.to_string()
+                                    } else {
+                                        format!("{title}: {content}")
+                                    },
+                                    score: Some(1.0),
+                                    metadata: Some(serde_json::json!({ "retriever_id": retriever.retriever_id })),
+                                });
+                            }
+                        }
+                    }
+                }
+                "faq_sqlite" => {
+                    // Search glossary_terms for keyword matches (reuse the same DB table).
+                    let rows = sqlx::query(
+                        "SELECT name, description, synonyms_json
+                         FROM glossary_terms
+                         WHERE scope_id = ? AND enabled = 1",
+                    )
+                    .bind(&scope_id.0)
+                    .fetch_all(&self.pool)
+                    .await
+                    .unwrap_or_default();
+
+                    for row in rows {
+                        let name: String = row.try_get("name").unwrap_or_default();
+                        let description: String = row.try_get("description").unwrap_or_default();
+                        let synonyms_json: String = row.try_get("synonyms_json").unwrap_or_default();
+                        let synonyms: Vec<String> =
+                            serde_json::from_str(&synonyms_json).unwrap_or_default();
+
+                        let hit = name.to_lowercase().contains(&query_lower)
+                            || description.to_lowercase().contains(&query_lower)
+                            || synonyms.iter().any(|s| s.to_lowercase().contains(&query_lower));
+
+                        if hit {
+                            chunks.push(RetrievedChunk {
+                                source: format!("faq_sqlite:{}", retriever.name),
+                                content: format!("{name}: {description}"),
+                                score: Some(0.9),
+                                metadata: Some(serde_json::json!({ "retriever_id": retriever.retriever_id })),
+                            });
+                        }
+                    }
+                }
+                other => {
+                    tracing::debug!(
+                        retriever_type = %other,
+                        retriever = %retriever.name,
+                        "unsupported retriever type — skipping (Phase 2)"
+                    );
+                }
+            }
+        }
+
+        Ok(chunks)
     }
 
     // ── Glossary ──────────────────────────────────────────────────────────────

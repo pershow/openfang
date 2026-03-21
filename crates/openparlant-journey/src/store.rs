@@ -4,6 +4,15 @@ use rusqlite::{params, Connection};
 use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 
+/// A journey transition row returned from the store.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransitionRecord {
+    pub transition_id: String,
+    pub to_state_id: String,
+    pub condition_config: serde_json::Value,
+    pub transition_type: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JourneyStateRecord {
     pub name: String,
@@ -305,6 +314,110 @@ impl JourneyStore {
         )
         .map_err(|e| OpenFangError::Memory(e.to_string()))?;
         Ok(())
+    }
+
+    /// Advance an instance to a new state.
+    pub fn advance_instance(
+        &self,
+        instance_id: &str,
+        new_state_id: &str,
+    ) -> OpenFangResult<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        conn.execute(
+            "UPDATE journey_instances
+             SET current_state_id = ?1, updated_at = datetime('now')
+             WHERE journey_instance_id = ?2",
+            params![new_state_id, instance_id],
+        )
+        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        Ok(())
+    }
+
+    /// List active instances for a specific session.
+    pub async fn list_active_instances_for_session(
+        &self,
+        session_id: &str,
+    ) -> OpenFangResult<Vec<(String, String, JourneyId, String)>> {
+        // Returns (instance_id, scope_id, journey_id, current_state_id)
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT journey_instance_id, scope_id, journey_id, current_state_id
+                 FROM journey_instances
+                 WHERE session_id = ?1 AND status = 'active'
+                 ORDER BY updated_at DESC",
+            )
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![session_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (iid, sid, jid_str, state_id) =
+                row.map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            let journey_id = parse_uuid(&jid_str)
+                .map(JourneyId)
+                .map_err(memory_parse_error)?;
+            out.push((iid, sid, journey_id, state_id));
+        }
+        Ok(out)
+    }
+
+    /// List outgoing transitions from a state.
+    pub fn list_transitions_from(
+        &self,
+        journey_id: &JourneyId,
+        from_state_id: &str,
+    ) -> OpenFangResult<Vec<TransitionRecord>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT transition_id, to_state_id, condition_config, transition_type
+                 FROM journey_transitions
+                 WHERE journey_id = ?1 AND from_state_id = ?2",
+            )
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        let rows = stmt
+            .query_map(
+                params![journey_id.0.to_string(), from_state_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                },
+            )
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (tid, to_sid, cond, ttype) =
+                row.map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            out.push(TransitionRecord {
+                transition_id: tid,
+                to_state_id: to_sid,
+                condition_config: serde_json::from_str(&cond).unwrap_or_default(),
+                transition_type: ttype,
+            });
+        }
+        Ok(out)
     }
 }
 

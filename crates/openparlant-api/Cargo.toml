@@ -21,6 +21,7 @@ openparlant-policy = { path = "../openparlant-policy" }
 openparlant-journey = { path = "../openparlant-journey" }
 openparlant-context = { path = "../openparlant-context" }
 rusqlite = { workspace = true }
+sqlx = { workspace = true }
 dashmap = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }

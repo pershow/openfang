@@ -2327,6 +2327,13 @@ impl OpenFangKernel {
         }
 
         // Build the structured system prompt via prompt_builder
+        // `control_after_ctx` is declared outside the inner block so that it remains
+        // accessible after `run_agent_loop` completes (needed for the after_response hook).
+        let mut control_after_ctx: Option<(
+            openparlant_types::control::TraceId,
+            openparlant_types::control::ScopeId,
+            Arc<dyn openparlant_types::control::TurnControlCoordinator>,
+        )> = None;
         {
             let mcp_tool_count = self.mcp_tools.lock().map(|t| t.len()).unwrap_or(0);
             let shared_id = shared_memory_agent_id();
@@ -2497,6 +2504,12 @@ impl OpenFangKernel {
                             approval_required = ctx.approval_required_tools.len(),
                             "control-plane context injected into system prompt"
                         );
+                        // Stash trace context so after_response can be called post-loop.
+                        control_after_ctx = Some((
+                            ctx.audit_meta.trace_id,
+                            ctx.audit_meta.scope_id.clone(),
+                            coordinator.clone(),
+                        ));
                     }
                     Err(e) => {
                         tracing::warn!(
@@ -2634,6 +2647,22 @@ impl OpenFangKernel {
         )
         .await
         .map_err(KernelError::OpenParlant)?;
+
+        // ── Control-plane post-turn recording ─────────────────────────────────────
+        if let Some((trace_id, scope_id, coordinator)) = control_after_ctx {
+            use openparlant_types::control::{ToolCallRecord, TurnOutcome};
+            let outcome = TurnOutcome {
+                trace_id,
+                scope_id,
+                response_text: result.response.clone(),
+                tool_calls: Vec::<ToolCallRecord>::new(),
+                handoff_suggested: result.response.to_lowercase().contains("handoff")
+                    || result.response.to_lowercase().contains("manual mode"),
+            };
+            if let Err(e) = coordinator.after_response(&outcome).await {
+                warn!(trace_id = %outcome.trace_id, error = %e, "after_response failed");
+            }
+        }
 
         // Append new messages to canonical session for cross-channel memory
         if session.messages.len() > messages_before {

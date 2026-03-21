@@ -609,6 +609,11 @@
                 <button class="btn btn-ghost btn-sm" @click="toggleSearch()" title="Search messages (Ctrl+F)">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
                 </button>
+                <!-- Control-trace side panel toggle -->
+                <button class="btn btn-ghost btn-sm" @click="toggleControlTrace()" :class="{'active': showControlTrace}" title="Control Trace — see active guidelines, journey state and tool authorizations" style="font-size:11px;gap:4px">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2v-4M9 21H5a2 2 0 0 1-2-2v-4m0 0h18"/></svg>
+                  Trace
+                </button>
                 <button class="btn btn-ghost btn-sm" @click="$store.app.toggleFocusMode()" title="Ctrl+Shift+F">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g x-show="!$store.app.focusMode"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></g><g x-show="$store.app.focusMode"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></g></svg>
                 </button>
@@ -624,8 +629,10 @@
               <button class="btn btn-ghost btn-sm" @click="toggleSearch()" style="padding:2px 6px">&times;</button>
             </div>
 
+            <!-- Messages area + Control-trace side panel -->
+            <div style="display:flex;flex:1;min-height:0;overflow:hidden">
             <!-- Messages area -->
-            <div class="messages" id="messages" @dragover.prevent="dragOver = true" @dragleave="dragOver = false" @drop.prevent="handleDrop($event); dragOver = false">
+            <div class="messages" id="messages" :style="showControlTrace ? 'flex:1;min-width:0' : ''" @dragover.prevent="dragOver = true" @dragleave="dragOver = false" @drop.prevent="handleDrop($event); dragOver = false">
               <!-- Empty state: no agent selected -->
               <template x-if="!currentAgent">
                 <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:32px;opacity:0.8">
@@ -722,7 +729,37 @@
               </div>
             </div>
 
-            <!-- Input area -->
+            <!-- Control-trace side panel -->
+            <div x-show="showControlTrace" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 transform translate-x-4" x-transition:enter-end="opacity-100 transform translate-x-0" style="width:280px;flex-shrink:0;border-left:1px solid var(--border);overflow-y:auto;background:var(--surface);display:flex;flex-direction:column">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:10">
+                <span style="font-size:12px;font-weight:600;letter-spacing:0.04em;opacity:0.7;text-transform:uppercase">Control Trace</span>
+                <div style="display:flex;gap:6px">
+                  <button class="btn btn-ghost btn-sm" @click="loadControlTrace()" title="Refresh" style="padding:2px 6px">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                  </button>
+                  <button class="btn btn-ghost btn-sm" @click="showControlTrace = false" style="padding:2px 6px">&times;</button>
+                </div>
+              </div>
+              <!-- Loading state -->
+              <div x-show="controlTraceLoading" style="padding:20px;text-align:center">
+                <span class="spinner" style="width:20px;height:20px"></span>
+              </div>
+              <!-- Empty state -->
+              <div x-show="!controlTraceLoading && !controlTraces.length" style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px">
+                No trace records yet for this session.
+              </div>
+              <!-- Trace list -->
+              <template x-for="(trace, ti) in controlTraces" :key="trace.trace_id || ti">
+                <div style="border-bottom:1px solid var(--border);padding:10px 12px">
+                  <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:4px" x-text="controlTraceLabel(trace)"></div>
+                  <!-- Response mode badge -->
+                  <span style="display:inline-block;font-size:10px;padding:1px 6px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);margin-bottom:6px" x-text="trace.response_mode || 'freeform'"></span>
+                  <!-- channel -->
+                  <div x-show="trace.channel_type" class="text-xs text-dim" x-text="'Channel: ' + (trace.channel_type || '')"></div>
+                </div>
+              </template>
+            </div>
+            </div><!-- end messages+trace flex wrapper -->
             <div class="input-area" x-show="currentAgent" style="position:relative">
               <!-- Attachment previews -->
               <div x-show="attachments.length > 0" style="display:flex;gap:8px;flex-wrap:wrap;padding:0 0 8px 0">
@@ -5064,11 +5101,8 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
       </div>
     </template>
 
-  </main>
-</div>
-
-<!-- Control Plane Page -->
-<template x-if="page === 'control'" x-data>
+    <!-- Control Plane Page -->
+    <template x-if="page === 'control'" x-data>
   <div x-data="controlPage()" x-init="init()" class="page-container">
 
     <!-- Header -->
@@ -5669,6 +5703,8 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
   </div>
 </template>
 
+  </main>
+</div>
 
 <!-- Toast notification container -->
 <div id="toast-container" class="toast-container" aria-live="polite"></div>

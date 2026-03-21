@@ -1161,3 +1161,121 @@ pub async fn update_handoff_status(
         Err(e) => internal(e),
     }
 }
+
+// ─── Retrievers ───────────────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct CreateRetrieverRequest {
+    pub scope_id: String,
+    pub name: String,
+    #[serde(default = "default_retriever_type")]
+    pub retriever_type: String,
+    #[serde(default)]
+    pub config_json: serde_json::Value,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+fn default_retriever_type() -> String { "static".to_string() }
+
+/// POST /api/control/retrievers
+pub async fn create_retriever(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CreateRetrieverRequest>,
+) -> impl IntoResponse {
+    let retriever_id = uuid::Uuid::new_v4().to_string();
+    let record = serde_json::json!({
+        "retriever_id": retriever_id,
+        "scope_id": req.scope_id,
+        "name": req.name,
+        "retriever_type": req.retriever_type,
+        "config_json": req.config_json,
+        "enabled": req.enabled,
+    });
+    match state.control_store.upsert_retriever(&record) {
+        Ok(()) => (StatusCode::CREATED, Json(record)),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/scopes/:scope_id/retrievers
+pub async fn list_retrievers(
+    State(state): State<Arc<AppState>>,
+    Path(scope_id): Path<String>,
+) -> impl IntoResponse {
+    use openparlant_types::control::ScopeId;
+    match state.control_store.list_retrievers(&ScopeId::new(scope_id)) {
+        Ok(items) => (StatusCode::OK, Json(serde_json::json!(items))),
+        Err(e) => internal(e),
+    }
+}
+
+// ─── Releases ─────────────────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct PublishReleaseRequest {
+    pub scope_id: String,
+    pub version: String,
+    #[serde(default = "default_system_user")]
+    pub published_by: String,
+}
+fn default_system_user() -> String { "system".to_string() }
+
+/// POST /api/control/releases/publish
+pub async fn publish_release(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<PublishReleaseRequest>,
+) -> impl IntoResponse {
+    use openparlant_types::control::ScopeId;
+    let release_id = uuid::Uuid::new_v4().to_string();
+    match state.control_store.publish_release(
+        &release_id,
+        &ScopeId::new(req.scope_id.clone()),
+        &req.version,
+        &req.published_by,
+    ) {
+        Ok(()) => (StatusCode::CREATED, Json(serde_json::json!({
+            "release_id": release_id,
+            "scope_id": req.scope_id,
+            "version": req.version,
+            "status": "published",
+            "published_by": req.published_by,
+        }))),
+        Err(e) => internal(e),
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct RollbackReleaseRequest {
+    pub scope_id: String,
+}
+
+/// POST /api/control/releases/rollback
+pub async fn rollback_release(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<RollbackReleaseRequest>,
+) -> impl IntoResponse {
+    use openparlant_types::control::ScopeId;
+    match state.control_store.rollback_release(&ScopeId::new(req.scope_id.clone())) {
+        Ok(Some(rid)) => (StatusCode::OK, Json(serde_json::json!({
+            "rolled_back_release_id": rid,
+            "scope_id": req.scope_id,
+        }))),
+        Ok(None) => (StatusCode::NOT_FOUND, Json(serde_json::json!({
+            "error": "No published release found to roll back",
+            "scope_id": req.scope_id,
+        }))),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/scopes/:scope_id/releases
+pub async fn list_releases(
+    State(state): State<Arc<AppState>>,
+    Path(scope_id): Path<String>,
+) -> impl IntoResponse {
+    use openparlant_types::control::ScopeId;
+    match state.control_store.list_releases(&ScopeId::new(scope_id)) {
+        Ok(items) => (StatusCode::OK, Json(serde_json::json!(items))),
+        Err(e) => internal(e),
+    }
+}

@@ -1201,6 +1201,41 @@ function chatPage() {
       return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
     },
 
+    // ── Control-trace panel ───────────────────────────────────────────────────
+    showControlTrace: false,
+    controlTraces: [],
+    controlTraceLoading: false,
+
+    toggleControlTrace: function() {
+      this.showControlTrace = !this.showControlTrace;
+      if (this.showControlTrace && this.currentAgent) {
+        this.loadControlTrace();
+      }
+    },
+
+    loadControlTrace: async function() {
+      if (!this.currentAgent) return;
+      this.controlTraceLoading = true;
+      try {
+        // Get the current session_id for this agent then fetch trace.
+        var session = await OpenFangAPI.get('/api/agents/' + this.currentAgent.id + '/session');
+        var sid = session && session.session_id;
+        if (sid) {
+          var data = await OpenFangAPI.get('/api/sessions/' + sid + '/control-trace');
+          this.controlTraces = data && Array.isArray(data) ? data : (data && data.traces) ? data.traces : [];
+        }
+      } catch(e) {
+        this.controlTraces = [];
+      }
+      this.controlTraceLoading = false;
+    },
+
+    controlTraceLabel: function(trace) {
+      var mode = trace.response_mode || 'freeform';
+      var ts = trace.created_at ? new Date(trace.created_at).toLocaleTimeString() : '';
+      return ts ? ts + ' — ' + mode : mode;
+    },
+
     // Search: toggle open/close
     toggleSearch: function() {
       this.searchOpen = !this.searchOpen;
