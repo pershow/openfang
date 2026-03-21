@@ -144,6 +144,7 @@ pub struct TurnTraceRecord {
     pub channel_type: String,
     pub request_message_ref: Option<String>,
     pub compiled_context_hash: Option<String>,
+    pub release_version: Option<String>,
     pub response_mode: ResponseMode,
     pub created_at: DateTime<Utc>,
 }
@@ -399,6 +400,12 @@ pub struct TurnInput {
     pub agent_id: AgentId,
     pub session_id: SessionId,
     pub message: CanonicalMessage,
+    /// Tool calls produced in the previous preparation iteration (empty on the first call).
+    ///
+    /// When non-empty, the coordinator will use these results to enrich the message context
+    /// and re-evaluate guidelines — implementing Parlant's "preparation iteration" loop.
+    #[serde(default)]
+    pub prior_tool_calls: Vec<ToolCallRecord>,
 }
 
 /// Tool call outcome captured after the runtime loop finishes.
@@ -407,6 +414,67 @@ pub struct ToolCallRecord {
     pub tool_name: String,
     pub approved: Option<bool>,
     pub success: bool,
+    /// Serialized result or error message from the tool call (used in preparation iteration).
+    #[serde(default)]
+    pub result: Option<String>,
+}
+
+/// Session-level flags resolved from `session_bindings` (control plane).
+#[derive(Debug, Clone, Default)]
+pub struct SessionBindingFlags {
+    /// Scope from an existing binding, if any.
+    pub scope_id: Option<ScopeId>,
+    /// Channel type resolved from an existing binding, if any.
+    pub channel_type: Option<String>,
+    /// External user identifier resolved from an existing binding, if any.
+    pub external_user_id: Option<String>,
+    /// External chat/thread identifier resolved from an existing binding, if any.
+    pub external_chat_id: Option<String>,
+    /// When true, the AI must not respond (human operator mode).
+    pub manual_mode: bool,
+}
+
+/// Serialized fields from `compile_turn` so `after_response` can persist explainability rows.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ControlExplainabilitySnapshot {
+    pub observation_hits_json: String,
+    pub guideline_hits_json: String,
+    pub guideline_exclusions_json: String,
+    pub allowed_tools_json: String,
+    /// Object shape: `{ "tool_reasons": { "<tool>": ["…"] } }` (may be extended at persist time).
+    pub authorization_reasons_json: String,
+    /// Typically `{ "tools": ["…"] }` listing tools that require approval this turn.
+    pub approval_requirements_json: String,
+}
+
+impl ControlExplainabilitySnapshot {
+    /// Build from a compiled turn (pre–agent-loop).
+    pub fn from_compiled(ctx: &CompiledTurnContext) -> Self {
+        let tool_reasons: serde_json::Map<String, serde_json::Value> = ctx
+            .tool_authorizations
+            .iter()
+            .map(|a| {
+                (
+                    a.tool_name.clone(),
+                    serde_json::to_value(&a.reasons).unwrap_or_else(|_| serde_json::json!([])),
+                )
+            })
+            .collect();
+        let authorization_reasons_json = serde_json::json!({ "tool_reasons": tool_reasons }).to_string();
+        Self {
+            observation_hits_json: serde_json::to_string(&ctx.active_observations)
+                .unwrap_or_else(|_| "[]".into()),
+            guideline_hits_json: serde_json::to_string(&ctx.active_guidelines)
+                .unwrap_or_else(|_| "[]".into()),
+            guideline_exclusions_json: serde_json::to_string(&ctx.excluded_guidelines)
+                .unwrap_or_else(|_| "[]".into()),
+            allowed_tools_json: serde_json::to_string(&ctx.allowed_tools)
+                .unwrap_or_else(|_| "[]".into()),
+            authorization_reasons_json,
+            approval_requirements_json: serde_json::json!({ "tools": ctx.approval_required_tools })
+                .to_string(),
+        }
+    }
 }
 
 /// High-level runtime outcome returned to the control plane after a turn.
@@ -414,9 +482,14 @@ pub struct ToolCallRecord {
 pub struct TurnOutcome {
     pub trace_id: TraceId,
     pub scope_id: ScopeId,
+    /// Session this turn belongs to (journey instances, bindings, etc.).
+    pub session_id: crate::agent::SessionId,
     pub response_text: String,
     pub tool_calls: Vec<ToolCallRecord>,
     pub handoff_suggested: bool,
+    /// When `compile_turn` succeeded, carries JSON snapshots for policy / tool explainability rows.
+    #[serde(default)]
+    pub explainability: Option<ControlExplainabilitySnapshot>,
 }
 
 impl Default for TurnOutcome {
@@ -424,9 +497,11 @@ impl Default for TurnOutcome {
         Self {
             trace_id: TraceId::new(),
             scope_id: ScopeId::default(),
+            session_id: crate::agent::SessionId::default(),
             response_text: String::new(),
             tool_calls: Vec::new(),
             handoff_suggested: false,
+            explainability: None,
         }
     }
 }
@@ -439,6 +514,11 @@ pub trait TurnControlCoordinator: Send + Sync {
 
     /// Persist control-plane state after the runtime loop completes.
     async fn after_response(&self, outcome: &TurnOutcome) -> Result<()>;
+
+    /// Resolve optional scope and manual-mode from `session_bindings` when a store is wired.
+    fn session_binding_flags(&self, _session_id: SessionId) -> SessionBindingFlags {
+        SessionBindingFlags::default()
+    }
 }
 
 // ─── Explainability / trace sub-records ──────────────────────────────────────
@@ -613,6 +693,27 @@ pub struct ToolGateDecision {
     pub requires_approval: bool,
 }
 
+// ─── LLM caller abstraction for control-plane semantic matching ───────────────
+
+/// Minimal LLM call abstraction for control-plane semantic matching.
+///
+/// Deliberately thin — the concrete implementation in `openparlant-api` bridges
+/// this to the existing `LlmDriver` inside the kernel.
+#[async_trait]
+pub trait ControlLlmCaller: Send + Sync {
+    /// Call the LLM with a single user prompt (the system role is implied) and
+    /// return the raw text response.
+    async fn call(&self, prompt: &str) -> anyhow::Result<String>;
+}
+
+/// Minimal embedding abstraction for control-plane vector retrieval.
+///
+/// Returns a unit-normalised `f32` embedding vector for the given text.
+#[async_trait]
+pub trait ControlEmbedder: Send + Sync {
+    async fn embed(&self, text: &str) -> anyhow::Result<Vec<f32>>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -639,5 +740,54 @@ mod tests {
             ResponseMode::CannedOnly
         );
         assert!(ResponseMode::from_str("invalid").is_err());
+    }
+
+    #[test]
+    fn explainability_snapshot_from_compiled_includes_policy_and_tools() {
+        use crate::agent::{AgentId, SessionId};
+
+        let mut ctx = CompiledTurnContext::default();
+        ctx.agent_id = AgentId::new();
+        ctx.session_id = SessionId::new();
+        ctx.active_observations.push(ObservationHit {
+            observation_id: ObservationId::new(),
+            name: "billing".to_string(),
+            confidence: Some(1.0),
+            matched_by: "test".to_string(),
+        });
+        ctx.active_guidelines.push(GuidelineActivation {
+            guideline_id: GuidelineId::new(),
+            name: "g1".to_string(),
+            action_text: "be polite".to_string(),
+            priority: 1,
+            source_observations: vec![],
+        });
+        ctx.excluded_guidelines.push(ExcludedGuideline {
+            guideline_id: GuidelineId::new(),
+            name: "g2".to_string(),
+            reason: "lower priority".to_string(),
+        });
+        ctx.allowed_tools = vec!["search".to_string()];
+        ctx.tool_authorizations.push(ToolAuthorization {
+            tool_name: "search".to_string(),
+            reasons: vec!["guideline g1".to_string()],
+            requires_approval: false,
+        });
+        ctx.approval_required_tools.push("delete_all".to_string());
+
+        let snap = ControlExplainabilitySnapshot::from_compiled(&ctx);
+        assert!(snap.observation_hits_json.contains("billing"));
+        assert!(snap.guideline_hits_json.contains("g1"));
+        assert!(snap.guideline_exclusions_json.contains("g2"));
+        assert!(snap.allowed_tools_json.contains("search"));
+        let auth: serde_json::Value =
+            serde_json::from_str(&snap.authorization_reasons_json).unwrap();
+        assert!(auth.get("tool_reasons").is_some());
+        let appr: serde_json::Value =
+            serde_json::from_str(&snap.approval_requirements_json).unwrap();
+        assert_eq!(
+            appr.get("tools").and_then(|t| t.as_array()).map(|a| a.len()),
+            Some(1)
+        );
     }
 }

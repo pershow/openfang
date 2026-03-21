@@ -5,7 +5,7 @@
 use rusqlite::Connection;
 
 /// Current schema version.
-const SCHEMA_VERSION: u32 = 11;
+const SCHEMA_VERSION: u32 = 12;
 
 /// Run all migrations to bring the database up to date.
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -53,6 +53,16 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
 
     if current_version < 11 {
         migrate_v11(conn)?;
+    }
+
+    if current_version < 12 {
+        migrate_v12(conn)?;
+    }
+    if current_version < 13 {
+        migrate_v13(conn)?;
+    }
+    if current_version < 14 {
+        migrate_v14(conn)?;
     }
 
     set_schema_version(conn, SCHEMA_VERSION)?;
@@ -471,7 +481,8 @@ fn migrate_v10(conn: &Connection) -> Result<(), rusqlite::Error> {
             journey_id TEXT NOT NULL,
             name TEXT NOT NULL,
             description TEXT,
-            required_fields TEXT NOT NULL DEFAULT '[]'
+            required_fields TEXT NOT NULL DEFAULT '[]',
+            guideline_actions_json TEXT NOT NULL DEFAULT '[]'
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_journey_states_journey_name
             ON journey_states(journey_id, name);
@@ -684,6 +695,52 @@ fn migrate_v11(conn: &Connection) -> Result<(), rusqlite::Error> {
             'Add knowledge, tool policy, and release tables for the control plane'
         );
         ",
+    )?;
+    Ok(())
+}
+
+fn migrate_v12(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Add guideline_actions_json column to journey_states (for journey→guideline projection).
+    if !column_exists(conn, "journey_states", "guideline_actions_json") {
+        conn.execute(
+            "ALTER TABLE journey_states ADD COLUMN guideline_actions_json TEXT NOT NULL DEFAULT '[]'",
+            [],
+        )?;
+    }
+    conn.execute(
+        "INSERT OR IGNORE INTO migrations (version, applied_at, description)
+         VALUES (12, datetime('now'), 'Add guideline_actions_json to journey_states for Parlant-style journey projection')",
+        [],
+    )?;
+    Ok(())
+}
+
+fn migrate_v13(conn: &Connection) -> Result<(), rusqlite::Error> {
+    if !column_exists(conn, "canned_responses", "priority") {
+        conn.execute(
+            "ALTER TABLE canned_responses ADD COLUMN priority INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+    conn.execute(
+        "INSERT OR IGNORE INTO migrations (version, applied_at, description)
+         VALUES (13, datetime('now'), 'Add priority column to canned_responses for response ranking')",
+        [],
+    )?;
+    Ok(())
+}
+
+fn migrate_v14(conn: &Connection) -> Result<(), rusqlite::Error> {
+    if !column_exists(conn, "turn_traces", "release_version") {
+        conn.execute(
+            "ALTER TABLE turn_traces ADD COLUMN release_version TEXT",
+            [],
+        )?;
+    }
+    conn.execute(
+        "INSERT OR IGNORE INTO migrations (version, applied_at, description)
+         VALUES (14, datetime('now'), 'Add release_version column to turn_traces for control trace auditing')",
+        [],
     )?;
     Ok(())
 }

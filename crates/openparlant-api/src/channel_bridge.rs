@@ -52,9 +52,11 @@ use openparlant_channels::mumble::MumbleAdapter;
 use openparlant_channels::ntfy::NtfyAdapter;
 use openparlant_channels::webhook::WebhookAdapter;
 use openparlant_channels::wecom::WeComAdapter;
+use openparlant_control::ControlStore;
 use openparlant_kernel::OpenFangKernel;
 use openparlant_types::agent::AgentId;
 use openparlant_types::config::FeishuMode;
+use openparlant_types::control::{ScopeId, SessionBinding};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
@@ -65,6 +67,10 @@ use openparlant_runtime::str_utils::safe_truncate_str;
 pub struct KernelBridgeAdapter {
     kernel: Arc<OpenFangKernel>,
     started_at: Instant,
+    /// When set, channel ingress can persist `session_bindings` for control-plane scope resolution.
+    pub control_store: Option<Arc<ControlStore>>,
+    /// Default scope id when no binding exists yet (`OPENPARLANT_DEFAULT_CONTROL_SCOPE` or agent id).
+    pub default_control_scope_id: Option<String>,
 }
 
 #[async_trait]
@@ -107,6 +113,73 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
             .await
             .map_err(|e| format!("{e}"))?;
         Ok(result.response)
+    }
+
+    async fn touch_control_session_binding(
+        &self,
+        agent_id: AgentId,
+        channel_type: &str,
+        external_user_id: Option<&str>,
+        external_chat_id: Option<&str>,
+    ) -> Result<(), String> {
+        let Some(store) = &self.control_store else {
+            return Ok(());
+        };
+        let entry = self
+            .kernel
+            .registry
+            .get(agent_id)
+            .ok_or_else(|| "agent not found".to_string())?;
+        let session_id = entry.session_id.to_string();
+        let scope_str = self
+            .default_control_scope_id
+            .clone()
+            .unwrap_or_else(|| agent_id.to_string());
+        let existing = store
+            .get_session_binding(&session_id)
+            .map_err(|e| e.to_string())?;
+        let binding_id = existing
+            .as_ref()
+            .map(|b| b.binding_id.clone())
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let manual_mode = existing.as_ref().map(|b| b.manual_mode).unwrap_or(false);
+        let active_journey_instance_id = existing
+            .as_ref()
+            .and_then(|b| b.active_journey_instance_id.clone());
+        let binding = SessionBinding {
+            binding_id,
+            scope_id: ScopeId::new(scope_str),
+            channel_type: channel_type.to_string(),
+            external_user_id: external_user_id.map(|s| s.to_string()),
+            external_chat_id: external_chat_id.map(|s| s.to_string()),
+            agent_id: agent_id.to_string(),
+            session_id,
+            manual_mode,
+            active_journey_instance_id,
+        };
+        store.upsert_session_binding(&binding).map_err(|e| e.to_string())
+    }
+
+    async fn is_manual_mode(
+        &self,
+        agent_id: AgentId,
+        _channel_type: &str,
+        _external_user_id: Option<&str>,
+        _external_chat_id: Option<&str>,
+    ) -> bool {
+        let Some(store) = &self.control_store else {
+            return false;
+        };
+        let Ok(entry) = self.kernel.registry.get(agent_id).ok_or(()) else {
+            return false;
+        };
+        let session_id = entry.session_id.to_string();
+        store
+            .get_session_binding(&session_id)
+            .ok()
+            .flatten()
+            .map(|b| b.manual_mode)
+            .unwrap_or(false)
     }
 
     async fn find_agent_by_name(&self, name: &str) -> Result<Option<AgentId>, String> {
@@ -1060,7 +1133,7 @@ fn read_token(env_var_or_token: &str, adapter_name: &str) -> Option<String> {
 /// or `None` if no channels are configured.
 pub async fn start_channel_bridge(kernel: Arc<OpenFangKernel>) -> Option<BridgeManager> {
     let channels = kernel.config.channels.clone();
-    let (bridge, _names) = start_channel_bridge_with_config(kernel, &channels).await;
+    let (bridge, _names) = start_channel_bridge_with_config(kernel, &channels, None).await;
     bridge
 }
 
@@ -1070,6 +1143,7 @@ pub async fn start_channel_bridge(kernel: Arc<OpenFangKernel>) -> Option<BridgeM
 pub async fn start_channel_bridge_with_config(
     kernel: Arc<OpenFangKernel>,
     config: &openparlant_types::config::ChannelsConfig,
+    control_bridge: Option<(Arc<ControlStore>, Option<String>)>,
 ) -> (Option<BridgeManager>, Vec<String>) {
     let has_any = config.telegram.is_some()
         || config.discord.is_some()
@@ -1120,9 +1194,14 @@ pub async fn start_channel_bridge_with_config(
         return (None, Vec::new());
     }
 
+    let control_store = control_bridge.as_ref().map(|(s, _)| s.clone());
+    let default_scope = control_bridge.as_ref().and_then(|(_, s)| s.clone());
+
     let handle = KernelBridgeAdapter {
         kernel: kernel.clone(),
         started_at: Instant::now(),
+        control_store: control_store.clone(),
+        default_control_scope_id: default_scope.clone(),
     };
 
     // Collect all adapters to start
@@ -1734,6 +1813,8 @@ pub async fn start_channel_bridge_with_config(
     let bridge_handle: Arc<dyn ChannelBridgeHandle> = Arc::new(KernelBridgeAdapter {
         kernel: kernel.clone(),
         started_at: Instant::now(),
+        control_store,
+        default_control_scope_id: default_scope,
     });
     let router = Arc::new(router);
     let mut manager = BridgeManager::new(bridge_handle, router);
@@ -1818,8 +1899,15 @@ pub async fn reload_channels_from_disk(
     *state.channels_config.write().await = fresh_config.channels.clone();
 
     // Start new bridge with fresh channel config
-    let (new_bridge, started) =
-        start_channel_bridge_with_config(state.kernel.clone(), &fresh_config.channels).await;
+    let (new_bridge, started) = start_channel_bridge_with_config(
+        state.kernel.clone(),
+        &fresh_config.channels,
+        Some((
+            Arc::new(state.control_store.clone()),
+            std::env::var("OPENPARLANT_DEFAULT_CONTROL_SCOPE").ok(),
+        )),
+    )
+    .await;
 
     // Store the new bridge
     *state.bridge_manager.lock().await = new_bridge;

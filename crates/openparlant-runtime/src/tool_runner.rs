@@ -114,6 +114,7 @@ pub async fn execute_tool(
     tts_engine: Option<&crate::tts::TtsEngine>,
     docker_config: Option<&openparlant_types::config::DockerSandboxConfig>,
     process_manager: Option<&crate::process_manager::ProcessManager>,
+    manifest: Option<&openparlant_types::agent::AgentManifest>,
 ) -> ToolResult {
     // Normalize the tool name through compat mappings so LLM-hallucinated aliases
     // (e.g. "fs-write" → "file_write") resolve to the canonical OpenParlant name.
@@ -135,7 +136,12 @@ pub async fn execute_tool(
 
     // Approval gate: check if this tool requires human approval before execution
     if let Some(kh) = kernel {
-        if kh.requires_approval(tool_name) {
+        let needs_approval = if let Some(m) = manifest {
+            kh.requires_approval_for_tool(tool_name, m)
+        } else {
+            kh.requires_approval(tool_name)
+        };
+        if needs_approval {
             let agent_id_str = caller_agent_id.unwrap_or("unknown");
             let input_str = input.to_string();
             let summary = format!(
@@ -3383,6 +3389,7 @@ mod tests {
             None, // tts_engine
             None, // docker_config
             None, // process_manager
+            None, // manifest
         )
         .await;
         assert!(
@@ -3412,6 +3419,7 @@ mod tests {
             None, // tts_engine
             None, // docker_config
             None, // process_manager
+            None, // manifest
         )
         .await;
         assert!(result.is_error);
@@ -3438,6 +3446,7 @@ mod tests {
             None, // tts_engine
             None, // docker_config
             None, // process_manager
+            None, // manifest
         )
         .await;
         assert!(result.is_error);
@@ -3464,6 +3473,7 @@ mod tests {
             None, // tts_engine
             None, // docker_config
             None, // process_manager
+            None, // manifest
         )
         .await;
         assert!(result.is_error);
@@ -3490,6 +3500,7 @@ mod tests {
             None, // tts_engine
             None, // docker_config
             None, // process_manager
+            None, // manifest
         )
         .await;
         // web_search now attempts a real fetch; may succeed or fail depending on network
@@ -3516,6 +3527,7 @@ mod tests {
             None, // tts_engine
             None, // docker_config
             None, // process_manager
+            None, // manifest
         )
         .await;
         assert!(result.is_error);
@@ -3542,6 +3554,7 @@ mod tests {
             None, // tts_engine
             None, // docker_config
             None, // process_manager
+            None, // manifest
         )
         .await;
         assert!(result.is_error);
@@ -3569,6 +3582,7 @@ mod tests {
             None, // tts_engine
             None, // docker_config
             None, // process_manager
+            None, // manifest
         )
         .await;
         assert!(result.is_error);
@@ -3600,6 +3614,7 @@ mod tests {
             None, // tts_engine
             None, // docker_config
             None, // process_manager
+            None, // manifest
         )
         .await;
         // Should fail for file-not-found, NOT for permission denied
@@ -3645,6 +3660,7 @@ mod tests {
             None, // tts_engine
             None, // docker_config
             None, // process_manager
+            None, // manifest
         )
         .await;
         // Should NOT be "Permission denied" — it should normalize to file_write
@@ -3678,6 +3694,7 @@ mod tests {
             None, // tts_engine
             None, // docker_config
             None, // process_manager
+            None, // manifest
         )
         .await;
         assert!(result.is_error);
@@ -3847,6 +3864,7 @@ mod tests {
             None, // tts_engine
             None, // docker_config
             None, // process_manager
+            None, // manifest
         )
         .await;
         assert!(result.is_error);
@@ -3892,6 +3910,7 @@ mod tests {
             None, // tts_engine
             None, // docker_config
             None, // process_manager
+            None, // manifest
         )
         .await;
         assert!(result.is_error);

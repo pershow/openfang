@@ -36,8 +36,13 @@ function agentsPage() {
       model: 'llama-3.3-70b-versatile',
       systemPrompt: 'You are a helpful assistant.',
       profile: 'full',
+      /** Control-plane scope id (optional); persisted as manifest metadata. */
+      control_scope_id: '',
       caps: { memory_read: true, memory_write: true, network: false, shell: false, agent_spawn: false }
     },
+    /** Scopes from GET /api/control/scopes — for linking agents to policy/knowledge. */
+    controlScopes: [],
+    controlScopesLoaded: false,
 
     // -- Multi-step wizard state --
     spawnStep: 1,
@@ -219,6 +224,23 @@ function agentsPage() {
       return [];
     },
 
+    scopeOptionLabel(s) {
+      var id = String(s && s.scope_id != null ? s.scope_id : '');
+      var nm = (s && s.name) ? String(s.name) : '';
+      return nm ? nm + ' (' + id + ')' : id;
+    },
+
+    async loadControlScopes() {
+      if (this.controlScopesLoaded) return;
+      try {
+        var data = await OpenFangAPI.get('/api/control/scopes');
+        this.controlScopes = data || [];
+        this.controlScopesLoaded = true;
+      } catch(e) {
+        this.controlScopes = [];
+      }
+    },
+
     get agents() { return Alpine.store('app').agents; },
 
     get filteredAgents() {
@@ -351,14 +373,17 @@ function agentsPage() {
         emoji: (agent.identity && agent.identity.emoji) || '',
         color: (agent.identity && agent.identity.color) || '#FF5C00',
         archetype: (agent.identity && agent.identity.archetype) || '',
-        vibe: (agent.identity && agent.identity.vibe) || ''
+        vibe: (agent.identity && agent.identity.vibe) || '',
+        control_scope_id: ''
       };
-      this.showDetailModal = true;
-      // Fetch full agent detail to get fallback_models
+      this.loadControlScopes();
+      // Fetch full agent detail to get fallback_models + control_scope_id (before showing modal)
       try {
         var full = await OpenFangAPI.get('/api/agents/' + agent.id);
         this.detailAgent._fallbacks = full.fallback_models || [];
+        if (full.control_scope_id) this.configForm.control_scope_id = full.control_scope_id;
       } catch(e) { /* ignore */ }
+      this.showDetailModal = true;
     },
 
     killAgent(agent) {
@@ -403,6 +428,7 @@ function agentsPage() {
       this.selectedPreset = '';
       this.soulContent = '';
       this.spawnForm.name = '';
+      this.spawnForm.control_scope_id = '';
       this.spawnForm.provider = 'groq';
       this.spawnForm.model = 'llama-3.3-70b-versatile';
       this.spawnForm.systemPrompt = 'You are a helpful assistant.';
@@ -415,6 +441,7 @@ function agentsPage() {
           if (status.default_model) this.spawnForm.model = status.default_model;
         }
       } catch(e) { /* keep hardcoded defaults */ }
+      this.loadControlScopes();
     },
 
     nextStep() {
@@ -455,6 +482,11 @@ function agentsPage() {
         if (f.caps.network) lines.push('network = ["*"]');
         if (f.caps.shell) lines.push('shell = ["*"]');
         if (f.caps.agent_spawn) lines.push('agent_spawn = true');
+      }
+      var cs = (f.control_scope_id && String(f.control_scope_id).trim()) ? String(f.control_scope_id).trim() : '';
+      if (cs) {
+        lines.push('', '[metadata]');
+        lines.push('control_scope_id = "' + tomlBasicEscape(cs) + '"');
       }
       return lines.join('\n');
     },
@@ -498,6 +530,7 @@ function agentsPage() {
 
           this.showSpawnModal = false;
           this.spawnForm.name = '';
+          this.spawnForm.control_scope_id = '';
           this.spawnToml = '';
           this.spawnStep = 1;
           OpenFangToast.success('Agent "' + (res.name || 'new') + '" spawned');

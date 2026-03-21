@@ -34,6 +34,93 @@ fn not_found(what: &str) -> (StatusCode, Json<serde_json::Value>) {
     )
 }
 
+/// Join `turn_traces` rows with policy / tool / journey explainability tables.
+pub fn enrich_turn_traces_json(
+    conn: &rusqlite::Connection,
+    traces: Vec<openparlant_types::control::TurnTraceRecord>,
+) -> Vec<serde_json::Value> {
+    use openparlant_types::control::TurnTraceRecord;
+
+    traces
+        .into_iter()
+        .map(|trace: TurnTraceRecord| {
+            let tid = trace.trace_id.0.to_string();
+
+            let policy_row = conn
+                .query_row(
+                    "SELECT observation_hits_json, guideline_hits_json, guideline_exclusions_json
+                     FROM policy_match_records WHERE trace_id = ?1 LIMIT 1",
+                    rusqlite::params![&tid],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0).unwrap_or_else(|_| "[]".into()),
+                            row.get::<_, String>(1).unwrap_or_else(|_| "[]".into()),
+                            row.get::<_, String>(2).unwrap_or_else(|_| "[]".into()),
+                        ))
+                    },
+                )
+                .ok();
+
+            let tool_row = conn
+                .query_row(
+                    "SELECT allowed_tools_json, authorization_reasons_json, approval_requirements_json
+                     FROM tool_authorization_records WHERE trace_id = ?1 LIMIT 1",
+                    rusqlite::params![&tid],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0).unwrap_or_else(|_| "[]".into()),
+                            row.get::<_, String>(1).unwrap_or_else(|_| "{}".into()),
+                            row.get::<_, String>(2).unwrap_or_else(|_| "{}".into()),
+                        ))
+                    },
+                )
+                .ok();
+
+            let journey_row = conn
+                .query_row(
+                    "SELECT before_state_id, after_state_id, decision_json
+                     FROM journey_transition_records WHERE trace_id = ?1 LIMIT 1",
+                    rusqlite::params![&tid],
+                    |row| {
+                        Ok((
+                            row.get::<_, Option<String>>(0)?,
+                            row.get::<_, Option<String>>(1)?,
+                            row.get::<_, String>(2).unwrap_or_else(|_| "{}".into()),
+                        ))
+                    },
+                )
+                .ok();
+
+            let parse_arr = |s: &str| -> serde_json::Value {
+                serde_json::from_str(s).unwrap_or(serde_json::json!([]))
+            };
+            let parse_obj = |s: &str| -> serde_json::Value {
+                serde_json::from_str(s).unwrap_or(serde_json::json!({}))
+            };
+
+            serde_json::json!({
+                "trace_id": trace.trace_id,
+                "scope_id": trace.scope_id,
+                "session_id": trace.session_id,
+                "agent_id": trace.agent_id,
+                "channel_type": trace.channel_type,
+                "release_version": trace.release_version,
+                "response_mode": trace.response_mode,
+                "created_at": trace.created_at,
+                "observation_hits": policy_row.as_ref().map(|r| parse_arr(&r.0)).unwrap_or(serde_json::json!([])),
+                "guideline_hits": policy_row.as_ref().map(|r| parse_arr(&r.1)).unwrap_or(serde_json::json!([])),
+                "guideline_exclusions": policy_row.as_ref().map(|r| parse_arr(&r.2)).unwrap_or(serde_json::json!([])),
+                "allowed_tools": tool_row.as_ref().map(|r| parse_arr(&r.0)).unwrap_or(serde_json::json!([])),
+                "authorization_reasons": tool_row.as_ref().map(|r| parse_obj(&r.1)).unwrap_or(serde_json::json!({})),
+                "approval_required_tools": tool_row.as_ref().map(|r| parse_obj(&r.2)).unwrap_or(serde_json::json!({})),
+                "journey_before_state": journey_row.as_ref().and_then(|r| r.0.clone()),
+                "journey_after_state": journey_row.as_ref().and_then(|r| r.1.clone()),
+                "journey_decision": journey_row.as_ref().map(|r| parse_obj(&r.2)).unwrap_or(serde_json::json!({})),
+            })
+        })
+        .collect()
+}
+
 // ─── Control Scopes ───────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
@@ -51,11 +138,18 @@ pub async fn create_scope(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateScopeRequest>,
 ) -> impl IntoResponse {
+    let name = req.name.trim().to_string();
+    if name.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "scope name is required"})),
+        );
+    }
     let now = Utc::now();
     let scope_id = ScopeId::new(uuid::Uuid::new_v4().to_string());
     let scope = ControlScope {
         scope_id: scope_id.clone(),
-        name: req.name,
+        name,
         scope_type: req.scope_type,
         status: "active".to_string(),
         created_at: now,
@@ -363,6 +457,7 @@ pub struct ContextVariableRequest {
     /// For static: `{"value": "..."}`.  For other types: provider-specific config.
     #[serde(default)]
     pub value_source_config: serde_json::Value,
+    pub visibility_rule: Option<String>,
     #[serde(default = "default_true")]
     pub enabled: bool,
 }
@@ -384,14 +479,23 @@ pub async fn create_context_variable(
     let result = tokio::task::spawn_blocking(move || {
         let c = conn.lock().map_err(|e| e.to_string())?;
         c.execute(
-            "INSERT INTO context_variables (variable_id, scope_id, name, value_source_type, value_source_config, enabled)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "INSERT INTO context_variables (variable_id, scope_id, name, value_source_type, value_source_config, visibility_rule, enabled)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
              ON CONFLICT(variable_id) DO UPDATE SET
                 name = excluded.name,
                 value_source_type = excluded.value_source_type,
                 value_source_config = excluded.value_source_config,
+                visibility_rule = excluded.visibility_rule,
                 enabled = excluded.enabled",
-            rusqlite::params![var_id, req.scope_id, req.name, req.value_source_type, config_json, req.enabled as i64],
+            rusqlite::params![
+                var_id,
+                req.scope_id,
+                req.name,
+                req.value_source_type,
+                config_json,
+                req.visibility_rule,
+                req.enabled as i64
+            ],
         )
         .map_err(|e| e.to_string())?;
         Ok::<_, String>(var_id)
@@ -415,6 +519,7 @@ pub struct CannedResponseRequest {
     pub scope_id: String,
     pub name: String,
     pub template_text: String,
+    pub trigger_rule: Option<String>,
     #[serde(default)]
     pub priority: i32,
     #[serde(default = "default_true")]
@@ -433,14 +538,23 @@ pub async fn create_canned_response(
     let result = tokio::task::spawn_blocking(move || {
         let c = conn.lock().map_err(|e| e.to_string())?;
         c.execute(
-            "INSERT INTO canned_responses (response_id, scope_id, name, template_text, priority, enabled)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "INSERT INTO canned_responses (response_id, scope_id, name, template_text, trigger_rule, priority, enabled)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
              ON CONFLICT(response_id) DO UPDATE SET
                 name = excluded.name,
                 template_text = excluded.template_text,
+                trigger_rule = excluded.trigger_rule,
                 priority = excluded.priority,
                 enabled = excluded.enabled",
-            rusqlite::params![resp_id, req.scope_id, req.name, req.template_text, req.priority, req.enabled as i64],
+            rusqlite::params![
+                resp_id,
+                req.scope_id,
+                req.name,
+                req.template_text,
+                req.trigger_rule,
+                req.priority,
+                req.enabled as i64
+            ],
         )
         .map_err(|e| e.to_string())?;
         Ok::<_, String>(resp_id)
@@ -508,6 +622,7 @@ pub async fn list_context_variables(
         let mut stmt = c
             .prepare(
                 "SELECT variable_id, scope_id, name, value_source_type, value_source_config, enabled
+                 , visibility_rule
                  FROM context_variables WHERE scope_id = ?1 ORDER BY name",
             )
             .map_err(|e| e.to_string())?;
@@ -520,6 +635,7 @@ pub async fn list_context_variables(
                     "value_source_type": row.get::<_, String>(3)?,
                     "value_source_config": row.get::<_, String>(4)?,
                     "enabled": row.get::<_, bool>(5)?,
+                    "visibility_rule": row.get::<_, Option<String>>(6)?,
                 }))
             })
             .map_err(|e| e.to_string())?
@@ -546,6 +662,7 @@ pub async fn list_canned_responses(
         let mut stmt = c
             .prepare(
                 "SELECT response_id, scope_id, name, template_text, priority, enabled
+                 , trigger_rule
                  FROM canned_responses WHERE scope_id = ?1 ORDER BY priority DESC, name",
             )
             .map_err(|e| e.to_string())?;
@@ -558,6 +675,7 @@ pub async fn list_canned_responses(
                     "template_text": row.get::<_, String>(3)?,
                     "priority": row.get::<_, i32>(4)?,
                     "enabled": row.get::<_, bool>(5)?,
+                    "trigger_rule": row.get::<_, Option<String>>(6)?,
                 }))
             })
             .map_err(|e| e.to_string())?
@@ -621,6 +739,7 @@ pub async fn test_compile_turn(
         agent_id,
         session_id,
         message,
+        prior_tool_calls: Vec::new(),
     };
 
     match state.control_coordinator.compile_turn(input).await {
@@ -656,94 +775,13 @@ pub async fn session_control_trace(
         Err(e) => return internal(e),
     };
 
-    // For each trace, attempt to load the policy-match and tool-auth sub-records
-    // and fold them into a richer JSON object.
     let conn = state.db_conn.clone();
-    let trace_ids: Vec<String> = traces.iter().map(|t| t.trace_id.0.to_string()).collect();
     let enriched = tokio::task::spawn_blocking(move || {
         let c = conn.lock().map_err(|e| e.to_string())?;
-        let result: Vec<serde_json::Value> = traces
-            .into_iter()
-            .map(|trace| {
-                let tid = trace.trace_id.0.to_string();
-
-                // policy_match_records
-                let policy_row = c.query_row(
-                    "SELECT observation_hits_json, guideline_hits_json, guideline_exclusions_json
-                     FROM policy_match_records WHERE trace_id = ?1 LIMIT 1",
-                    rusqlite::params![&tid],
-                    |row| {
-                        Ok((
-                            row.get::<_, String>(0).unwrap_or_else(|_| "[]".into()),
-                            row.get::<_, String>(1).unwrap_or_else(|_| "[]".into()),
-                            row.get::<_, String>(2).unwrap_or_else(|_| "[]".into()),
-                        ))
-                    },
-                )
-                .ok();
-
-                // tool_authorization_records
-                let tool_row = c.query_row(
-                    "SELECT allowed_tools_json, authorization_reasons_json, approval_requirements_json
-                     FROM tool_authorization_records WHERE trace_id = ?1 LIMIT 1",
-                    rusqlite::params![&tid],
-                    |row| {
-                        Ok((
-                            row.get::<_, String>(0).unwrap_or_else(|_| "[]".into()),
-                            row.get::<_, String>(1).unwrap_or_else(|_| "{}".into()),
-                            row.get::<_, String>(2).unwrap_or_else(|_| "{}".into()),
-                        ))
-                    },
-                )
-                .ok();
-
-                // journey_transition_records
-                let journey_row = c.query_row(
-                    "SELECT before_state_id, after_state_id, decision_json
-                     FROM journey_transition_records WHERE trace_id = ?1 LIMIT 1",
-                    rusqlite::params![&tid],
-                    |row| {
-                        Ok((
-                            row.get::<_, Option<String>>(0)?,
-                            row.get::<_, Option<String>>(1)?,
-                            row.get::<_, String>(2).unwrap_or_else(|_| "{}".into()),
-                        ))
-                    },
-                )
-                .ok();
-
-                let parse_arr = |s: &str| -> serde_json::Value {
-                    serde_json::from_str(s).unwrap_or(serde_json::json!([]))
-                };
-                let parse_obj = |s: &str| -> serde_json::Value {
-                    serde_json::from_str(s).unwrap_or(serde_json::json!({}))
-                };
-
-                serde_json::json!({
-                    "trace_id": trace.trace_id,
-                    "scope_id": trace.scope_id,
-                    "session_id": trace.session_id,
-                    "agent_id": trace.agent_id,
-                    "channel_type": trace.channel_type,
-                    "response_mode": trace.response_mode,
-                    "created_at": trace.created_at,
-                    "observation_hits": policy_row.as_ref().map(|r| parse_arr(&r.0)).unwrap_or(serde_json::json!([])),
-                    "guideline_hits": policy_row.as_ref().map(|r| parse_arr(&r.1)).unwrap_or(serde_json::json!([])),
-                    "guideline_exclusions": policy_row.as_ref().map(|r| parse_arr(&r.2)).unwrap_or(serde_json::json!([])),
-                    "allowed_tools": tool_row.as_ref().map(|r| parse_arr(&r.0)).unwrap_or(serde_json::json!([])),
-                    "authorization_reasons": tool_row.as_ref().map(|r| parse_obj(&r.1)).unwrap_or(serde_json::json!({})),
-                    "approval_required_tools": tool_row.as_ref().map(|r| parse_obj(&r.2)).unwrap_or(serde_json::json!({})),
-                    "journey_before_state": journey_row.as_ref().and_then(|r| r.0.clone()),
-                    "journey_after_state": journey_row.as_ref().and_then(|r| r.1.clone()),
-                    "journey_decision": journey_row.as_ref().map(|r| parse_obj(&r.2)).unwrap_or(serde_json::json!({})),
-                })
-            })
-            .collect();
-        Ok::<_, String>(result)
+        Ok::<_, String>(enrich_turn_traces_json(&c, traces))
     })
     .await;
 
-    let _ = trace_ids; // suppress unused warning
     match enriched {
         Ok(Ok(items)) => (StatusCode::OK, Json(serde_json::json!(items))),
         Ok(Err(e)) => internal(e),
@@ -846,6 +884,10 @@ pub struct JourneyStateRequest {
     pub description: Option<String>,
     #[serde(default)]
     pub required_fields: Vec<String>,
+    /// Optional guideline action texts projected when this state is active.
+    /// Each string becomes a [`GuidelineActivation`] this turn.
+    #[serde(default)]
+    pub guideline_actions: Vec<String>,
 }
 
 /// POST /api/control/journeys/:journey_id/states
@@ -857,18 +899,21 @@ pub async fn create_journey_state(
     let state_id = uuid::Uuid::new_v4().to_string();
     let req_fields_json =
         serde_json::to_string(&req.required_fields).unwrap_or_else(|_| "[]".into());
+    let guideline_actions_json =
+        serde_json::to_string(&req.guideline_actions).unwrap_or_else(|_| "[]".into());
     let conn = state.db_conn.clone();
     let name_clone = req.name.clone();
     let jid_clone = journey_id.clone();
     let result = tokio::task::spawn_blocking(move || {
         let c = conn.lock().map_err(|e| e.to_string())?;
         c.execute(
-            "INSERT INTO journey_states (state_id, journey_id, name, description, required_fields)
-             VALUES (?1, ?2, ?3, ?4, ?5)
+            "INSERT INTO journey_states (state_id, journey_id, name, description, required_fields, guideline_actions_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
              ON CONFLICT(journey_id, name) DO UPDATE SET
                 description = excluded.description,
-                required_fields = excluded.required_fields",
-            rusqlite::params![state_id, jid_clone, req.name, req.description, req_fields_json],
+                required_fields = excluded.required_fields,
+                guideline_actions_json = excluded.guideline_actions_json",
+            rusqlite::params![state_id, jid_clone, req.name, req.description, req_fields_json, guideline_actions_json],
         )
         .map_err(|e| e.to_string())?;
         Ok::<_, String>(state_id)

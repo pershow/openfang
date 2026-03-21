@@ -123,6 +123,16 @@ pub trait KernelHandle: Send + Sync {
         false
     }
 
+    /// Global policy plus control-plane per-turn list (`manifest.metadata["approval_required_tools"]`).
+    fn requires_approval_for_tool(
+        &self,
+        tool_name: &str,
+        manifest: &openparlant_types::agent::AgentManifest,
+    ) -> bool {
+        let _ = manifest;
+        self.requires_approval(tool_name)
+    }
+
     /// Request approval for a tool execution. Blocks until approved/denied/timed out.
     /// Returns `Ok(true)` if approved, `Ok(false)` if denied or timed out.
     async fn request_approval(

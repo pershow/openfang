@@ -15,13 +15,35 @@ pub struct TransitionRecord {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JourneyStateRecord {
+    pub state_id: String,
     pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub required_fields: Vec<String>,
+    /// Optional guideline action texts projected by this journey state.
+    /// These are injected as active guidelines when this state is current.
+    #[serde(default)]
+    pub guideline_actions: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JourneyInstanceRecord {
+    pub journey_instance_id: String,
     pub journey_id: JourneyId,
     pub current_state_id: String,
+    #[serde(default)]
+    pub state_payload: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActiveJourneyInstanceRecord {
+    pub journey_instance_id: String,
+    pub scope_id: ScopeId,
+    pub journey_id: JourneyId,
+    pub current_state_id: String,
+    #[serde(default)]
+    pub state_payload: serde_json::Value,
 }
 
 /// SQLite-backed journey definition store.
@@ -222,7 +244,7 @@ impl JourneyStore {
             .map_err(|e| OpenFangError::Internal(e.to_string()))?;
         let mut stmt = conn
             .prepare(
-                "SELECT journey_id, current_state_id
+                "SELECT journey_instance_id, journey_id, current_state_id, state_payload
                  FROM journey_instances
                  WHERE scope_id = ?1 AND status = 'active'
                  ORDER BY updated_at DESC",
@@ -230,19 +252,26 @@ impl JourneyStore {
             .map_err(|e| OpenFangError::Memory(e.to_string()))?;
         let rows = stmt
             .query_map(params![scope_id.0.as_str()], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3).unwrap_or_else(|_| "{}".to_string()),
+                ))
             })
             .map_err(|e| OpenFangError::Memory(e.to_string()))?;
 
         let mut instances = Vec::new();
         for row in rows {
-            let (journey_id_str, state_id) =
+            let (instance_id, journey_id_str, state_id, state_payload) =
                 row.map_err(|e| OpenFangError::Memory(e.to_string()))?;
             instances.push(JourneyInstanceRecord {
+                journey_instance_id: instance_id,
                 journey_id: parse_uuid(&journey_id_str)
                     .map(JourneyId)
                     .map_err(memory_parse_error)?,
                 current_state_id: state_id,
+                state_payload: serde_json::from_str(&state_payload).unwrap_or_default(),
             });
         }
         Ok(instances)
@@ -254,11 +283,77 @@ impl JourneyStore {
             .lock()
             .map_err(|e| OpenFangError::Internal(e.to_string()))?;
         let mut stmt = conn
-            .prepare("SELECT name FROM journey_states WHERE state_id = ?1")
+            .prepare(
+                "SELECT state_id, name, description, required_fields,
+                        COALESCE(guideline_actions_json, '[]')
+                 FROM journey_states WHERE state_id = ?1",
+            )
             .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        let row = stmt.query_row(params![state_id], |row| row.get::<_, String>(0));
+        let row = stmt.query_row(params![state_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, String>(3).unwrap_or_else(|_| "[]".to_string()),
+                row.get::<_, String>(4)?,
+            ))
+        });
         match row {
-            Ok(name) => Ok(Some(JourneyStateRecord { name })),
+            Ok((state_id, name, description, required_fields_json, actions_json)) => {
+                let required_fields: Vec<String> =
+                    serde_json::from_str(&required_fields_json).unwrap_or_default();
+                let guideline_actions: Vec<String> =
+                    serde_json::from_str(&actions_json).unwrap_or_default();
+                Ok(Some(JourneyStateRecord {
+                    state_id,
+                    name,
+                    description,
+                    required_fields,
+                    guideline_actions,
+                }))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(OpenFangError::Memory(e.to_string())),
+        }
+    }
+
+    pub async fn get_first_state_for_journey(
+        &self,
+        journey_id: &JourneyId,
+    ) -> OpenFangResult<Option<JourneyStateRecord>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT state_id, name, description, required_fields,
+                        COALESCE(guideline_actions_json, '[]')
+                 FROM journey_states
+                 WHERE journey_id = ?1
+                 ORDER BY rowid ASC
+                 LIMIT 1",
+            )
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        let row = stmt.query_row(params![journey_id.0.to_string()], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, String>(3).unwrap_or_else(|_| "[]".to_string()),
+                row.get::<_, String>(4)?,
+            ))
+        });
+        match row {
+            Ok((state_id, name, description, required_fields_json, actions_json)) => {
+                Ok(Some(JourneyStateRecord {
+                    state_id,
+                    name,
+                    description,
+                    required_fields: serde_json::from_str(&required_fields_json).unwrap_or_default(),
+                    guideline_actions: serde_json::from_str(&actions_json).unwrap_or_default(),
+                }))
+            }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(OpenFangError::Memory(e.to_string())),
         }
@@ -340,15 +435,14 @@ impl JourneyStore {
     pub async fn list_active_instances_for_session(
         &self,
         session_id: &str,
-    ) -> OpenFangResult<Vec<(String, String, JourneyId, String)>> {
-        // Returns (instance_id, scope_id, journey_id, current_state_id)
+    ) -> OpenFangResult<Vec<ActiveJourneyInstanceRecord>> {
         let conn = self
             .conn
             .lock()
             .map_err(|e| OpenFangError::Internal(e.to_string()))?;
         let mut stmt = conn
             .prepare(
-                "SELECT journey_instance_id, scope_id, journey_id, current_state_id
+                "SELECT journey_instance_id, scope_id, journey_id, current_state_id, state_payload
                  FROM journey_instances
                  WHERE session_id = ?1 AND status = 'active'
                  ORDER BY updated_at DESC",
@@ -361,17 +455,24 @@ impl JourneyStore {
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
+                    row.get::<_, String>(4).unwrap_or_else(|_| "{}".to_string()),
                 ))
             })
             .map_err(|e| OpenFangError::Memory(e.to_string()))?;
         let mut out = Vec::new();
         for row in rows {
-            let (iid, sid, jid_str, state_id) =
+            let (iid, sid, jid_str, state_id, state_payload) =
                 row.map_err(|e| OpenFangError::Memory(e.to_string()))?;
             let journey_id = parse_uuid(&jid_str)
                 .map(JourneyId)
                 .map_err(memory_parse_error)?;
-            out.push((iid, sid, journey_id, state_id));
+            out.push(ActiveJourneyInstanceRecord {
+                journey_instance_id: iid,
+                scope_id: ScopeId::from(sid),
+                journey_id,
+                current_state_id: state_id,
+                state_payload: serde_json::from_str(&state_payload).unwrap_or_default(),
+            });
         }
         Ok(out)
     }

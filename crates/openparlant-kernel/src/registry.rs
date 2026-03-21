@@ -3,6 +3,7 @@
 use dashmap::DashMap;
 use openparlant_types::agent::{AgentEntry, AgentId, AgentMode, AgentState};
 use openparlant_types::error::{OpenFangError, OpenFangResult};
+use serde_json::json;
 
 /// Registry of all agents in the kernel.
 pub struct AgentRegistry {
@@ -339,6 +340,34 @@ impl AgentRegistry {
             .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
         entry.onboarding_completed = true;
         entry.onboarding_completed_at = Some(chrono::Utc::now());
+        entry.last_active = chrono::Utc::now();
+        Ok(())
+    }
+
+    /// Set or remove a string value in [`AgentManifest::metadata`].
+    ///
+    /// `None` or an all-whitespace string removes the key.
+    pub fn upsert_metadata_string(
+        &self,
+        id: AgentId,
+        key: &str,
+        value: Option<String>,
+    ) -> OpenFangResult<()> {
+        let mut entry = self
+            .agents
+            .get_mut(&id)
+            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+        match value {
+            None => {
+                entry.manifest.metadata.remove(key);
+            }
+            Some(ref s) if s.trim().is_empty() => {
+                entry.manifest.metadata.remove(key);
+            }
+            Some(s) => {
+                entry.manifest.metadata.insert(key.to_string(), json!(s));
+            }
+        }
         entry.last_active = chrono::Utc::now();
         Ok(())
     }

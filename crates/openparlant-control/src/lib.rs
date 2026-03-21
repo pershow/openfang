@@ -11,11 +11,13 @@ use openparlant_policy::{
     NoopObservationMatcher, NoopPolicyResolver, NoopToolGate,
     ObservationMatcher, PolicyResolver, ToolGate,
 };
+use openparlant_types::agent::SessionId;
 use openparlant_types::control::{
-    AuditMeta, CompiledTurnContext, PolicyMatchRecord, ResponseMode, ToolAuthorization,
-    ToolAuthorizationRecord, TurnControlCoordinator, TurnInput, TurnOutcome,
+    AuditMeta, CompiledTurnContext, PolicyMatchRecord, ResponseMode, SessionBindingFlags,
+    ToolAuthorization, ToolAuthorizationRecord, TurnControlCoordinator, TurnInput, TurnOutcome,
 };
 pub use store::ControlStore;
+use sha2::{Digest, Sha256};
 use tracing::{debug, warn};
 
 /// Default coordinator wiring together policy, journey, context, and tool-gate compilation.
@@ -29,6 +31,9 @@ pub struct DefaultTurnControlCoordinator<OM, PR, JR, KC, TG = NoopToolGate> {
     knowledge_compiler: KC,
     tool_gate: TG,
     store: Option<ControlStore>,
+    /// Optional LLM caller for semantic matching (passed through to matchers/resolvers if needed).
+    #[allow(dead_code)]
+    llm_caller: Option<std::sync::Arc<dyn openparlant_types::control::ControlLlmCaller>>,
 }
 
 impl<OM, PR, JR, KC, TG> DefaultTurnControlCoordinator<OM, PR, JR, KC, TG> {
@@ -46,12 +51,22 @@ impl<OM, PR, JR, KC, TG> DefaultTurnControlCoordinator<OM, PR, JR, KC, TG> {
             knowledge_compiler,
             tool_gate,
             store: None,
+            llm_caller: None,
         }
     }
 
     /// Attach a `ControlStore` so that turn traces are persisted.
     pub fn with_store(mut self, store: ControlStore) -> Self {
         self.store = Some(store);
+        self
+    }
+
+    /// Attach an LLM caller for semantic matching / embedding.
+    pub fn with_llm_caller(
+        mut self,
+        caller: std::sync::Arc<dyn openparlant_types::control::ControlLlmCaller>,
+    ) -> Self {
+        self.llm_caller = Some(caller);
         self
     }
 }
@@ -70,6 +85,7 @@ impl<OM, PR, JR, KC> DefaultTurnControlCoordinator<OM, PR, JR, KC, NoopToolGate>
             knowledge_compiler,
             tool_gate: NoopToolGate,
             store: None,
+            llm_caller: None,
         }
     }
 }
@@ -108,13 +124,18 @@ where
             .observation_matcher
             .match_observations(&input.scope_id, &input.message)
             .await?;
-        let policy = self
-            .policy_resolver
-            .resolve_policy(&input.scope_id, &input.message, &observations)
-            .await?;
         let journey = self
             .journey_runtime
-            .resolve_journey(&input.scope_id, &input.message)
+            .resolve_journey(&input.scope_id, &input.session_id, &input.message)
+            .await?;
+        let policy = self
+            .policy_resolver
+            .resolve_policy(
+                &input.scope_id,
+                &input.message,
+                &observations,
+                journey.active_journey.as_ref().map(|j| j.current_state.as_str()),
+            )
             .await?;
         let knowledge = self
             .knowledge_compiler
@@ -122,6 +143,11 @@ where
                 &input.scope_id,
                 &input.message,
                 journey.active_journey.as_ref(),
+                &policy
+                    .active_guidelines
+                    .iter()
+                    .map(|g| g.name.clone())
+                    .collect::<Vec<_>>(),
             )
             .await?;
 
@@ -131,13 +157,16 @@ where
             .map(|auth| auth.tool_name.clone())
             .collect();
 
-        // ── Tool Gate ─────────────────────────────────────────────────────────
-        // Evaluate which tools should be visible this turn and which need approval.
+        // ── Merge journey-projected guidelines into active guidelines ─────────
+        // Journey state nodes can carry action_text guidelines that are treated
+        // as first-class active guidelines this turn (Parlant journey projection).
         let active_guideline_names: Vec<String> = policy
             .active_guidelines
             .iter()
             .map(|g| g.name.clone())
             .collect();
+        let mut all_active_guidelines = policy.active_guidelines;
+        all_active_guidelines.extend(journey.projected_guidelines);
         let gate_decisions = self
             .tool_gate
             .evaluate(
@@ -145,6 +174,7 @@ where
                 &allowed_tools,
                 &observations,
                 &active_guideline_names,
+                journey.active_journey.as_ref().map(|j| j.current_state.as_str()),
             )
             .await
             .unwrap_or_default();
@@ -170,17 +200,45 @@ where
         }
 
         let response_mode = infer_response_mode(&knowledge, &policy.tool_authorizations);
+        let release_version = self
+            .store
+            .as_ref()
+            .and_then(|store| store.current_release_version(&input.scope_id).ok().flatten());
         let audit_meta = AuditMeta {
             scope_id: input.scope_id.clone(),
+            release_version,
             compiled_at: Utc::now(),
             ..AuditMeta::default()
         };
+
+        let compiled_context_hash = serde_json::to_string(&serde_json::json!({
+            "scope_id": &input.scope_id,
+            "channel_type": &input.message.channel_type,
+            "active_observations": &observations,
+            "active_guidelines": &all_active_guidelines,
+            "excluded_guidelines": &policy.excluded_guidelines,
+            "active_journey": &journey.active_journey,
+            "retrieved_chunks": &knowledge.retrieved_chunks,
+            "glossary_terms": &knowledge.glossary_terms,
+            "context_variables": &knowledge.context_variables,
+            "canned_response_candidates": &knowledge.canned_response_candidates,
+            "allowed_tools": &gated_tools,
+            "approval_required_tools": &approval_required_tools,
+            "response_mode": response_mode,
+            "release_version": &audit_meta.release_version,
+        }))
+        .ok()
+        .map(|json| {
+            let mut hasher = Sha256::new();
+            hasher.update(json.as_bytes());
+            format!("{:x}", hasher.finalize())
+        });
 
         debug!(
             scope = %input.scope_id,
             trace_id = %audit_meta.trace_id,
             observations = observations.len(),
-            guidelines = policy.active_guidelines.len(),
+            guidelines = all_active_guidelines.len(),
             tools = allowed_tools.len(),
             "compiled turn context"
         );
@@ -195,7 +253,8 @@ where
                 agent_id: input.agent_id,
                 channel_type: input.message.channel_type.clone(),
                 request_message_ref: input.message.external_message_id.clone(),
-                compiled_context_hash: None,
+                compiled_context_hash: compiled_context_hash.clone(),
+                release_version: audit_meta.release_version.clone(),
                 response_mode,
                 created_at: audit_meta.compiled_at,
             };
@@ -209,7 +268,7 @@ where
             session_id: input.session_id,
             canonical_message: input.message,
             active_observations: observations,
-            active_guidelines: policy.active_guidelines,
+            active_guidelines: all_active_guidelines,
             excluded_guidelines: policy.excluded_guidelines,
             active_journey: journey.active_journey,
             retrieved_chunks: knowledge.retrieved_chunks,
@@ -247,7 +306,7 @@ where
                 let jtr = JourneyTransitionRecord {
                     record_id: TraceId::new(),
                     trace_id: outcome.trace_id,
-                    journey_instance_id: String::new(), // instance_id is inside JourneyUpdate if needed
+                    journey_instance_id: update.journey_instance_id.clone().unwrap_or_default(),
                     before_state_id: update.before_state.clone(),
                     after_state_id: update.after_state.clone(),
                     decision_json: serde_json::to_string(&serde_json::json!({
@@ -261,33 +320,58 @@ where
                 }
             }
 
-            // ── Policy match record ────────────────────────────────────────────
+            // ── Policy match record (from compile_turn snapshot) ─────────────────
             let rec_id = openparlant_types::control::TraceId::new();
+            let (obs_j, g_hit_j, g_excl_j) = outcome
+                .explainability
+                .as_ref()
+                .map(|e| {
+                    (
+                        e.observation_hits_json.clone(),
+                        e.guideline_hits_json.clone(),
+                        e.guideline_exclusions_json.clone(),
+                    )
+                })
+                .unwrap_or_else(|| ("[]".into(), "[]".into(), "[]".into()));
             let pmr = PolicyMatchRecord {
                 record_id: rec_id,
                 trace_id: outcome.trace_id,
-                observation_hits_json: "[]".to_string(),
-                guideline_hits_json: "[]".to_string(),
-                guideline_exclusions_json: "[]".to_string(),
+                observation_hits_json: obs_j,
+                guideline_hits_json: g_hit_j,
+                guideline_exclusions_json: g_excl_j,
             };
             if let Err(e) = store.upsert_policy_match_record(&pmr) {
                 warn!(trace_id = %outcome.trace_id, error = %e, "failed to persist policy match record");
             }
 
             // ── Tool authorization record ──────────────────────────────────────
+            let mut auth_json: serde_json::Value = outcome
+                .explainability
+                .as_ref()
+                .and_then(|e| serde_json::from_str(&e.authorization_reasons_json).ok())
+                .unwrap_or_else(|| serde_json::json!({}));
+            if let Some(obj) = auth_json.as_object_mut() {
+                let _ = obj.insert(
+                    "runtime_tool_calls".to_string(),
+                    serde_json::to_value(&outcome.tool_calls).unwrap_or_default(),
+                );
+            }
+            let (allowed_j, approval_j) = outcome
+                .explainability
+                .as_ref()
+                .map(|e| {
+                    (
+                        e.allowed_tools_json.clone(),
+                        e.approval_requirements_json.clone(),
+                    )
+                })
+                .unwrap_or_else(|| ("[]".into(), "{}".into()));
             let tar = ToolAuthorizationRecord {
                 record_id: openparlant_types::control::TraceId::new(),
                 trace_id: outcome.trace_id,
-                allowed_tools_json: serde_json::to_string(
-                    &outcome
-                        .tool_calls
-                        .iter()
-                        .map(|tc| &tc.tool_name)
-                        .collect::<Vec<_>>(),
-                )
-                .unwrap_or_default(),
-                authorization_reasons_json: "{}".to_string(),
-                approval_requirements_json: "{}".to_string(),
+                allowed_tools_json: allowed_j,
+                authorization_reasons_json: auth_json.to_string(),
+                approval_requirements_json: approval_j,
             };
             if let Err(e) = store.upsert_tool_authorization_record(&tar) {
                 warn!(trace_id = %outcome.trace_id, error = %e, "failed to persist tool auth record");
@@ -295,6 +379,22 @@ where
         }
 
         Ok(())
+    }
+
+    fn session_binding_flags(&self, session_id: SessionId) -> SessionBindingFlags {
+        let Some(store) = &self.store else {
+            return SessionBindingFlags::default();
+        };
+        match store.get_session_binding(&session_id.to_string()) {
+            Ok(Some(b)) => SessionBindingFlags {
+                scope_id: Some(b.scope_id),
+                channel_type: Some(b.channel_type),
+                external_user_id: b.external_user_id,
+                external_chat_id: b.external_chat_id,
+                manual_mode: b.manual_mode,
+            },
+            _ => SessionBindingFlags::default(),
+        }
     }
 }
 
@@ -317,6 +417,88 @@ fn infer_response_mode(
     ResponseMode::Freeform
 }
 
+// ─── Preparation iteration helpers ───────────────────────────────────────────
+
+/// Check whether two compiled turn contexts have reached a stable state
+/// (same active guideline set and same allowed tools).
+fn guidelines_stable(prev: &CompiledTurnContext, next: &CompiledTurnContext) -> bool {
+    use std::collections::HashSet;
+    let prev_ids: HashSet<String> = prev
+        .active_guidelines
+        .iter()
+        .map(|g| g.guideline_id.0.to_string())
+        .collect();
+    let next_ids: HashSet<String> = next
+        .active_guidelines
+        .iter()
+        .map(|g| g.guideline_id.0.to_string())
+        .collect();
+    prev_ids == next_ids && prev.allowed_tools == next.allowed_tools
+}
+
+impl<OM, PR, JR, KC, TG> DefaultTurnControlCoordinator<OM, PR, JR, KC, TG>
+where
+    OM: ObservationMatcher,
+    PR: PolicyResolver,
+    JR: JourneyRuntime,
+    KC: KnowledgeCompiler,
+    TG: ToolGate,
+{
+    /// Run up to `MAX_PREP_ITERATIONS` compilation rounds using prior tool-call results.
+    ///
+    /// On the first call (no prior tool calls) this is identical to `compile_turn`.
+    /// On subsequent iterations the tool-call results are appended to the message text so
+    /// the matchers can detect new observations triggered by tool outcomes — matching
+    /// Parlant's "preparation iteration" behaviour.
+    ///
+    /// Returns the last (most enriched) `CompiledTurnContext`.
+    pub async fn compile_turn_iterative(
+        &self,
+        mut input: TurnInput,
+    ) -> anyhow::Result<CompiledTurnContext> {
+        const MAX_PREP_ITERATIONS: usize = 3;
+
+        let mut last_ctx = self.compile_turn(input.clone()).await?;
+
+        for _iter in 1..MAX_PREP_ITERATIONS {
+            if input.prior_tool_calls.is_empty() {
+                break;
+            }
+
+            // Enrich message text with tool call results for re-evaluation.
+            let tool_summary = input
+                .prior_tool_calls
+                .iter()
+                .map(|tc| {
+                    format!(
+                        "[tool:{} result:{}]",
+                        tc.tool_name,
+                        tc.result.as_deref().unwrap_or("(empty)")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            input.message.text =
+                format!("{}\n\nTool call results: {tool_summary}", input.message.text);
+
+            let new_ctx = self.compile_turn(input.clone()).await?;
+
+            // Stop iterating once the active guidelines and allowed tools stabilize.
+            if guidelines_stable(&last_ctx, &new_ctx) {
+                last_ctx = new_ctx;
+                break;
+            }
+
+            last_ctx = new_ctx;
+            // Prior calls have been incorporated; clear to avoid re-appending next round.
+            input.prior_tool_calls.clear();
+        }
+
+        Ok(last_ctx)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,6 +513,7 @@ mod tests {
             agent_id: AgentId::new(),
             session_id: SessionId::new(),
             message: CanonicalMessage::text(ScopeId::default(), "web", "hello"),
+            prior_tool_calls: Vec::new(),
         };
 
         let ctx = coordinator.compile_turn(input).await.unwrap();

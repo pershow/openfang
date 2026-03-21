@@ -156,6 +156,31 @@ pub trait ChannelBridgeHandle: Send + Sync {
         None
     }
 
+    /// Best-effort: persist control-plane `session_bindings` for this channel turn.
+    async fn touch_control_session_binding(
+        &self,
+        _agent_id: AgentId,
+        _channel_type: &str,
+        _external_user_id: Option<&str>,
+        _external_chat_id: Option<&str>,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Check whether the session for this agent is currently in manual (human takeover) mode.
+    ///
+    /// When `true`, the channel bridge must not forward the message to the AI and must return
+    /// silently — the conversation is being handled by a human operator.
+    async fn is_manual_mode(
+        &self,
+        _agent_id: AgentId,
+        _channel_type: &str,
+        _external_user_id: Option<&str>,
+        _external_chat_id: Option<&str>,
+    ) -> bool {
+        false
+    }
+
     // ── Automation: workflows, triggers, schedules, approvals ──
 
     /// List all registered workflows as formatted text.
@@ -908,6 +933,40 @@ async fn dispatch_message(
         Some(message.platform_message_id.clone()),
     );
 
+    let _ = handle
+        .touch_control_session_binding(
+            agent_id,
+            ct_str,
+            Some(&message.sender.platform_id),
+            message.thread_id.as_deref(),
+        )
+        .await;
+
+    // ── Manual mode guard ────────────────────────────────────────────────────
+    // If the session is in human-takeover mode, silently absorb the message
+    // (it was already persisted via touch_control_session_binding) and do not
+    // invoke the AI.
+    if handle
+        .is_manual_mode(
+            agent_id,
+            ct_str,
+            Some(&message.sender.platform_id),
+            message.thread_id.as_deref(),
+        )
+        .await
+    {
+        typing_task.abort();
+        let _ = adapter
+            .clear_typing(&message.sender, Some(msg_id.as_str()))
+            .await;
+        debug!(
+            channel = ct_str,
+            agent_id = %agent_id,
+            "session is in manual mode — skipping AI response"
+        );
+        return;
+    }
+
     // Send to agent and relay response
     let result = handle.send_message(agent_id, &text).await;
 
@@ -940,6 +999,14 @@ async fn dispatch_message(
                     message.sender.clone(),
                     Some(message.platform_message_id.clone()),
                 );
+                let _ = handle
+                    .touch_control_session_binding(
+                        new_id,
+                        ct_str,
+                        Some(&message.sender.platform_id),
+                        message.thread_id.as_deref(),
+                    )
+                    .await;
                 let retry = handle.send_message(new_id, &text).await;
                 typing_task2.abort();
                 let _ = adapter.clear_typing(&message.sender, Some(msg_id.as_str())).await;
@@ -1318,6 +1385,37 @@ async fn dispatch_with_blocks(
         Some(message.platform_message_id.clone()),
     );
 
+    let _ = handle
+        .touch_control_session_binding(
+            agent_id,
+            ct_str,
+            Some(&message.sender.platform_id),
+            message.thread_id.as_deref(),
+        )
+        .await;
+
+    // ── Manual mode guard (blocks path) ──────────────────────────────────────
+    if handle
+        .is_manual_mode(
+            agent_id,
+            ct_str,
+            Some(&message.sender.platform_id),
+            message.thread_id.as_deref(),
+        )
+        .await
+    {
+        typing_task.abort();
+        let _ = adapter
+            .clear_typing(&message.sender, Some(msg_id.as_str()))
+            .await;
+        debug!(
+            channel = ct_str,
+            agent_id = %agent_id,
+            "session is in manual mode — skipping AI response (blocks path)"
+        );
+        return;
+    }
+
     let result = handle
         .send_message_with_blocks(agent_id, blocks.clone())
         .await;
@@ -1350,6 +1448,14 @@ async fn dispatch_with_blocks(
                     message.sender.clone(),
                     Some(message.platform_message_id.clone()),
                 );
+                let _ = handle
+                    .touch_control_session_binding(
+                        new_id,
+                        ct_str,
+                        Some(&message.sender.platform_id),
+                        message.thread_id.as_deref(),
+                    )
+                    .await;
                 let retry = handle.send_message_with_blocks(new_id, blocks).await;
                 typing_task2.abort();
                 let _ = adapter.clear_typing(&message.sender, Some(msg_id.as_str())).await;

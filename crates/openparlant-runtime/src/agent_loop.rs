@@ -734,6 +734,7 @@ pub async fn run_agent_loop(
                             tts_engine,
                             docker_config,
                             process_manager,
+                            Some(manifest),
                         ),
                     )
                     .await
@@ -1733,6 +1734,7 @@ pub async fn run_agent_loop_streaming(
                             tts_engine,
                             docker_config,
                             process_manager,
+                            Some(manifest),
                         ),
                     )
                     .await

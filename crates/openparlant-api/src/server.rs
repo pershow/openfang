@@ -1,5 +1,3 @@
-//! OpenParlant daemon server — boots the kernel and serves the HTTP API.
-
 use crate::channel_bridge;
 use crate::control_routes;
 use crate::middleware;
@@ -13,7 +11,10 @@ use openparlant_control::{ControlStore, DefaultTurnControlCoordinator};
 use openparlant_journey::{JourneyStore, SqliteJourneyRuntime};
 use openparlant_kernel::OpenFangKernel;
 use openparlant_memory::migration::run_migrations;
-use openparlant_policy::{PolicyStore, SqliteObservationMatcher, SqlitePolicyResolver, SqliteToolGate};
+use openparlant_policy::{
+    LlmObservationMatcher, LlmPolicyResolver, PolicyStore, SqliteObservationMatcher,
+    SqlitePolicyResolver, SqliteToolGate,
+};
 use rusqlite::Connection;
 use std::net::SocketAddr;
 use std::path::Path;
@@ -24,6 +25,51 @@ use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 
+// ─── ControlLlmCaller bridge ─────────────────────────────────────────────────
+
+/// Bridges an `LlmDriver` to the control-plane `ControlLlmCaller` trait.
+struct KernelLlmCaller {
+    driver: Arc<dyn openparlant_runtime::llm_driver::LlmDriver>,
+    model: String,
+}
+
+#[async_trait::async_trait]
+impl openparlant_types::control::ControlLlmCaller for KernelLlmCaller {
+    async fn call(&self, prompt: &str) -> anyhow::Result<String> {
+        use openparlant_runtime::llm_driver::CompletionRequest;
+        use openparlant_types::message::{Message, MessageContent, Role};
+
+        let user_msg = Message {
+            role: Role::User,
+            content: MessageContent::Text(prompt.to_string()),
+        };
+
+        let req = CompletionRequest {
+            model: self.model.clone(),
+            messages: vec![user_msg],
+            max_tokens: 512,
+            temperature: 0.0,
+            tools: vec![],
+            system: Some(
+                "You are a control-plane reasoning assistant. Follow instructions exactly \
+                 and reply ONLY with the requested JSON."
+                    .to_string(),
+            ),
+            thinking: None,
+        };
+
+        let resp = self
+            .driver
+            .complete(req)
+            .await
+            .map_err(|e: openparlant_runtime::llm_driver::LlmError| {
+                anyhow::anyhow!("{e}")
+            })?;
+
+        Ok(resp.text())
+    }
+}
+
 /// Daemon info written to `~/.openparlant/daemon.json` so the CLI can find us.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct DaemonInfo {
@@ -32,6 +78,23 @@ pub struct DaemonInfo {
     pub started_at: String,
     pub version: String,
     pub platform: String,
+}
+
+// ─── ControlEmbedder bridge ───────────────────────────────────────────────────
+
+/// Bridges the kernel's `EmbeddingDriver` to the `ControlEmbedder` trait.
+struct KernelEmbedder {
+    driver: Arc<dyn openparlant_runtime::embedding::EmbeddingDriver + Send + Sync>,
+}
+
+#[async_trait::async_trait]
+impl openparlant_types::control::ControlEmbedder for KernelEmbedder {
+    async fn embed(&self, text: &str) -> anyhow::Result<Vec<f32>> {
+        self.driver
+            .embed_one(text)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))
+    }
 }
 
 /// Build the full API router with all routes, middleware, and state.
@@ -45,9 +108,6 @@ pub async fn build_router(
     kernel: Arc<OpenFangKernel>,
     listen_addr: SocketAddr,
 ) -> (Router<()>, Arc<AppState>) {
-    // Start channel bridges (Telegram, etc.)
-    let bridge = channel_bridge::start_channel_bridge(kernel.clone()).await;
-
     let channels_config = kernel.config.channels.clone();
     // ── Control plane bootstrap ───────────────────────────────────────────────
     // Reuse the same on-disk database that openparlant-memory manages.
@@ -75,14 +135,68 @@ pub async fn build_router(
         .await
         .expect("sqlx pool for context store");
 
-    let coordinator = DefaultTurnControlCoordinator::new_with_gate(
-        SqliteObservationMatcher::new(cp_conn.clone()),
-        SqlitePolicyResolver::new(cp_conn.clone()),
-        SqliteJourneyRuntime::new(cp_conn.clone()),
-        SqliteKnowledgeCompiler::new(sqlx_pool),
-        SqliteToolGate::new(cp_conn.clone()),
+    // Use LLM-based semantic matchers when a default driver is available and
+    // `OPENPARLANT_CONTROL_SEMANTIC=true` is set (opt-in to avoid latency in tests).
+    let use_semantic = std::env::var("OPENPARLANT_CONTROL_SEMANTIC")
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false);
+
+    let llm_caller: Arc<dyn openparlant_types::control::ControlLlmCaller> = Arc::new(KernelLlmCaller {
+        driver: kernel.default_llm_driver(),
+        model: kernel
+            .config
+            .default_model
+            .model
+            .clone(),
+    });
+
+    // Build knowledge compiler, wiring in the embedding driver when available.
+    let knowledge_compiler = {
+        let base = SqliteKnowledgeCompiler::new(sqlx_pool);
+        if let Some(emb_driver) = kernel.embedding_driver.clone() {
+            base.with_embedder(Arc::new(KernelEmbedder { driver: emb_driver }))
+        } else {
+            base
+        }
+    };
+
+    let coordinator: Arc<dyn openparlant_types::control::TurnControlCoordinator> = if use_semantic {
+        Arc::new(
+            DefaultTurnControlCoordinator::new_with_gate(
+                LlmObservationMatcher::new(cp_conn.clone(), llm_caller.clone()),
+                LlmPolicyResolver::new(cp_conn.clone(), llm_caller.clone()),
+                SqliteJourneyRuntime::new(cp_conn.clone()),
+                knowledge_compiler,
+                SqliteToolGate::new(cp_conn.clone()),
+            )
+            .with_store(control_store.clone())
+            .with_llm_caller(llm_caller),
+        )
+    } else {
+        Arc::new(
+            DefaultTurnControlCoordinator::new_with_gate(
+                SqliteObservationMatcher::new(cp_conn.clone()),
+                SqlitePolicyResolver::new(cp_conn.clone()),
+                SqliteJourneyRuntime::new(cp_conn.clone()),
+                knowledge_compiler,
+                SqliteToolGate::new(cp_conn.clone()),
+            )
+            .with_store(control_store.clone())
+            .with_llm_caller(llm_caller),
+        )
+    };
+
+    // Channel bridges (Telegram, Feishu, …) — after control store so session bindings can persist.
+    let bridge = channel_bridge::start_channel_bridge_with_config(
+        kernel.clone(),
+        &channels_config,
+        Some((
+            std::sync::Arc::new(control_store.clone()),
+            std::env::var("OPENPARLANT_DEFAULT_CONTROL_SCOPE").ok(),
+        )),
     )
-    .with_store(control_store.clone());
+    .await
+    .0;
 
     let state = Arc::new(AppState {
         kernel: kernel.clone(),
@@ -94,7 +208,7 @@ pub async fn build_router(
         clawhub_cache: dashmap::DashMap::new(),
         provider_probe_cache: openparlant_runtime::provider_health::ProbeCache::new(),
         db_conn: cp_conn,
-        control_coordinator: Arc::new(coordinator),
+        control_coordinator: coordinator,
         control_store,
         policy_store,
         journey_store,
@@ -778,6 +892,10 @@ pub async fn build_router(
         .route("/api/control/journeys/{journey_id}/states", axum::routing::get(control_routes::list_journey_states).post(control_routes::create_journey_state))
         .route("/api/control/journeys/{journey_id}/transitions", axum::routing::get(control_routes::list_journey_transitions).post(control_routes::create_journey_transition))
         .route("/api/control/test/compile-turn", axum::routing::post(control_routes::test_compile_turn))
+        .route(
+            "/api/sessions/{session_id}/replay",
+            axum::routing::get(routes::get_session_replay),
+        )
         .route("/api/sessions/{session_id}/control-trace", axum::routing::get(control_routes::session_control_trace))
         .route("/api/sessions/{session_id}/journey-state", axum::routing::get(control_routes::session_journey_state))
         // ── Phase 3: Tool Gate / Approval / Handoff ──────────────────────────

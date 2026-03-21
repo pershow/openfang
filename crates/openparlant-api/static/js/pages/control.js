@@ -88,6 +88,16 @@ function controlPage() {
 
     // ── Scopes ───────────────────────────────────────────────────────────────
 
+    /** Label shown in the scope dropdown; uses option[label] instead of x-text for reliable rendering. */
+    scopeSelectLabel(s) {
+      var id = String(s && s.scope_id != null ? s.scope_id : '');
+      var raw = s && s.name != null ? String(s.name) : '';
+      var nm = raw.trim();
+      if (!nm) nm = id ? id.slice(0, 8) + '…' : '—';
+      var short = id ? id.slice(0, 8) : '';
+      return short ? nm + ' (' + short + '…)' : nm;
+    },
+
     async loadScopes() {
       try {
         var data = await OpenFangAPI.get('/api/control/scopes');

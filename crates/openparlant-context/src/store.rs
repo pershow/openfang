@@ -1,9 +1,11 @@
 use anyhow::Result;
 use openparlant_types::control::{
-    CannedResponseCandidate, GlossaryEntry, ResolvedVariable, RetrievedChunk, ScopeId,
+    CannedResponseCandidate, ControlEmbedder, GlossaryEntry, ResolvedVariable, RetrievedChunk,
+    ScopeId,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Row, Sqlite};
+use std::collections::{HashMap, HashSet};
 
 // ─── Retriever config types ───────────────────────────────────────────────────
 
@@ -106,17 +108,65 @@ impl ContextStore {
     /// Dispatches on `retriever_type`:
     /// - `"static"`: searches `config_json.items` (array of `{title, content}`) for keyword matches.
     /// - `"faq_sqlite"`: searches `glossary_terms` for keyword matches and returns them as chunks.
+    /// - `"embedding"`: computes a query embedding then does cosine similarity against stored chunk
+    ///   vectors (`config_json.chunks[].vector`). Requires an `embedder` to be passed.
     /// - Other types: logged and skipped (Phase 2 will add embedding-based retrieval).
     pub async fn run_retrievers(
         &self,
         scope_id: &ScopeId,
         query: &str,
+        active_journey_state: Option<&str>,
+        active_guideline_names: &[String],
+        embedder: Option<&dyn ControlEmbedder>,
     ) -> Result<Vec<RetrievedChunk>> {
         let retrievers = self.list_retrievers(scope_id).await?;
+        let all_bindings = sqlx::query(
+            "SELECT retriever_id, bind_type, bind_ref
+             FROM retriever_bindings
+             WHERE scope_id = ?",
+        )
+        .bind(&scope_id.0)
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default();
+        let mut bindings_by_retriever: HashMap<String, Vec<(String, String)>> = HashMap::new();
+        for row in all_bindings {
+            let retriever_id: String = row.try_get("retriever_id")?;
+            let bind_type: String = row.try_get("bind_type")?;
+            let bind_ref: String = row.try_get("bind_ref")?;
+            bindings_by_retriever
+                .entry(retriever_id)
+                .or_default()
+                .push((bind_type, bind_ref));
+        }
+        let active_guidelines: HashSet<&str> =
+            active_guideline_names.iter().map(String::as_str).collect();
         let query_lower = query.to_lowercase();
         let mut chunks = Vec::new();
 
         for retriever in &retrievers {
+            let is_bound = bindings_by_retriever
+                .get(&retriever.retriever_id)
+                .map(|bindings| !bindings.is_empty())
+                .unwrap_or(false);
+            if is_bound {
+                let matched = bindings_by_retriever
+                    .get(&retriever.retriever_id)
+                    .map(|bindings| {
+                        bindings.iter().any(|(bind_type, bind_ref)| match bind_type.as_str() {
+                            "journey_state" => active_journey_state == Some(bind_ref.as_str()),
+                            "guideline" => active_guidelines.contains(bind_ref.as_str()),
+                            "scope" => bind_ref == &scope_id.0,
+                            "always" => true,
+                            _ => false,
+                        })
+                    })
+                    .unwrap_or(false);
+                if !matched {
+                    continue;
+                }
+            }
+
             match retriever.retriever_type.as_str() {
                 "static" => {
                     // Expect config_json = { "items": [ { "title": "...", "content": "..." }, ... ] }
@@ -174,11 +224,78 @@ impl ContextStore {
                         }
                     }
                 }
+                "embedding" => {
+                    let Some(emb) = embedder else {
+                        tracing::debug!(
+                            retriever = %retriever.name,
+                            "embedding retriever requires embedder — skipping"
+                        );
+                        continue;
+                    };
+                    let query_vec = match emb.embed(query).await {
+                        Ok(v) => v,
+                        Err(e) => {
+                            tracing::warn!(
+                                retriever = %retriever.name,
+                                error = %e,
+                                "embedding query failed — skipping retriever"
+                            );
+                            continue;
+                        }
+                    };
+                    let threshold: f32 = retriever
+                        .config_json
+                        .get("threshold")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.7) as f32;
+                    if let Some(stored_chunks) = retriever
+                        .config_json
+                        .get("chunks")
+                        .and_then(|v| v.as_array())
+                    {
+                        let mut emb_hits: Vec<RetrievedChunk> = Vec::new();
+                        for chunk_val in stored_chunks {
+                            let text = chunk_val
+                                .get("text")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            if let Some(arr) = chunk_val
+                                .get("vector")
+                                .and_then(|v| v.as_array())
+                            {
+                                let stored_vec: Vec<f32> = arr
+                                    .iter()
+                                    .filter_map(|v| v.as_f64().map(|f| f as f32))
+                                    .collect();
+                                let score = cosine_similarity(&query_vec, &stored_vec);
+                                if score >= threshold {
+                                    emb_hits.push(RetrievedChunk {
+                                        source: format!("embedding:{}", retriever.name),
+                                        content: text.to_string(),
+                                        score: Some(score),
+                                        metadata: Some(serde_json::json!({
+                                            "retriever_id": retriever.retriever_id
+                                        })),
+                                    });
+                                }
+                            }
+                        }
+                        // Sort by score descending (best first)
+                        emb_hits.sort_by(|a, b| {
+                            b.score
+                                .unwrap_or(0.0_f32)
+                                .partial_cmp(&a.score.unwrap_or(0.0_f32))
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                        });
+                        chunks.extend(emb_hits);
+                    }
+                }
+
                 other => {
                     tracing::debug!(
                         retriever_type = %other,
                         retriever = %retriever.name,
-                        "unsupported retriever type — skipping (Phase 2)"
+                        "unsupported retriever type — skipping (Phase 2 will add more types)"
                     );
                 }
             }
@@ -186,8 +303,6 @@ impl ContextStore {
 
         Ok(chunks)
     }
-
-    // ── Glossary ──────────────────────────────────────────────────────────────
 
     /// Load all active glossary terms for a given scope.
     pub async fn load_glossary_terms(&self, scope_id: &ScopeId) -> Result<Vec<GlossaryEntry>> {
@@ -219,9 +334,11 @@ impl ContextStore {
     pub async fn load_context_variables(
         &self,
         scope_id: &ScopeId,
+        message_text: &str,
+        active_journey_state: Option<&str>,
     ) -> Result<Vec<ResolvedVariable>> {
         let rows = sqlx::query(
-            "SELECT name, value_source_type, value_source_config
+            "SELECT name, value_source_type, value_source_config, visibility_rule
              FROM context_variables
              WHERE scope_id = ? AND enabled = 1",
         )
@@ -234,6 +351,11 @@ impl ContextStore {
             let name: String = row.try_get("name")?;
             let source_type: String = row.try_get("value_source_type")?;
             let config_json: String = row.try_get("value_source_config")?;
+            let visibility_rule: Option<String> = row.try_get("visibility_rule").ok();
+
+            if !matches_text_rule(visibility_rule.as_deref(), message_text, active_journey_state) {
+                continue;
+            }
 
             // MVP: only "static" sources are resolved inline; others are deferred.
             let value = if source_type == "static" {
@@ -264,9 +386,11 @@ impl ContextStore {
     pub async fn load_canned_responses(
         &self,
         scope_id: &ScopeId,
+        message_text: &str,
+        active_journey_state: Option<&str>,
     ) -> Result<Vec<CannedResponseCandidate>> {
         let rows = sqlx::query(
-            "SELECT name, template_text
+            "SELECT name, template_text, trigger_rule, COALESCE(priority, 0) AS priority
              FROM canned_responses
              WHERE scope_id = ? AND enabled = 1",
         )
@@ -276,12 +400,91 @@ impl ContextStore {
 
         let mut candidates = Vec::with_capacity(rows.len());
         for row in rows {
+            let trigger_rule: Option<String> = row.try_get("trigger_rule").ok();
+            if !matches_text_rule(trigger_rule.as_deref(), message_text, active_journey_state) {
+                continue;
+            }
             candidates.push(CannedResponseCandidate {
                 name: row.try_get("name")?,
                 template_text: row.try_get("template_text")?,
-                priority: 0,
+                priority: row.try_get("priority").unwrap_or(0),
             });
         }
         Ok(candidates)
+    }
+}
+
+fn matches_text_rule(
+    rule: Option<&str>,
+    message_text: &str,
+    active_journey_state: Option<&str>,
+) -> bool {
+    let Some(rule) = rule.map(str::trim).filter(|rule| !rule.is_empty()) else {
+        return true;
+    };
+    if rule.eq_ignore_ascii_case("always") {
+        return true;
+    }
+
+    let text_lc = message_text.to_lowercase();
+
+    if let Some(value) = rule.strip_prefix("contains:") {
+        return text_lc.contains(&value.trim().to_lowercase());
+    }
+    if let Some(value) = rule.strip_prefix("journey_state:") {
+        return active_journey_state
+            .map(|state| state.eq_ignore_ascii_case(value.trim()))
+            .unwrap_or(false);
+    }
+    if let Some(pattern) = rule.strip_prefix("regex:") {
+        return regex_lite::Regex::new(pattern.trim())
+            .map(|re| re.is_match(message_text))
+            .unwrap_or(false);
+    }
+
+    text_lc.contains(&rule.to_lowercase())
+}
+
+// ─── Vector math ──────────────────────────────────────────────────────────────
+
+/// Compute the cosine similarity between two equal-length f32 vectors.
+///
+/// Returns `0.0` when either vector is zero-length, empty, or the lengths differ.
+/// The result is clamped to `[-1.0, 1.0]`.
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    if a.is_empty() || a.len() != b.len() {
+        return 0.0;
+    }
+    let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let mag_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let mag_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if mag_a == 0.0 || mag_b == 0.0 {
+        return 0.0;
+    }
+    (dot / (mag_a * mag_b)).clamp(-1.0, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cosine_similarity;
+
+    #[test]
+    fn identical_vectors_give_score_one() {
+        let v = vec![0.5, 0.5, 0.7071];
+        assert!((cosine_similarity(&v, &v) - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn orthogonal_vectors_give_score_zero() {
+        let a = vec![1.0, 0.0];
+        let b = vec![0.0, 1.0];
+        assert!((cosine_similarity(&a, &b)).abs() < 1e-5);
+    }
+
+    #[test]
+    fn different_lengths_give_zero() {
+        let a = vec![1.0, 0.0];
+        let b = vec![1.0];
+        assert_eq!(cosine_similarity(&a, &b), 0.0);
     }
 }

@@ -123,8 +123,8 @@ impl ControlStore {
         conn.execute(
             "INSERT INTO turn_traces (
                 trace_id, scope_id, session_id, agent_id, channel_type,
-                request_message_ref, compiled_context_hash, response_mode, created_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                request_message_ref, compiled_context_hash, release_version, response_mode, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
              ON CONFLICT(trace_id) DO UPDATE SET
                 scope_id = excluded.scope_id,
                 session_id = excluded.session_id,
@@ -132,6 +132,7 @@ impl ControlStore {
                 channel_type = excluded.channel_type,
                 request_message_ref = excluded.request_message_ref,
                 compiled_context_hash = excluded.compiled_context_hash,
+                release_version = excluded.release_version,
                 response_mode = excluded.response_mode,
                 created_at = excluded.created_at",
             params![
@@ -142,6 +143,7 @@ impl ControlStore {
                 trace.channel_type.as_str(),
                 trace.request_message_ref.as_deref(),
                 trace.compiled_context_hash.as_deref(),
+                trace.release_version.as_deref(),
                 trace.response_mode.as_str(),
                 trace.created_at.to_rfc3339(),
             ],
@@ -159,7 +161,7 @@ impl ControlStore {
         let mut stmt = conn
             .prepare(
                 "SELECT trace_id, scope_id, session_id, agent_id, channel_type,
-                        request_message_ref, compiled_context_hash, response_mode, created_at
+                        request_message_ref, compiled_context_hash, release_version, response_mode, created_at
                  FROM turn_traces WHERE trace_id = ?1",
             )
             .map_err(|e| OpenFangError::Memory(e.to_string()))?;
@@ -173,8 +175,9 @@ impl ControlStore {
                 row.get::<_, String>(4)?,
                 row.get::<_, Option<String>>(5)?,
                 row.get::<_, Option<String>>(6)?,
-                row.get::<_, String>(7)?,
+                row.get::<_, Option<String>>(7)?,
                 row.get::<_, String>(8)?,
+                row.get::<_, String>(9)?,
             ))
         });
 
@@ -198,7 +201,7 @@ impl ControlStore {
         let mut stmt = conn
             .prepare(
                 "SELECT trace_id, scope_id, session_id, agent_id, channel_type,
-                        request_message_ref, compiled_context_hash, response_mode, created_at
+                        request_message_ref, compiled_context_hash, release_version, response_mode, created_at
                  FROM turn_traces
                  WHERE session_id = ?1
                  ORDER BY created_at DESC
@@ -215,8 +218,9 @@ impl ControlStore {
                     row.get::<_, String>(4)?,
                     row.get::<_, Option<String>>(5)?,
                     row.get::<_, Option<String>>(6)?,
-                    row.get::<_, String>(7)?,
+                    row.get::<_, Option<String>>(7)?,
                     row.get::<_, String>(8)?,
+                    row.get::<_, String>(9)?,
                 ))
             })
             .map_err(|e| OpenFangError::Memory(e.to_string()))?;
@@ -576,6 +580,31 @@ impl ControlStore {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
+    /// Return the currently published release version for a scope, if any.
+    pub fn current_release_version(
+        &self,
+        scope_id: &ScopeId,
+    ) -> OpenFangResult<Option<String>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let row = conn.query_row(
+            "SELECT version
+             FROM control_releases
+             WHERE scope_id = ?1 AND status = 'published'
+             ORDER BY created_at DESC
+             LIMIT 1",
+            params![scope_id.0.as_str()],
+            |row| row.get::<_, String>(0),
+        );
+        match row {
+            Ok(version) => Ok(Some(version)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(OpenFangError::Memory(e.to_string())),
+        }
+    }
+
     // ── Handoff Records ───────────────────────────────────────────────────────
 
     /// Insert a new handoff record.
@@ -684,6 +713,7 @@ fn trace_from_row(
         String,
         Option<String>,
         Option<String>,
+        Option<String>,
         String,
         String,
     ),
@@ -702,8 +732,9 @@ fn trace_from_row(
         channel_type: row.4,
         request_message_ref: row.5,
         compiled_context_hash: row.6,
-        response_mode: ResponseMode::from_str(&row.7).map_err(OpenFangError::Memory)?,
-        created_at: parse_timestamp(&row.8)?,
+        release_version: row.7,
+        response_mode: ResponseMode::from_str(&row.8).map_err(OpenFangError::Memory)?,
+        created_at: parse_timestamp(&row.9)?,
     })
 }
 
@@ -764,6 +795,7 @@ mod tests {
             channel_type: "web".to_string(),
             request_message_ref: Some("msg-1".to_string()),
             compiled_context_hash: Some("hash-1".to_string()),
+            release_version: Some("v1".to_string()),
             response_mode: ResponseMode::Guided,
             created_at: Utc::now(),
         };
@@ -777,6 +809,7 @@ mod tests {
 
         assert_eq!(loaded.trace_id, trace.trace_id);
         assert_eq!(loaded.response_mode, ResponseMode::Guided);
+        assert_eq!(loaded.release_version.as_deref(), Some("v1"));
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].compiled_context_hash.as_deref(), Some("hash-1"));
     }

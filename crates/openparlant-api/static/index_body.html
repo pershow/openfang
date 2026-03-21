@@ -1132,6 +1132,16 @@
                 <!-- Tab: Config (inline editable) -->
                 <div x-show="detailTab === 'config'">
                   <div class="form-group"><label>Name</label><input class="form-input" x-model="configForm.name"></div>
+                  <div class="form-group">
+                    <label>Control scope</label>
+                    <select class="form-select" x-model="configForm.control_scope_id" @focus="loadControlScopes()">
+                      <option value="">— none (fallback: agent id) —</option>
+                      <template x-for="s in controlScopes" :key="s.scope_id">
+                        <option :value="s.scope_id" :label="scopeOptionLabel(s)"></option>
+                      </template>
+                    </select>
+                    <p class="text-xs text-dim" style="margin-top:6px">Session bindings override this when present. Otherwise <code>compile_turn</code> uses this scope for policy and knowledge.</p>
+                  </div>
                   <div class="form-group"><label>System Prompt</label><textarea class="form-textarea" x-model="configForm.system_prompt" style="height:80px"></textarea></div>
                   <div class="form-group"><label>Emoji</label>
                     <div class="emoji-grid">
@@ -1235,6 +1245,16 @@
                     <div class="form-group">
                       <label>Agent Name</label>
                       <input class="form-input" x-model="spawnForm.name" placeholder="my-agent" @keydown.enter="if(!$event.isComposing && $event.keyCode !== 229) nextStep()">
+                    </div>
+                    <div class="form-group">
+                      <label>Control scope <span class="text-xs text-dim">(optional)</span></label>
+                      <select class="form-select" x-model="spawnForm.control_scope_id" @focus="loadControlScopes()">
+                        <option value="">— none (fallback: agent id) —</option>
+                        <template x-for="s in controlScopes" :key="s.scope_id">
+                          <option :value="s.scope_id" :label="scopeOptionLabel(s)"></option>
+                        </template>
+                      </select>
+                      <p class="text-xs text-dim" style="margin-top:6px">Links this agent to observations / guidelines / knowledge on the Control page. Create scopes under <strong>Control</strong> first.</p>
                     </div>
                     <div class="form-group">
                       <label>Emoji</label>
@@ -1359,6 +1379,7 @@
                         <div class="detail-row"><span class="detail-label">Provider</span><span class="detail-value" x-text="spawnForm.provider"></span></div>
                         <div class="detail-row"><span class="detail-label">Model</span><span class="detail-value" x-text="spawnForm.model"></span></div>
                         <div class="detail-row"><span class="detail-label">Profile</span><span class="detail-value" x-text="spawnForm.profile"></span></div>
+                        <div class="detail-row" x-show="spawnForm.control_scope_id"><span class="detail-label">Control scope</span><span class="detail-value font-mono text-xs" x-text="spawnForm.control_scope_id"></span></div>
                         <div class="detail-row" x-show="selectedPreset"><span class="detail-label">Personality</span><span class="detail-value" style="text-transform:capitalize" x-text="selectedPreset"></span></div>
                       </div>
                     </div>
@@ -4300,7 +4321,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             <div class="card mb-4" style="border-left:3px solid var(--accent)">
               <div class="font-bold" style="font-size:13px;margin-bottom:4px">Conversation Sessions</div>
               <div class="text-sm text-dim" style="line-height:1.6">
-                Each conversation with an agent creates a session. Sessions store the full message history so you can resume conversations later, or review past interactions.
+                Each conversation with an agent creates a session. Sessions store the full message history so you can resume conversations later, or review past interactions. Use <strong>Replay</strong> to load the transcript and control-plane traces (observations, guidelines, tools) for explainability.
               </div>
             </div>
             <div class="table-wrap" x-show="filteredSessions.length">
@@ -4315,6 +4336,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                       <td class="text-xs" x-text="s.created_at ? new Date(s.created_at).toLocaleString() : '-'"></td>
                       <td>
                         <button class="btn btn-primary btn-sm" @click="openInChat(s)">Chat</button>
+                        <button class="btn btn-ghost btn-sm" @click="openReplay(s)">Replay</button>
                         <button class="btn btn-danger btn-sm" @click="deleteSession(s.session_id)">Delete</button>
                       </td>
                     </tr>
@@ -4331,6 +4353,53 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
               <button class="btn btn-primary" @click="location.hash='agents'">Start Chatting</button>
             </div>
             <div class="empty-state" x-show="!filteredSessions.length && searchFilter"><p>No sessions match your filter.</p></div>
+            </div>
+          </div>
+
+          <!-- Session replay modal -->
+          <div x-show="replayOpen" x-cloak style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:300;display:flex;align-items:center;justify-content:center;padding:16px" @click.self="closeReplay()">
+            <div class="card" style="max-width:920px;max-height:88vh;overflow:auto;width:100%;margin:0" @click.stop>
+              <div class="flex justify-between items-center mb-3" style="position:sticky;top:0;background:var(--bg);padding-bottom:8px;border-bottom:1px solid var(--border)">
+                <h3 style="margin:0;font-size:16px">Session replay</h3>
+                <button type="button" class="btn btn-ghost btn-sm" @click="closeReplay()">Close</button>
+              </div>
+              <div x-show="replayLoading" class="loading-state" style="padding:24px"><div class="spinner"></div><span>Loading replay…</span></div>
+              <div x-show="replayError && !replayLoading" class="error-state"><span class="error-icon">!</span><p x-text="replayError"></p></div>
+              <template x-if="replayData && !replayLoading">
+                <div>
+                  <p class="text-xs text-dim" style="margin:0 0 12px;font-family:var(--font-mono,monospace)" x-text="'Session ' + replayData.session_id + ' · Agent ' + replayData.agent_id + ' · ' + (replayData.message_count || 0) + ' messages'"></p>
+                  <h4 style="font-size:13px;margin:0 0 8px">Messages</h4>
+                  <div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
+                    <template x-for="(m, mi) in (replayData.messages || [])" :key="mi">
+                      <div class="p-2 rounded" style="background:var(--surface2);border:1px solid var(--border)">
+                        <span class="text-dim" style="font-size:10px;text-transform:uppercase" x-text="m.role"></span>
+                        <pre style="white-space:pre-wrap;margin:6px 0 0;font-size:12px;color:var(--text)" x-text="m.content"></pre>
+                      </div>
+                    </template>
+                  </div>
+                  <h4 style="font-size:13px;margin:16px 0 8px">Control traces</h4>
+                  <template x-if="!replayData.control_traces || !replayData.control_traces.length">
+                    <p class="text-sm text-dim" style="margin:0">No control-plane traces stored for this session yet.</p>
+                  </template>
+                  <template x-for="(t, ti) in (replayData.control_traces || [])" :key="ti">
+                    <div class="p-2 mb-2 rounded" style="background:var(--surface2);border:1px solid var(--border);font-size:11px">
+                      <div class="flex gap-2 flex-wrap" style="margin-bottom:4px">
+                        <span class="badge badge-sm" style="font-size:10px" x-text="t.response_mode || '—'"></span>
+                        <span class="text-dim" x-text="t.created_at ? new Date(t.created_at).toLocaleString() : ''"></span>
+                      </div>
+                      <template x-if="t.observation_hits && t.observation_hits.length">
+                        <div style="margin-top:4px"><span class="text-dim">Observations</span> <span x-text="t.observation_hits.length"></span></div>
+                      </template>
+                      <template x-if="t.guideline_hits && t.guideline_hits.length">
+                        <div><span class="text-dim">Guidelines</span> <span x-text="t.guideline_hits.length"></span></div>
+                      </template>
+                      <template x-if="t.allowed_tools && t.allowed_tools.length">
+                        <div><span class="text-dim">Allowed tools</span> <span x-text="t.allowed_tools.join(', ')"></span></div>
+                      </template>
+                    </div>
+                  </template>
+                </div>
+              </template>
             </div>
           </div>
 
@@ -5185,7 +5254,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
         <select class="input" style="max-width:300px" x-model="selectedScope" @change="onScopeChange()">
           <option value="">— select scope —</option>
           <template x-for="s in scopes" :key="s.scope_id">
-            <option :value="s.scope_id" x-text="s.name + ' (' + s.scope_id.substring(0,8) + '...')" ></option>
+            <option :value="s.scope_id" :label="scopeSelectLabel(s)"></option>
           </template>
         </select>
         <div class="flex gap-2 items-center">

@@ -438,6 +438,132 @@ pub async fn send_message(
     }
 }
 
+/// Build chat messages JSON for WebChat / session replay (same shape as `GET /api/agents/:id/session`).
+pub fn build_session_messages_json(session: &openparlant_memory::session::Session) -> Vec<serde_json::Value> {
+    // Two-pass approach: ToolUse blocks live in Assistant messages while
+    // ToolResult blocks arrive in subsequent User messages.  Pass 1
+    // collects all tool_use entries keyed by id; pass 2 attaches results.
+
+    use base64::Engine as _;
+    let mut built_messages: Vec<serde_json::Value> = Vec::new();
+    let mut tool_use_index: std::collections::HashMap<String, (usize, usize)> =
+        std::collections::HashMap::new();
+
+    for m in &session.messages {
+        let mut tools: Vec<serde_json::Value> = Vec::new();
+        let mut msg_images: Vec<serde_json::Value> = Vec::new();
+        let content = match &m.content {
+            openparlant_types::message::MessageContent::Text(t) => t.clone(),
+            openparlant_types::message::MessageContent::Blocks(blocks) => {
+                let mut texts = Vec::new();
+                for b in blocks {
+                    match b {
+                        openparlant_types::message::ContentBlock::Text { text, .. } => {
+                            texts.push(text.clone());
+                        }
+                        openparlant_types::message::ContentBlock::Image {
+                            media_type,
+                            data,
+                        } => {
+                            texts.push("[Image]".to_string());
+                            let file_id = uuid::Uuid::new_v4().to_string();
+                            let upload_dir = std::env::temp_dir().join("openparlant_uploads");
+                            let _ = std::fs::create_dir_all(&upload_dir);
+                            if let Ok(bytes) =
+                                base64::engine::general_purpose::STANDARD.decode(data)
+                            {
+                                let _ = std::fs::write(upload_dir.join(&file_id), &bytes);
+                                UPLOAD_REGISTRY.insert(
+                                    file_id.clone(),
+                                    UploadMeta {
+                                        filename: format!(
+                                            "image.{}",
+                                            media_type.rsplit('/').next().unwrap_or("png")
+                                        ),
+                                        content_type: media_type.clone(),
+                                    },
+                                );
+                                msg_images.push(serde_json::json!({
+                                    "file_id": file_id,
+                                    "filename": format!("image.{}", media_type.rsplit('/').next().unwrap_or("png")),
+                                }));
+                            }
+                        }
+                        openparlant_types::message::ContentBlock::ToolUse {
+                            id,
+                            name,
+                            input,
+                            ..
+                        } => {
+                            let tool_idx = tools.len();
+                            tools.push(serde_json::json!({
+                                "name": name,
+                                "input": input,
+                                "running": false,
+                                "expanded": false,
+                            }));
+                            tool_use_index.insert(id.clone(), (usize::MAX, tool_idx));
+                        }
+                        openparlant_types::message::ContentBlock::ToolResult { .. } => {}
+                        _ => {}
+                    }
+                }
+                texts.join("\n")
+            }
+        };
+        if content.is_empty() && tools.is_empty() {
+            continue;
+        }
+        let msg_idx = built_messages.len();
+        for (_, (mi, _)) in tool_use_index.iter_mut() {
+            if *mi == usize::MAX {
+                *mi = msg_idx;
+            }
+        }
+        let mut msg = serde_json::json!({
+            "role": format!("{:?}", m.role),
+            "content": content,
+        });
+        if !tools.is_empty() {
+            msg["tools"] = serde_json::Value::Array(tools);
+        }
+        if !msg_images.is_empty() {
+            msg["images"] = serde_json::Value::Array(msg_images);
+        }
+        built_messages.push(msg);
+    }
+
+    for m in &session.messages {
+        if let openparlant_types::message::MessageContent::Blocks(blocks) = &m.content {
+            for b in blocks {
+                if let openparlant_types::message::ContentBlock::ToolResult {
+                    tool_use_id,
+                    content: result,
+                    is_error,
+                    ..
+                } = b
+                {
+                    if let Some(&(msg_idx, tool_idx)) = tool_use_index.get(tool_use_id) {
+                        if let Some(msg) = built_messages.get_mut(msg_idx) {
+                            if let Some(tools_arr) =
+                                msg.get_mut("tools").and_then(|v| v.as_array_mut())
+                            {
+                                if let Some(tool_obj) = tools_arr.get_mut(tool_idx) {
+                                    let preview: String = result.chars().take(2000).collect();
+                                    tool_obj["result"] = serde_json::Value::String(preview);
+                                    tool_obj["is_error"] = serde_json::Value::Bool(*is_error);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    built_messages
+}
+
 /// GET /api/agents/:id/session — Get agent session (conversation history).
 pub async fn get_agent_session(
     State(state): State<Arc<AppState>>,
@@ -465,138 +591,7 @@ pub async fn get_agent_session(
 
     match state.kernel.memory.get_session(entry.session_id) {
         Ok(Some(session)) => {
-            // Two-pass approach: ToolUse blocks live in Assistant messages while
-            // ToolResult blocks arrive in subsequent User messages.  Pass 1
-            // collects all tool_use entries keyed by id; pass 2 attaches results.
-
-            // Pass 1: build messages and a lookup from tool_use_id → (msg_idx, tool_idx)
-            use base64::Engine as _;
-            let mut built_messages: Vec<serde_json::Value> = Vec::new();
-            let mut tool_use_index: std::collections::HashMap<String, (usize, usize)> =
-                std::collections::HashMap::new();
-
-            for m in &session.messages {
-                let mut tools: Vec<serde_json::Value> = Vec::new();
-                let mut msg_images: Vec<serde_json::Value> = Vec::new();
-                let content = match &m.content {
-                    openparlant_types::message::MessageContent::Text(t) => t.clone(),
-                    openparlant_types::message::MessageContent::Blocks(blocks) => {
-                        let mut texts = Vec::new();
-                        for b in blocks {
-                            match b {
-                                openparlant_types::message::ContentBlock::Text { text, .. } => {
-                                    texts.push(text.clone());
-                                }
-                                openparlant_types::message::ContentBlock::Image {
-                                    media_type,
-                                    data,
-                                } => {
-                                    texts.push("[Image]".to_string());
-                                    // Persist image to upload dir so it can be
-                                    // served back when loading session history.
-                                    let file_id = uuid::Uuid::new_v4().to_string();
-                                    let upload_dir = std::env::temp_dir().join("openparlant_uploads");
-                                    let _ = std::fs::create_dir_all(&upload_dir);
-                                    if let Ok(bytes) =
-                                        base64::engine::general_purpose::STANDARD.decode(data)
-                                    {
-                                        let _ = std::fs::write(upload_dir.join(&file_id), &bytes);
-                                        UPLOAD_REGISTRY.insert(
-                                            file_id.clone(),
-                                            UploadMeta {
-                                                filename: format!(
-                                                    "image.{}",
-                                                    media_type.rsplit('/').next().unwrap_or("png")
-                                                ),
-                                                content_type: media_type.clone(),
-                                            },
-                                        );
-                                        msg_images.push(serde_json::json!({
-                                            "file_id": file_id,
-                                            "filename": format!("image.{}", media_type.rsplit('/').next().unwrap_or("png")),
-                                        }));
-                                    }
-                                }
-                                openparlant_types::message::ContentBlock::ToolUse {
-                                    id,
-                                    name,
-                                    input,
-                                    ..
-                                } => {
-                                    let tool_idx = tools.len();
-                                    tools.push(serde_json::json!({
-                                        "name": name,
-                                        "input": input,
-                                        "running": false,
-                                        "expanded": false,
-                                    }));
-                                    // Will be filled after this loop when we know msg_idx
-                                    tool_use_index.insert(id.clone(), (usize::MAX, tool_idx));
-                                }
-                                // ToolResult blocks are handled in pass 2
-                                openparlant_types::message::ContentBlock::ToolResult { .. } => {}
-                                _ => {}
-                            }
-                        }
-                        texts.join("\n")
-                    }
-                };
-                // Skip messages that are purely tool results (User role with only ToolResult blocks)
-                if content.is_empty() && tools.is_empty() {
-                    continue;
-                }
-                let msg_idx = built_messages.len();
-                // Fix up the msg_idx for tool_use entries registered with sentinel
-                for (_, (mi, _)) in tool_use_index.iter_mut() {
-                    if *mi == usize::MAX {
-                        *mi = msg_idx;
-                    }
-                }
-                let mut msg = serde_json::json!({
-                    "role": format!("{:?}", m.role),
-                    "content": content,
-                });
-                if !tools.is_empty() {
-                    msg["tools"] = serde_json::Value::Array(tools);
-                }
-                if !msg_images.is_empty() {
-                    msg["images"] = serde_json::Value::Array(msg_images);
-                }
-                built_messages.push(msg);
-            }
-
-            // Pass 2: walk messages again and attach ToolResult to the correct tool
-            for m in &session.messages {
-                if let openparlant_types::message::MessageContent::Blocks(blocks) = &m.content {
-                    for b in blocks {
-                        if let openparlant_types::message::ContentBlock::ToolResult {
-                            tool_use_id,
-                            content: result,
-                            is_error,
-                            ..
-                        } = b
-                        {
-                            if let Some(&(msg_idx, tool_idx)) = tool_use_index.get(tool_use_id) {
-                                if let Some(msg) = built_messages.get_mut(msg_idx) {
-                                    if let Some(tools_arr) =
-                                        msg.get_mut("tools").and_then(|v| v.as_array_mut())
-                                    {
-                                        if let Some(tool_obj) = tools_arr.get_mut(tool_idx) {
-                                            let preview: String =
-                                                result.chars().take(2000).collect();
-                                            tool_obj["result"] = serde_json::Value::String(preview);
-                                            tool_obj["is_error"] =
-                                                serde_json::Value::Bool(*is_error);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            let messages = built_messages;
+            let messages = build_session_messages_json(&session);
             (
                 StatusCode::OK,
                 Json(serde_json::json!({
@@ -626,6 +621,76 @@ pub async fn get_agent_session(
                 Json(serde_json::json!({"error": "Session load failed"})),
             )
         }
+    }
+}
+
+/// GET /api/sessions/:session_id/replay — Transcript + enriched control traces for session replay.
+pub async fn get_session_replay(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+) -> impl IntoResponse {
+    use openparlant_types::agent::SessionId;
+
+    let sid = match uuid::Uuid::parse_str(&session_id) {
+        Ok(u) => SessionId(u),
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid session ID"})),
+            );
+        }
+    };
+
+    match state.kernel.memory.get_session(sid) {
+        Ok(Some(session)) => {
+            let messages = build_session_messages_json(&session);
+            let traces = match state.control_store.list_turn_traces_by_session(sid, 100) {
+                Ok(t) => t,
+                Err(e) => {
+                    tracing::warn!(error = %e, "list_turn_traces failed for replay");
+                    vec![]
+                }
+            };
+            let conn = state.db_conn.clone();
+            let enriched = tokio::task::spawn_blocking(move || {
+                let c = conn.lock().map_err(|e| e.to_string())?;
+                Ok::<_, String>(crate::control_routes::enrich_turn_traces_json(&c, traces))
+            })
+            .await;
+
+            let control_traces = match enriched {
+                Ok(Ok(v)) => v,
+                Ok(Err(e)) => {
+                    tracing::warn!(error = %e, "replay trace enrich failed");
+                    vec![]
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "replay trace enrich join failed");
+                    vec![]
+                }
+            };
+
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "session_id": session.id.0.to_string(),
+                    "agent_id": session.agent_id.0.to_string(),
+                    "label": session.label,
+                    "message_count": session.messages.len(),
+                    "context_window_tokens": session.context_window_tokens,
+                    "messages": messages,
+                    "control_traces": control_traces,
+                })),
+            )
+        }
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "Session not found"})),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ),
     }
 }
 
@@ -1395,6 +1460,7 @@ pub async fn get_agent(
             "mcp_servers": entry.manifest.mcp_servers,
             "mcp_servers_mode": if entry.manifest.mcp_servers.is_empty() { "all" } else { "allowlist" },
             "fallback_models": entry.manifest.fallback_models,
+            "control_scope_id": entry.manifest.metadata.get("control_scope_id").and_then(|v| v.as_str()).map(|s| s.to_string()),
         })),
     )
 }
@@ -6740,6 +6806,7 @@ pub async fn mcp_http(
                 None
             },
             Some(&*state.kernel.process_manager),
+            None, // manifest (MCP proxy — no per-agent manifest)
         )
         .await;
 
@@ -8674,6 +8741,8 @@ pub struct PatchAgentConfigRequest {
     pub archetype: Option<String>,
     pub vibe: Option<String>,
     pub greeting_style: Option<String>,
+    /// Control-plane scope id (`/api/control/scopes/...`). Empty string clears.
+    pub control_scope_id: Option<String>,
     pub model: Option<String>,
     pub provider: Option<String>,
     pub api_key_env: Option<String>,
@@ -8887,6 +8956,30 @@ pub async fn patch_agent_config(
             .kernel
             .registry
             .update_fallback_models(agent_id, fallbacks)
+            .is_err()
+        {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "Agent not found"})),
+            );
+        }
+    }
+
+    // Control-plane scope (manifest.metadata.control_scope_id)
+    if let Some(scope) = req.control_scope_id {
+        let trimmed = scope.trim().to_string();
+        if state
+            .kernel
+            .registry
+            .upsert_metadata_string(
+                agent_id,
+                "control_scope_id",
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                },
+            )
             .is_err()
         {
             return (

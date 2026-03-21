@@ -21,6 +21,12 @@ function sessionsPage() {
     memLoading: false,
     memLoadError: '',
 
+    // -- Session replay modal --
+    replayOpen: false,
+    replayLoading: false,
+    replayError: '',
+    replayData: null,
+
     // -- Sessions methods --
     async loadSessions() {
       this.loading = true;
@@ -60,6 +66,25 @@ function sessionsPage() {
         Alpine.store('app').pendingAgent = agent;
       }
       location.hash = 'agents';
+    },
+
+    async openReplay(s) {
+      this.replayOpen = true;
+      this.replayLoading = true;
+      this.replayError = '';
+      this.replayData = null;
+      try {
+        this.replayData = await OpenFangAPI.get('/api/sessions/' + s.session_id + '/replay');
+      } catch (e) {
+        this.replayError = e.message || 'Could not load session replay.';
+      }
+      this.replayLoading = false;
+    },
+
+    closeReplay() {
+      this.replayOpen = false;
+      this.replayData = null;
+      this.replayError = '';
     },
 
     deleteSession(sessionId) {

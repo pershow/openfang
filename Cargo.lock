@@ -3966,6 +3966,7 @@ dependencies = [
 name = "openparlant-api"
 version = "0.5.1"
 dependencies = [
+ "anyhow",
  "async-trait",
  "axum",
  "base64 0.22.1",
@@ -4080,6 +4081,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "openparlant-types",
+ "regex-lite",
  "serde",
  "serde_json",
  "sqlx",
@@ -4101,6 +4103,7 @@ dependencies = [
  "openparlant-types",
  "rusqlite",
  "serde_json",
+ "sha2",
  "tokio",
  "tracing",
  "uuid",
@@ -4185,6 +4188,7 @@ dependencies = [
  "async-trait",
  "openparlant-memory",
  "openparlant-types",
+ "regex-lite",
  "rusqlite",
  "serde",
  "serde_json",
@@ -4278,6 +4282,7 @@ dependencies = [
  "async-trait",
  "openparlant-memory",
  "openparlant-types",
+ "regex-lite",
  "rusqlite",
  "serde",
  "serde_json",

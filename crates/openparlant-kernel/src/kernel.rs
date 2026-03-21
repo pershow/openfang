@@ -1460,6 +1460,13 @@ impl OpenFangKernel {
 
     /// Send a message to an agent and get a response.
     ///
+    /// Return the boot-time default LLM driver for use by subsystems that
+    /// need LLM access outside of a specific agent context (e.g. control-plane
+    /// semantic matching).
+    pub fn default_llm_driver(&self) -> Arc<dyn LlmDriver> {
+        self.default_driver.clone()
+    }
+
     /// Automatically upgrades the kernel handle from `self_handle` so that
     /// agent turns triggered by cron, channels, events, or inter-agent calls
     /// have full access to kernel tools (cron_create, agent_send, etc.).
@@ -2231,6 +2238,57 @@ impl OpenFangKernel {
         })
     }
 
+    /// Collect tool-use blocks from newly appended messages (for control-plane traces).
+    fn control_tool_calls_from_slice(
+        messages: &[openparlant_types::message::Message],
+    ) -> Vec<openparlant_types::control::ToolCallRecord> {
+        use openparlant_types::message::{ContentBlock, MessageContent, Role};
+        let mut out = Vec::new();
+
+        // Build a map from tool_use_id → result text (from ToolResult blocks in user messages)
+        let mut result_map: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for m in messages {
+            if m.role != Role::User {
+                continue;
+            }
+            let MessageContent::Blocks(blocks) = &m.content else {
+                continue;
+            };
+            for b in blocks {
+                if let ContentBlock::ToolResult {
+                    tool_use_id,
+                    content,
+                    ..
+                } = b
+                {
+                    result_map.insert(tool_use_id.clone(), content.clone());
+                }
+            }
+        }
+
+        for m in messages {
+            if m.role != Role::Assistant {
+                continue;
+            }
+            let MessageContent::Blocks(blocks) = &m.content else {
+                continue;
+            };
+            for b in blocks {
+                if let ContentBlock::ToolUse { name, id, .. } = b {
+                    let result = result_map.get(id).cloned();
+                    out.push(openparlant_types::control::ToolCallRecord {
+                        tool_name: name.clone(),
+                        approved: None,
+                        success: true,
+                        result,
+                    });
+                }
+            }
+        }
+        out
+    }
+
     /// Execute the default LLM-based agent loop.
     #[allow(clippy::too_many_arguments)]
     async fn execute_llm_agent(
@@ -2298,17 +2356,6 @@ impl OpenFangKernel {
 
         let messages_before = session.messages.len();
 
-        let tools = self.available_tools(agent_id);
-        let tools = entry.mode.filter_tools(tools);
-
-        info!(
-            agent = %entry.name,
-            agent_id = %agent_id,
-            tool_count = tools.len(),
-            tool_names = ?tools.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
-            "Tools selected for LLM request"
-        );
-
         // Apply model routing if configured (disabled in Stable mode)
         let mut manifest = entry.manifest.clone();
 
@@ -2326,14 +2373,248 @@ impl OpenFangKernel {
             }
         }
 
-        // Build the structured system prompt via prompt_builder
-        // `control_after_ctx` is declared outside the inner block so that it remains
-        // accessible after `run_agent_loop` completes (needed for the after_response hook).
+        let base_tools = self.available_tools(agent_id);
+        let base_tools = entry.mode.filter_tools(base_tools);
+
+        let mut compiled_ctx_opt: Option<openparlant_types::control::CompiledTurnContext> = None;
         let mut control_after_ctx: Option<(
             openparlant_types::control::TraceId,
             openparlant_types::control::ScopeId,
             Arc<dyn openparlant_types::control::TurnControlCoordinator>,
         )> = None;
+
+        if let Some(coordinator) = self.control_coordinator.get() {
+            let flags = coordinator.session_binding_flags(entry.session_id);
+            if flags.manual_mode {
+                use openparlant_types::message::Message;
+                if let Some(ref blocks) = content_blocks {
+                    session.messages.push(Message::user_with_blocks(blocks.clone()));
+                } else {
+                    session.messages.push(Message::user(message));
+                }
+                self.memory
+                    .save_session_async(&session)
+                    .await
+                    .map_err(KernelError::OpenParlant)?;
+                let mut result = AgentLoopResult {
+                    response: "当前会话处于人工接管模式，AI 暂不回复。".to_string(),
+                    total_usage: Default::default(),
+                    iterations: 0,
+                    cost_usd: None,
+                    silent: false,
+                    directives: Default::default(),
+                };
+                if session.messages.len() > messages_before {
+                    let new_messages = session.messages[messages_before..].to_vec();
+                    if let Err(e) = self.memory.append_canonical(agent_id, &new_messages, None) {
+                        warn!("Failed to update canonical session: {e}");
+                    }
+                }
+                if let Some(ref workspace) = manifest.workspace {
+                    if let Err(e) = self
+                        .memory
+                        .write_jsonl_mirror(&session, &workspace.join("sessions"))
+                    {
+                        warn!("Failed to write JSONL session mirror: {e}");
+                    }
+                    append_daily_memory_log(workspace, &result.response);
+                }
+                let model = &manifest.model.model;
+                let cost = MeteringEngine::estimate_cost_with_catalog(
+                    &self.model_catalog.read().unwrap_or_else(|e| e.into_inner()),
+                    model,
+                    result.total_usage.input_tokens,
+                    result.total_usage.output_tokens,
+                );
+                let _ = self.metering.record(&openparlant_memory::usage::UsageRecord {
+                    agent_id,
+                    model: model.clone(),
+                    input_tokens: result.total_usage.input_tokens,
+                    output_tokens: result.total_usage.output_tokens,
+                    cost_usd: cost,
+                    tool_calls: 0,
+                });
+                match self.config.usage_footer {
+                    openparlant_types::config::UsageFooterMode::Off => {
+                        result.cost_usd = None;
+                    }
+                    openparlant_types::config::UsageFooterMode::Cost
+                    | openparlant_types::config::UsageFooterMode::Full => {
+                        result.cost_usd = if cost > 0.0 { Some(cost) } else { None };
+                    }
+                    openparlant_types::config::UsageFooterMode::Tokens => {
+                        result.cost_usd = None;
+                    }
+                }
+                return Ok(result);
+            }
+
+            // Scope resolution: session binding (highest) → manifest metadata
+            // `control_scope_id` → fallback to agent id string.
+            let scope_id = flags
+                .scope_id
+                .clone()
+                .or_else(|| {
+                    entry
+                        .manifest
+                        .metadata
+                        .get("control_scope_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                        .map(|s| openparlant_types::control::ScopeId::new(s.to_string()))
+                })
+                .unwrap_or_else(|| openparlant_types::control::ScopeId::new(agent_id.to_string()));
+            use openparlant_types::control::{CanonicalMessage, TurnInput};
+            let mut canonical_msg = CanonicalMessage::text(
+                scope_id.clone(),
+                flags
+                    .channel_type
+                    .clone()
+                    .unwrap_or_else(|| "web".to_string()),
+                message,
+            );
+            canonical_msg.external_user_id = flags.external_user_id.clone();
+            canonical_msg.external_chat_id = flags.external_chat_id.clone();
+            let turn_input = TurnInput {
+                scope_id,
+                agent_id,
+                session_id: entry.session_id,
+                message: canonical_msg,
+                prior_tool_calls: Vec::new(),
+            };
+            match coordinator.compile_turn(turn_input).await {
+                Ok(ctx) => {
+                    compiled_ctx_opt = Some(ctx.clone());
+                    control_after_ctx = Some((
+                        ctx.audit_meta.trace_id,
+                        ctx.audit_meta.scope_id.clone(),
+                        coordinator.clone(),
+                    ));
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        agent_id = %agent_id,
+                        error = %e,
+                        "compile_turn failed, continuing without control-plane context"
+                    );
+                }
+            }
+        }
+
+        if let Some(ref ctx) = compiled_ctx_opt {
+            if ctx.response_mode == openparlant_types::control::ResponseMode::CannedOnly
+                && !ctx.canned_response_candidates.is_empty()
+            {
+                let canned_text = ctx
+                    .canned_response_candidates
+                    .iter()
+                    .max_by_key(|c| c.priority)
+                    .map(|c| c.template_text.clone())
+                    .unwrap_or_else(|| ctx.canned_response_candidates[0].template_text.clone());
+                use openparlant_types::message::Message;
+                if let Some(ref blocks) = content_blocks {
+                    session.messages.push(Message::user_with_blocks(blocks.clone()));
+                } else {
+                    session.messages.push(Message::user(message));
+                }
+                session.messages.push(Message::assistant(canned_text.clone()));
+                self.memory
+                    .save_session_async(&session)
+                    .await
+                    .map_err(KernelError::OpenParlant)?;
+                let mut result = AgentLoopResult {
+                    response: canned_text,
+                    total_usage: Default::default(),
+                    iterations: 1,
+                    cost_usd: None,
+                    silent: false,
+                    directives: Default::default(),
+                };
+                if let Some((trace_id, scope_id, coordinator)) = control_after_ctx.take() {
+                    use openparlant_types::control::{
+                        ControlExplainabilitySnapshot, ToolCallRecord, TurnOutcome,
+                    };
+                    let explainability = compiled_ctx_opt
+                        .as_ref()
+                        .map(ControlExplainabilitySnapshot::from_compiled);
+                    let outcome = TurnOutcome {
+                        trace_id,
+                        scope_id,
+                        session_id: entry.session_id,
+                        response_text: result.response.clone(),
+                        tool_calls: Vec::<ToolCallRecord>::new(),
+                        handoff_suggested: false,
+                        explainability,
+                    };
+                    if let Err(e) = coordinator.after_response(&outcome).await {
+                        warn!(trace_id = %outcome.trace_id, error = %e, "after_response failed");
+                    }
+                }
+                if session.messages.len() > messages_before {
+                    let new_messages = session.messages[messages_before..].to_vec();
+                    if let Err(e) = self.memory.append_canonical(agent_id, &new_messages, None) {
+                        warn!("Failed to update canonical session: {e}");
+                    }
+                }
+                if let Some(ref workspace) = manifest.workspace {
+                    if let Err(e) = self
+                        .memory
+                        .write_jsonl_mirror(&session, &workspace.join("sessions"))
+                    {
+                        warn!("Failed to write JSONL session mirror: {e}");
+                    }
+                    append_daily_memory_log(workspace, &result.response);
+                }
+                let model = &manifest.model.model;
+                let cost = MeteringEngine::estimate_cost_with_catalog(
+                    &self.model_catalog.read().unwrap_or_else(|e| e.into_inner()),
+                    model,
+                    result.total_usage.input_tokens,
+                    result.total_usage.output_tokens,
+                );
+                let _ = self.metering.record(&openparlant_memory::usage::UsageRecord {
+                    agent_id,
+                    model: model.clone(),
+                    input_tokens: result.total_usage.input_tokens,
+                    output_tokens: result.total_usage.output_tokens,
+                    cost_usd: cost,
+                    tool_calls: 0,
+                });
+                match self.config.usage_footer {
+                    openparlant_types::config::UsageFooterMode::Off => {
+                        result.cost_usd = None;
+                    }
+                    openparlant_types::config::UsageFooterMode::Cost
+                    | openparlant_types::config::UsageFooterMode::Full => {
+                        result.cost_usd = if cost > 0.0 { Some(cost) } else { None };
+                    }
+                    openparlant_types::config::UsageFooterMode::Tokens => {
+                        result.cost_usd = None;
+                    }
+                }
+                return Ok(result);
+            }
+        }
+
+        let mut tools = base_tools;
+        if let Some(ref ctx) = compiled_ctx_opt {
+            if !ctx.allowed_tools.is_empty() {
+                let allow: std::collections::HashSet<&str> =
+                    ctx.allowed_tools.iter().map(|s| s.as_str()).collect();
+                tools.retain(|t| allow.contains(t.name.as_str()));
+            }
+        }
+
+        info!(
+            agent = %entry.name,
+            agent_id = %agent_id,
+            tool_count = tools.len(),
+            tool_names = ?tools.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
+            "Tools selected for LLM request (control-plane may have restricted)"
+        );
+
+        // Build the structured system prompt via prompt_builder
         {
             let mcp_tool_count = self.mcp_tools.lock().map(|t| t.len()).unwrap_or(0);
             let shared_id = shared_memory_agent_id();
@@ -2431,94 +2712,108 @@ impl OpenFangKernel {
                 sender_name,
             };
 
-            // ── Control plane injection ────────────────────────────────────────────
-            // If a TurnControlCoordinator is installed, compile the turn context and
-            // append system_constraints + active_guidelines to the base system prompt.
-            if let Some(coordinator) = self.control_coordinator.get() {
-                use openparlant_types::control::{CanonicalMessage, ScopeId, TurnInput};
-
-                let scope_id = ScopeId::new(agent_id.to_string());
-                let canonical_msg = CanonicalMessage::text(
-                    scope_id.clone(),
-                    prompt_ctx.channel_type.clone().unwrap_or_else(|| "web".into()),
-                    message,
-                );
-                let turn_input = TurnInput {
-                    scope_id,
-                    agent_id,
-                    session_id: entry.session_id,
-                    message: canonical_msg,
-                };
-
-                match coordinator.compile_turn(turn_input).await {
-                    Ok(ctx) => {
-                        let mut injected = String::new();
-
-                        // Active guidelines → system prompt injection
-                        if !ctx.active_guidelines.is_empty() {
-                            injected.push_str("\n\n## Active Guidelines\n");
-                            for g in &ctx.active_guidelines {
-                                injected.push_str(&format!(
-                                    "- **{}** (priority {}): {}\n",
-                                    g.name, g.priority, g.action_text
-                                ));
-                            }
-                        }
-
-                        // Allowed tools restriction note
-                        if !ctx.allowed_tools.is_empty() {
-                            injected.push_str("\n## Allowed Tools\n");
-                            injected.push_str(&format!(
-                                "You may only use the following tools in this turn: {}.\n",
-                                ctx.allowed_tools.join(", ")
-                            ));
-                        }
-
-                        // Approval-required tools note
-                        if !ctx.approval_required_tools.is_empty() {
-                            injected.push_str("\n## Tools Requiring Approval\n");
-                            injected.push_str(&format!(
-                                "The following tools require human approval before execution: {}. \
-                                 If you need to use any of these, clearly state your intent and \
-                                 wait for confirmation before proceeding.\n",
-                                ctx.approval_required_tools.join(", ")
-                            ));
-                        }
-
-                        if !injected.is_empty() {
-                            prompt_ctx.base_system_prompt.push_str(&injected);
-                        }
-
-                        // Store approval-required tools in session metadata for tool_runner
-                        if !ctx.approval_required_tools.is_empty() {
-                            manifest.metadata.insert(
-                                "approval_required_tools".to_string(),
-                                serde_json::json!(ctx.approval_required_tools),
-                            );
-                        }
-
-                        tracing::debug!(
-                            agent_id = %agent_id,
-                            guidelines = ctx.active_guidelines.len(),
-                            allowed_tools = ctx.allowed_tools.len(),
-                            approval_required = ctx.approval_required_tools.len(),
-                            "control-plane context injected into system prompt"
-                        );
-                        // Stash trace context so after_response can be called post-loop.
-                        control_after_ctx = Some((
-                            ctx.audit_meta.trace_id,
-                            ctx.audit_meta.scope_id.clone(),
-                            coordinator.clone(),
+            // ── Control plane injection (pre-compiled earlier in this turn) ───────────
+            if let Some(ref ctx) = compiled_ctx_opt {
+                let mut injected = String::new();
+                if let Some(ref journey) = ctx.active_journey {
+                    injected.push_str("\n\n## Active Journey\n");
+                    injected.push_str(&format!(
+                        "- Journey: {}\n- Current state: {}\n",
+                        journey.name, journey.current_state
+                    ));
+                    if !journey.missing_fields.is_empty() {
+                        injected.push_str(&format!(
+                            "- Missing fields: {}\n",
+                            journey.missing_fields.join(", ")
                         ));
                     }
-                    Err(e) => {
-                        tracing::warn!(
-                            agent_id = %agent_id,
-                            error = %e,
-                            "compile_turn failed, continuing without control-plane context"
-                        );
+                    if !journey.allowed_next_actions.is_empty() {
+                        injected.push_str(&format!(
+                            "- Allowed next actions: {}\n",
+                            journey.allowed_next_actions.join(", ")
+                        ));
                     }
                 }
+                if !ctx.active_guidelines.is_empty() {
+                    injected.push_str("\n\n## Active Guidelines\n");
+                    for g in &ctx.active_guidelines {
+                        injected.push_str(&format!(
+                            "- **{}** (priority {}): {}\n",
+                            g.name, g.priority, g.action_text
+                        ));
+                    }
+                }
+                if !ctx.retrieved_chunks.is_empty() {
+                    injected.push_str("\n## Retrieved Knowledge\n");
+                    for chunk in &ctx.retrieved_chunks {
+                        injected.push_str(&format!(
+                            "- [{}] {}\n",
+                            chunk.source,
+                            openparlant_runtime::str_utils::safe_truncate_str(&chunk.content, 500)
+                        ));
+                    }
+                }
+                if !ctx.glossary_terms.is_empty() {
+                    injected.push_str("\n## Glossary\n");
+                    for term in &ctx.glossary_terms {
+                        injected.push_str(&format!(
+                            "- {}: {}\n",
+                            term.name, term.description
+                        ));
+                    }
+                }
+                if !ctx.context_variables.is_empty() {
+                    injected.push_str("\n## Context Variables\n");
+                    for variable in &ctx.context_variables {
+                        injected.push_str(&format!(
+                            "- {} = {} (source: {})\n",
+                            variable.name, variable.value, variable.source
+                        ));
+                    }
+                }
+                if !ctx.canned_response_candidates.is_empty()
+                    && ctx.response_mode != openparlant_types::control::ResponseMode::CannedOnly
+                {
+                    injected.push_str("\n## Approved Response Templates\n");
+                    for candidate in &ctx.canned_response_candidates {
+                        injected.push_str(&format!(
+                            "- {}: {}\n",
+                            candidate.name, candidate.template_text
+                        ));
+                    }
+                }
+                if !ctx.allowed_tools.is_empty() {
+                    injected.push_str("\n## Allowed Tools\n");
+                    injected.push_str(&format!(
+                        "You may only use the following tools in this turn: {}.\n",
+                        ctx.allowed_tools.join(", ")
+                    ));
+                }
+                if !ctx.approval_required_tools.is_empty() {
+                    injected.push_str("\n## Tools Requiring Approval\n");
+                    injected.push_str(&format!(
+                        "The following tools require human approval before execution: {}. \
+                         If you need to use any of these, clearly state your intent and \
+                         wait for confirmation before proceeding.\n",
+                        ctx.approval_required_tools.join(", ")
+                    ));
+                }
+                if !injected.is_empty() {
+                    prompt_ctx.base_system_prompt.push_str(&injected);
+                }
+                if !ctx.approval_required_tools.is_empty() {
+                    manifest.metadata.insert(
+                        "approval_required_tools".to_string(),
+                        serde_json::json!(ctx.approval_required_tools),
+                    );
+                }
+                tracing::debug!(
+                    agent_id = %agent_id,
+                    guidelines = ctx.active_guidelines.len(),
+                    allowed_tools = ctx.allowed_tools.len(),
+                    approval_required = ctx.approval_required_tools.len(),
+                    "control-plane context injected into system prompt"
+                );
             }
 
             manifest.model.system_prompt =
@@ -2650,14 +2945,20 @@ impl OpenFangKernel {
 
         // ── Control-plane post-turn recording ─────────────────────────────────────
         if let Some((trace_id, scope_id, coordinator)) = control_after_ctx {
-            use openparlant_types::control::{ToolCallRecord, TurnOutcome};
+            use openparlant_types::control::{ControlExplainabilitySnapshot, TurnOutcome};
+            let tool_calls = Self::control_tool_calls_from_slice(&session.messages[messages_before..]);
+            let explainability = compiled_ctx_opt
+                .as_ref()
+                .map(ControlExplainabilitySnapshot::from_compiled);
             let outcome = TurnOutcome {
                 trace_id,
                 scope_id,
+                session_id: entry.session_id,
                 response_text: result.response.clone(),
-                tool_calls: Vec::<ToolCallRecord>::new(),
+                tool_calls,
                 handoff_suggested: result.response.to_lowercase().contains("handoff")
                     || result.response.to_lowercase().contains("manual mode"),
+                explainability,
             };
             if let Err(e) = coordinator.after_response(&outcome).await {
                 warn!(trace_id = %outcome.trace_id, error = %e, "after_response failed");
@@ -6222,6 +6523,23 @@ impl KernelHandle for OpenFangKernel {
 
     fn requires_approval(&self, tool_name: &str) -> bool {
         self.approval_manager.requires_approval(tool_name)
+    }
+
+    fn requires_approval_for_tool(
+        &self,
+        tool_name: &str,
+        manifest: &openparlant_types::agent::AgentManifest,
+    ) -> bool {
+        if let Some(arr) = manifest
+            .metadata
+            .get("approval_required_tools")
+            .and_then(|v| v.as_array())
+        {
+            if arr.iter().any(|x| x.as_str() == Some(tool_name)) {
+                return true;
+            }
+        }
+        self.requires_approval(tool_name)
     }
 
     async fn request_approval(

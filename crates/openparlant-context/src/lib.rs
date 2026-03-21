@@ -5,11 +5,12 @@ mod store;
 use anyhow::Result;
 use async_trait::async_trait;
 use openparlant_types::control::{
-    CannedResponseCandidate, CanonicalMessage, GlossaryEntry, JourneyActivation, ResolvedVariable,
-    RetrievedChunk, ScopeId,
+    CannedResponseCandidate, CanonicalMessage, ControlEmbedder, GlossaryEntry, JourneyActivation,
+    ResolvedVariable, RetrievedChunk, ScopeId,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
+use std::sync::Arc;
 pub use store::ContextStore;
 
 /// Compiled knowledge bundle for a turn.
@@ -29,6 +30,7 @@ pub trait KnowledgeCompiler: Send + Sync {
         scope_id: &ScopeId,
         message: &CanonicalMessage,
         active_journey: Option<&JourneyActivation>,
+        active_guideline_names: &[String],
     ) -> Result<KnowledgeBundle>;
 }
 
@@ -36,13 +38,22 @@ pub trait KnowledgeCompiler: Send + Sync {
 
 pub struct SqliteKnowledgeCompiler {
     store: ContextStore,
+    /// Optional embedder for `"embedding"` retriever type.
+    embedder: Option<Arc<dyn ControlEmbedder>>,
 }
 
 impl SqliteKnowledgeCompiler {
     pub fn new(pool: SqlitePool) -> Self {
         Self {
             store: ContextStore::new(pool),
+            embedder: None,
         }
+    }
+
+    /// Attach an embedder to enable vector-based (`"embedding"`) retrieval.
+    pub fn with_embedder(mut self, embedder: Arc<dyn ControlEmbedder>) -> Self {
+        self.embedder = Some(embedder);
+        self
     }
 }
 
@@ -52,12 +63,30 @@ impl KnowledgeCompiler for SqliteKnowledgeCompiler {
         &self,
         scope_id: &ScopeId,
         message: &CanonicalMessage,
-        _active_journey: Option<&JourneyActivation>,
+        active_journey: Option<&JourneyActivation>,
+        active_guideline_names: &[String],
     ) -> Result<KnowledgeBundle> {
-        let retrieved_chunks = self.store.run_retrievers(scope_id, &message.text).await?;
+        let active_journey_state = active_journey.map(|journey| journey.current_state.as_str());
+        let embedder_ref = self.embedder.as_deref();
+        let retrieved_chunks = self
+            .store
+            .run_retrievers(
+                scope_id,
+                &message.text,
+                active_journey_state,
+                active_guideline_names,
+                embedder_ref,
+            )
+            .await?;
         let glossary_terms = self.store.load_glossary_terms(scope_id).await?;
-        let context_variables = self.store.load_context_variables(scope_id).await?;
-        let canned_response_candidates = self.store.load_canned_responses(scope_id).await?;
+        let context_variables = self
+            .store
+            .load_context_variables(scope_id, &message.text, active_journey_state)
+            .await?;
+        let canned_response_candidates = self
+            .store
+            .load_canned_responses(scope_id, &message.text, active_journey_state)
+            .await?;
 
         Ok(KnowledgeBundle {
             retrieved_chunks,
@@ -81,6 +110,7 @@ impl KnowledgeCompiler for NoopKnowledgeCompiler {
         _scope_id: &ScopeId,
         _message: &CanonicalMessage,
         _active_journey: Option<&JourneyActivation>,
+        _active_guideline_names: &[String],
     ) -> Result<KnowledgeBundle> {
         Ok(KnowledgeBundle::default())
     }
