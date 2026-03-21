@@ -178,3 +178,128 @@ impl PolicyResolver for NoopPolicyResolver {
         Ok(PolicyResolution::default())
     }
 }
+
+// ─── Tool Gate ────────────────────────────────────────────────────────────────
+
+use openparlant_types::control::{ApprovalMode, ToolGateDecision};
+
+/// Trait for resolving which tools are visible and whether they need approval.
+#[async_trait]
+pub trait ToolGate: Send + Sync {
+    /// Given the current observations and active guidelines, compute the
+    /// tool-gate decisions for the provided candidate tool names.
+    async fn evaluate(
+        &self,
+        scope_id: &ScopeId,
+        candidate_tools: &[String],
+        observations: &[ObservationHit],
+        active_guideline_names: &[String],
+    ) -> Result<Vec<ToolGateDecision>>;
+}
+
+/// SQLite-backed tool gate.
+///
+/// Evaluates `tool_exposure_policies` for each candidate tool.
+/// When a policy is found and its preconditions match, the policy's
+/// `approval_mode` determines whether approval is needed.
+/// Tools with no policy entry are allowed by default (open-by-default MVP).
+pub struct SqliteToolGate {
+    store: PolicyStore,
+}
+
+impl SqliteToolGate {
+    pub fn new(conn: Arc<Mutex<Connection>>) -> Self {
+        Self {
+            store: PolicyStore::new(conn),
+        }
+    }
+}
+
+#[async_trait]
+impl ToolGate for SqliteToolGate {
+    async fn evaluate(
+        &self,
+        scope_id: &ScopeId,
+        candidate_tools: &[String],
+        observations: &[ObservationHit],
+        active_guideline_names: &[String],
+    ) -> Result<Vec<ToolGateDecision>> {
+        let policies = self.store.list_tool_exposure_policies(scope_id)?;
+        let obs_names: Vec<&str> = observations.iter().map(|o| o.name.as_str()).collect();
+
+        let mut decisions = Vec::new();
+        for tool in candidate_tools {
+            // Find matching enabled policy for this tool name.
+            let matching = policies
+                .iter()
+                .filter(|p| p.enabled && p.tool_name == *tool)
+                .find(|p| {
+                    // Check observation_ref precondition (if any).
+                    if let Some(ref obs_ref) = p.observation_ref {
+                        if !obs_names.contains(&obs_ref.as_str()) {
+                            return false;
+                        }
+                    }
+                    // Check guideline_ref precondition (if any).
+                    if let Some(ref g_ref) = p.guideline_ref {
+                        if !active_guideline_names.contains(g_ref) {
+                            return false;
+                        }
+                    }
+                    true
+                });
+
+            let decision = if let Some(policy) = matching {
+                let requires_approval = matches!(
+                    policy.approval_mode,
+                    ApprovalMode::Required | ApprovalMode::Conditional
+                );
+                ToolGateDecision {
+                    tool_name: tool.clone(),
+                    allowed: true,
+                    reason: format!(
+                        "policy '{}' (approval_mode={})",
+                        policy.policy_id, policy.approval_mode
+                    ),
+                    requires_approval,
+                }
+            } else {
+                // No policy → open by default.
+                ToolGateDecision {
+                    tool_name: tool.clone(),
+                    allowed: true,
+                    reason: "no policy (open by default)".to_string(),
+                    requires_approval: false,
+                }
+            };
+            decisions.push(decision);
+        }
+        Ok(decisions)
+    }
+}
+
+/// No-op tool gate (allows everything, requires no approval).
+#[derive(Debug, Default)]
+pub struct NoopToolGate;
+
+#[async_trait]
+impl ToolGate for NoopToolGate {
+    async fn evaluate(
+        &self,
+        _scope_id: &ScopeId,
+        candidate_tools: &[String],
+        _observations: &[ObservationHit],
+        _active_guideline_names: &[String],
+    ) -> Result<Vec<ToolGateDecision>> {
+        Ok(candidate_tools
+            .iter()
+            .map(|t| ToolGateDecision {
+                tool_name: t.clone(),
+                allowed: true,
+                reason: "noop gate".to_string(),
+                requires_approval: false,
+            })
+            .collect())
+    }
+}
+

@@ -359,7 +359,11 @@ pub struct CompiledTurnContext {
     pub glossary_terms: Vec<GlossaryEntry>,
     pub context_variables: Vec<ResolvedVariable>,
     pub canned_response_candidates: Vec<CannedResponseCandidate>,
+    /// Tools that are allowed this turn (after ToolGate evaluation).
     pub allowed_tools: Vec<String>,
+    /// Subset of `allowed_tools` that require human approval before execution.
+    #[serde(default)]
+    pub approval_required_tools: Vec<String>,
     pub tool_authorizations: Vec<ToolAuthorization>,
     pub response_mode: ResponseMode,
     pub audit_meta: AuditMeta,
@@ -380,6 +384,7 @@ impl Default for CompiledTurnContext {
             context_variables: Vec::new(),
             canned_response_candidates: Vec::new(),
             allowed_tools: Vec::new(),
+            approval_required_tools: Vec::new(),
             tool_authorizations: Vec::new(),
             response_mode: ResponseMode::default(),
             audit_meta: AuditMeta::default(),
@@ -467,6 +472,145 @@ pub struct ToolAuthorizationRecord {
     pub allowed_tools_json: String,
     pub authorization_reasons_json: String,
     pub approval_requirements_json: String,
+}
+
+// ─── Phase 3: Tool Gate / Approval / Handoff ──────────────────────────────────
+
+/// Approval mode for a tool-exposure policy.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalMode {
+    /// Tool is always allowed without any approval.
+    None,
+    /// Tool requires explicit human approval before execution.
+    Required,
+    /// Tool requires approval only when the journey is in a sensitive state.
+    Conditional,
+}
+
+impl ApprovalMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ApprovalMode::None => "none",
+            ApprovalMode::Required => "required",
+            ApprovalMode::Conditional => "conditional",
+        }
+    }
+}
+
+impl std::fmt::Display for ApprovalMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl FromStr for ApprovalMode {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "none" => Ok(ApprovalMode::None),
+            "required" => Ok(ApprovalMode::Required),
+            "conditional" => Ok(ApprovalMode::Conditional),
+            other => Err(anyhow::anyhow!("Unknown approval_mode: {}", other)),
+        }
+    }
+}
+
+impl Default for ApprovalMode {
+    fn default() -> Self {
+        ApprovalMode::None
+    }
+}
+
+/// A tool-exposure policy entry.
+///
+/// Defines when a particular tool is visible to the model, and whether it
+/// requires human approval before execution.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolExposurePolicy {
+    pub policy_id: String,
+    pub scope_id: ScopeId,
+    /// The exact tool name to match (e.g. "shell", "file_write").
+    pub tool_name: String,
+    /// Optional skill reference that groups this tool.
+    pub skill_ref: Option<String>,
+    /// The policy is only active when this observation is matched.
+    pub observation_ref: Option<String>,
+    /// The policy is only active when the journey is in this state.
+    pub journey_state_ref: Option<String>,
+    /// The policy is only active when this guideline is active.
+    pub guideline_ref: Option<String>,
+    pub approval_mode: ApprovalMode,
+    pub enabled: bool,
+}
+
+/// Session-level binding of a scope+channel to a running session.
+///
+/// Holds `manual_mode` and the active journey instance.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionBinding {
+    pub binding_id: String,
+    pub scope_id: ScopeId,
+    pub channel_type: String,
+    pub external_user_id: Option<String>,
+    pub external_chat_id: Option<String>,
+    pub agent_id: String,
+    pub session_id: String,
+    /// When `true` the AI response is suppressed; a human operator handles this session.
+    pub manual_mode: bool,
+    pub active_journey_instance_id: Option<String>,
+}
+
+/// Status of a handoff record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HandoffStatus {
+    Pending,
+    Accepted,
+    Resolved,
+    Cancelled,
+}
+
+impl HandoffStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HandoffStatus::Pending => "pending",
+            HandoffStatus::Accepted => "accepted",
+            HandoffStatus::Resolved => "resolved",
+            HandoffStatus::Cancelled => "cancelled",
+        }
+    }
+}
+
+impl Default for HandoffStatus {
+    fn default() -> Self {
+        HandoffStatus::Pending
+    }
+}
+
+/// A human-handoff record.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HandoffRecord {
+    pub handoff_id: String,
+    pub scope_id: ScopeId,
+    pub session_id: String,
+    pub reason: String,
+    pub summary: Option<String>,
+    pub status: HandoffStatus,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Outcome from the ToolGate for a single tool name.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolGateDecision {
+    pub tool_name: String,
+    /// True if the tool should be visible to the model this turn.
+    pub allowed: bool,
+    /// Reason for the decision (for explainability).
+    pub reason: String,
+    /// If true, executing the tool also requires human approval.
+    pub requires_approval: bool,
 }
 
 #[cfg(test)]

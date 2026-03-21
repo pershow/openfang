@@ -797,6 +797,7 @@ service_url = "https://bsky.social"
 [channels.feishu]
 app_id = ""
 app_secret_env = "FEISHU_APP_SECRET"
+mode = "websocket"
 webhook_port = 8453
 ```
 
@@ -804,7 +805,13 @@ webhook_port = 8453
 |-------|------|---------|-------------|
 | `app_id` | string | `""` | Feishu/Lark app ID. |
 | `app_secret_env` | string | `"FEISHU_APP_SECRET"` | Env var holding the Feishu app secret. |
-| `webhook_port` | u16 | `8453` | Port for the incoming webhook. |
+| `mode` | string | `"websocket"` | `webhook` (HTTP callback) or `websocket` (long connection). |
+| `webhook_port` | u16 | `8453` | Port for the incoming webhook (webhook mode only). |
+| `region` | string | `"cn"` | `cn` (Feishu) or `intl` (Lark). |
+| `webhook_path` | string | `"/feishu/webhook"` | Webhook URL path (webhook mode). |
+| `verification_token` | string or null | `null` | Feishu verification token (webhook mode). |
+| `encrypt_key_env` | string or null | `null` | Env var for encrypt key if events are encrypted. |
+| `bot_names` | list of strings | `[]` | Bot aliases for group @mention detection. |
 | `default_agent` | string or null | `null` | Agent name to route messages to. |
 
 #### `[channels.revolt]`

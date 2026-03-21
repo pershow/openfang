@@ -464,7 +464,7 @@ impl ChannelAdapter for WebexAdapter {
         Ok(())
     }
 
-    async fn send_typing(&self, _user: &ChannelUser) -> Result<(), Box<dyn std::error::Error>> {
+    async fn send_typing(&self, _user: &ChannelUser, _reply_to_message_id: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
         // Webex does not expose a public typing indicator API for bots
         Ok(())
     }

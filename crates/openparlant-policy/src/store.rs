@@ -246,6 +246,150 @@ impl PolicyStore {
         }
         Ok(guidelines)
     }
+
+    // ── Tool Exposure Policies ────────────────────────────────────────────────
+
+    /// Insert a new tool-exposure policy.
+    pub fn upsert_tool_exposure_policy(
+        &self,
+        policy: &openparlant_types::control::ToolExposurePolicy,
+    ) -> OpenFangResult<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        conn.execute(
+            "INSERT INTO tool_exposure_policies
+                (policy_id, scope_id, tool_name, skill_ref, observation_ref,
+                 journey_state_ref, guideline_ref, approval_mode, enabled)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(policy_id) DO UPDATE SET
+                tool_name = excluded.tool_name,
+                skill_ref = excluded.skill_ref,
+                observation_ref = excluded.observation_ref,
+                journey_state_ref = excluded.journey_state_ref,
+                guideline_ref = excluded.guideline_ref,
+                approval_mode = excluded.approval_mode,
+                enabled = excluded.enabled",
+            params![
+                policy.policy_id,
+                policy.scope_id.0.as_str(),
+                policy.tool_name,
+                policy.skill_ref,
+                policy.observation_ref,
+                policy.journey_state_ref,
+                policy.guideline_ref,
+                policy.approval_mode.as_str(),
+                policy.enabled as i64,
+            ],
+        )
+        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        Ok(())
+    }
+
+    /// List all tool-exposure policies for a scope.
+    pub fn list_tool_exposure_policies(
+        &self,
+        scope_id: &ScopeId,
+    ) -> OpenFangResult<Vec<openparlant_types::control::ToolExposurePolicy>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT policy_id, scope_id, tool_name, skill_ref, observation_ref,
+                        journey_state_ref, guideline_ref, approval_mode, enabled
+                 FROM tool_exposure_policies
+                 WHERE scope_id = ?1
+                 ORDER BY tool_name ASC",
+            )
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![scope_id.0.as_str()], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, i64>(8)?,
+                ))
+            })
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            let (pid, sid, tool, skill, obs, js, gr, am, en) =
+                row.map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            let approval_mode = am.parse::<openparlant_types::control::ApprovalMode>()
+                .unwrap_or_default();
+            result.push(openparlant_types::control::ToolExposurePolicy {
+                policy_id: pid,
+                scope_id: ScopeId::from(sid),
+                tool_name: tool,
+                skill_ref: skill,
+                observation_ref: obs,
+                journey_state_ref: js,
+                guideline_ref: gr,
+                approval_mode,
+                enabled: en != 0,
+            });
+        }
+        Ok(result)
+    }
+
+    /// Get a single tool-exposure policy by ID.
+    pub fn get_tool_exposure_policy(
+        &self,
+        policy_id: &str,
+    ) -> OpenFangResult<Option<openparlant_types::control::ToolExposurePolicy>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let row = conn.query_row(
+            "SELECT policy_id, scope_id, tool_name, skill_ref, observation_ref,
+                    journey_state_ref, guideline_ref, approval_mode, enabled
+             FROM tool_exposure_policies WHERE policy_id = ?1",
+            params![policy_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, i64>(8)?,
+                ))
+            },
+        );
+        match row {
+            Ok((pid, sid, tool, skill, obs, js, gr, am, en)) => {
+                let approval_mode = am.parse::<openparlant_types::control::ApprovalMode>()
+                    .unwrap_or_default();
+                Ok(Some(openparlant_types::control::ToolExposurePolicy {
+                    policy_id: pid,
+                    scope_id: ScopeId::from(sid),
+                    tool_name: tool,
+                    skill_ref: skill,
+                    observation_ref: obs,
+                    journey_state_ref: js,
+                    guideline_ref: gr,
+                    approval_mode,
+                    enabled: en != 0,
+                }))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(OpenFangError::Memory(e.to_string())),
+        }
+    }
 }
 
 fn observation_from_row(

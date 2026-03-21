@@ -2445,8 +2445,10 @@ impl OpenFangKernel {
 
                 match coordinator.compile_turn(turn_input).await {
                     Ok(ctx) => {
+                        let mut injected = String::new();
+
+                        // Active guidelines → system prompt injection
                         if !ctx.active_guidelines.is_empty() {
-                            let mut injected = String::new();
                             injected.push_str("\n\n## Active Guidelines\n");
                             for g in &ctx.active_guidelines {
                                 injected.push_str(&format!(
@@ -2454,19 +2456,45 @@ impl OpenFangKernel {
                                     g.name, g.priority, g.action_text
                                 ));
                             }
-                            // Append allowed-tool restriction note if not all tools are open
-                            if !ctx.allowed_tools.is_empty() {
-                                injected.push_str("\n## Allowed Tools\n");
-                                injected.push_str(&format!(
-                                    "You may only use the following tools in this turn: {}.\n",
-                                    ctx.allowed_tools.join(", ")
-                                ));
-                            }
+                        }
+
+                        // Allowed tools restriction note
+                        if !ctx.allowed_tools.is_empty() {
+                            injected.push_str("\n## Allowed Tools\n");
+                            injected.push_str(&format!(
+                                "You may only use the following tools in this turn: {}.\n",
+                                ctx.allowed_tools.join(", ")
+                            ));
+                        }
+
+                        // Approval-required tools note
+                        if !ctx.approval_required_tools.is_empty() {
+                            injected.push_str("\n## Tools Requiring Approval\n");
+                            injected.push_str(&format!(
+                                "The following tools require human approval before execution: {}. \
+                                 If you need to use any of these, clearly state your intent and \
+                                 wait for confirmation before proceeding.\n",
+                                ctx.approval_required_tools.join(", ")
+                            ));
+                        }
+
+                        if !injected.is_empty() {
                             prompt_ctx.base_system_prompt.push_str(&injected);
                         }
+
+                        // Store approval-required tools in session metadata for tool_runner
+                        if !ctx.approval_required_tools.is_empty() {
+                            manifest.metadata.insert(
+                                "approval_required_tools".to_string(),
+                                serde_json::json!(ctx.approval_required_tools),
+                            );
+                        }
+
                         tracing::debug!(
                             agent_id = %agent_id,
                             guidelines = ctx.active_guidelines.len(),
+                            allowed_tools = ctx.allowed_tools.len(),
+                            approval_required = ctx.approval_required_tools.len(),
                             "control-plane context injected into system prompt"
                         );
                     }

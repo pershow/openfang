@@ -237,7 +237,26 @@ pub trait ChannelAdapter: Send + Sync {
     ) -> Result<(), Box<dyn std::error::Error>>;
 
     /// Send a typing indicator (optional — default no-op).
-    async fn send_typing(&self, _user: &ChannelUser) -> Result<(), Box<dyn std::error::Error>> {
+    ///
+    /// `reply_to_message_id` is the inbound platform message ID when the adapter needs it
+    /// (e.g. Feishu message emoji reply on the user's message).
+    async fn send_typing(
+        &self,
+        _user: &ChannelUser,
+        _reply_to_message_id: Option<&str>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
+    }
+
+    /// Clear a typing indicator started with [`send_typing`](Self::send_typing) (optional — default no-op).
+    ///
+    /// Called when the agent response is ready; adapters that attach a persistent indicator
+    /// to `reply_to_message_id` should remove it here.
+    async fn clear_typing(
+        &self,
+        _user: &ChannelUser,
+        _reply_to_message_id: Option<&str>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     }
 

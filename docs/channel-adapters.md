@@ -14,6 +14,7 @@ All adapters share a common foundation: graceful shutdown via `watch::channel`, 
 - [Discord](#discord)
 - [Slack](#slack)
 - [WhatsApp](#whatsapp)
+- [Feishu / Lark](#feishu--lark)
 - [Signal](#signal)
 - [Matrix](#matrix)
 - [Email](#email)
@@ -45,7 +46,7 @@ All adapters share a common foundation: graceful shutdown via `watch::channel`, 
 | Mattermost | WebSocket + REST v4 | `MATTERMOST_TOKEN`, `MATTERMOST_URL` | `Mattermost` |
 | Google Chat | Service account webhook | `GOOGLE_CHAT_SA_KEY`, `GOOGLE_CHAT_SPACE` | `Custom("google_chat")` |
 | Webex | Bot SDK WebSocket | `WEBEX_BOT_TOKEN` | `Custom("webex")` |
-| Feishu / Lark | Open Platform webhook | `FEISHU_APP_ID`, `FEISHU_APP_SECRET` | `Custom("feishu")` |
+| Feishu / Lark | Open Platform Webhook / WebSocket | `FEISHU_APP_ID`, `FEISHU_APP_SECRET` | `Custom("feishu")` |
 | Rocket.Chat | REST polling | `ROCKETCHAT_TOKEN`, `ROCKETCHAT_URL` | `Custom("rocketchat")` |
 | Zulip | Event queue long-polling | `ZULIP_EMAIL`, `ZULIP_API_KEY`, `ZULIP_URL` | `Custom("zulip")` |
 | XMPP | XMPP protocol (stub) | `XMPP_JID`, `XMPP_PASSWORD`, `XMPP_SERVER` | `Custom("xmpp")` |
@@ -433,6 +434,61 @@ The WhatsApp adapter runs an HTTP server (on the configured `webhook_port`) that
 
 ---
 
+## Feishu / Lark
+
+### Prerequisites
+
+- A Feishu/Lark app created in [open.feishu.cn](https://open.feishu.cn/) (or Lark international console)
+- App ID and App Secret
+
+### Setup
+
+1. Create a custom app in Feishu Open Platform.
+2. Enable the IM message event subscription for your app.
+3. Set environment variable:
+
+```bash
+export FEISHU_APP_SECRET=cli_xxx_secret
+```
+
+4. Add to config (default: `websocket` mode):
+
+```toml
+[channels.feishu]
+app_id = "cli_xxx"
+app_secret_env = "FEISHU_APP_SECRET"
+mode = "websocket"
+default_agent = "assistant"
+```
+
+5. Restart the daemon.
+
+### Webhook Compatibility Mode
+
+If you need the legacy callback flow, switch to `webhook` and expose a public callback URL:
+
+```toml
+[channels.feishu]
+app_id = "cli_xxx"
+app_secret_env = "FEISHU_APP_SECRET"
+mode = "webhook"
+webhook_port = 8453
+default_agent = "assistant"
+```
+
+Then configure Feishu event callback to:
+
+`https://<your-domain>:8453/feishu/webhook`
+
+### How It Works
+
+- **websocket mode**: OpenParlant obtains an endpoint from Feishu and receives events via a long-lived connection (no public inbound webhook required).
+- **webhook mode**: OpenParlant starts an HTTP callback server and receives Feishu push events.
+- **Send path (both modes)**: outbound messages still go through Feishu OpenAPI HTTP `im/v1/messages`.
+- **Typing UX**: while the agent is processing, the bot adds the official `Typing` message reaction on the user’s message via `im/v1/messages/:message_id/reactions`, and removes it when the reply is ready. Ensure the app has `im:message` or `im:message.reactions:write_only` (see [add reaction](https://open.feishu.cn/document/server-docs/im-v1/message-reaction/create)).
+
+---
+
 ## Signal
 
 ### Prerequisites
@@ -587,7 +643,21 @@ pub trait ChannelAdapter: Send + Sync {
     ) -> Result<(), Box<dyn std::error::Error>>;
 
     /// Send a typing indicator (optional -- default no-op).
-    async fn send_typing(&self, _user: &ChannelUser) -> Result<(), Box<dyn std::error::Error>> {
+    /// `reply_to_message_id` is set when the platform needs the inbound message id (e.g. Feishu message reactions).
+    async fn send_typing(
+        &self,
+        _user: &ChannelUser,
+        _reply_to_message_id: Option<&str>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
+    }
+
+    /// Clear a typing indicator (optional -- default no-op).
+    async fn clear_typing(
+        &self,
+        _user: &ChannelUser,
+        _reply_to_message_id: Option<&str>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     }
 

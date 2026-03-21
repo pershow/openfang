@@ -462,11 +462,14 @@ async fn send_lifecycle_reaction(
 fn spawn_typing_loop(
     adapter: Arc<dyn ChannelAdapter>,
     sender: ChannelUser,
+    reply_to_message_id: Option<String>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(4)).await;
-            let _ = adapter.send_typing(&sender).await;
+            let _ = adapter
+                .send_typing(&sender, reply_to_message_id.as_deref())
+                .await;
         }
     })
 }
@@ -749,9 +752,15 @@ async fn dispatch_message(
                 .await;
                 return;
             }
-            let _ = adapter.send_typing(&message.sender).await;
+            let _ = adapter
+                .send_typing(&message.sender, Some(&message.platform_message_id))
+                .await;
 
-            let typing_task = spawn_typing_loop(adapter_arc.clone(), message.sender.clone());
+            let typing_task = spawn_typing_loop(
+                adapter_arc.clone(),
+                message.sender.clone(),
+                Some(message.platform_message_id.clone()),
+            );
 
             let strategy = router.broadcast_strategy();
             let mut responses = Vec::new();
@@ -793,6 +802,9 @@ async fn dispatch_message(
             }
 
             typing_task.abort();
+            let _ = adapter
+                .clear_typing(&message.sender, Some(&message.platform_message_id))
+                .await;
 
             let combined = responses.join("\n\n");
             send_response(adapter, &message.sender, combined, thread_id, output_format).await;
@@ -877,7 +889,9 @@ async fn dispatch_message(
     }
 
     // Send typing indicator (best-effort)
-    let _ = adapter.send_typing(&message.sender).await;
+    let _ = adapter
+        .send_typing(&message.sender, Some(&message.platform_message_id))
+        .await;
 
     // Lifecycle reaction: ⏳ Queued → 🤔 Thinking → ✅ Done / ❌ Error
     let msg_id = &message.platform_message_id;
@@ -888,7 +902,11 @@ async fn dispatch_message(
 
     // Continuous typing indicator — refreshes every 4s so platforms like Telegram
     // (which expire typing after ~5s) keep showing it during long LLM calls.
-    let typing_task = spawn_typing_loop(adapter_arc.clone(), message.sender.clone());
+    let typing_task = spawn_typing_loop(
+        adapter_arc.clone(),
+        message.sender.clone(),
+        Some(message.platform_message_id.clone()),
+    );
 
     // Send to agent and relay response
     let result = handle.send_message(agent_id, &text).await;
@@ -898,6 +916,7 @@ async fn dispatch_message(
 
     match result {
         Ok(response) => {
+            let _ = adapter.clear_typing(&message.sender, Some(msg_id.as_str())).await;
             if lifecycle_reactions {
                 send_lifecycle_reaction(adapter, &message.sender, msg_id, AgentPhase::Done).await;
             }
@@ -916,9 +935,14 @@ async fn dispatch_message(
         Err(e) => {
             // Try re-resolution before reporting error
             if let Some(new_id) = try_reresolution(&e, &channel_key, handle, router).await {
-                let typing_task2 = spawn_typing_loop(adapter_arc.clone(), message.sender.clone());
+                let typing_task2 = spawn_typing_loop(
+                    adapter_arc.clone(),
+                    message.sender.clone(),
+                    Some(message.platform_message_id.clone()),
+                );
                 let retry = handle.send_message(new_id, &text).await;
                 typing_task2.abort();
+                let _ = adapter.clear_typing(&message.sender, Some(msg_id.as_str())).await;
                 match retry {
                     Ok(response) => {
                         if lifecycle_reactions {
@@ -980,6 +1004,7 @@ async fn dispatch_message(
                 return;
             }
 
+            let _ = adapter.clear_typing(&message.sender, Some(msg_id.as_str())).await;
             if lifecycle_reactions {
                 send_lifecycle_reaction(adapter, &message.sender, msg_id, AgentPhase::Error).await;
             }
@@ -1275,7 +1300,9 @@ async fn dispatch_with_blocks(
         return;
     }
 
-    let _ = adapter.send_typing(&message.sender).await;
+    let _ = adapter
+        .send_typing(&message.sender, Some(&message.platform_message_id))
+        .await;
 
     // Lifecycle reaction: ⏳ Queued → 🤔 Thinking → ✅ Done / ❌ Error
     let msg_id = &message.platform_message_id;
@@ -1285,7 +1312,11 @@ async fn dispatch_with_blocks(
     }
 
     // Continuous typing indicator (see spawn_typing_loop doc)
-    let typing_task = spawn_typing_loop(adapter_arc.clone(), message.sender.clone());
+    let typing_task = spawn_typing_loop(
+        adapter_arc.clone(),
+        message.sender.clone(),
+        Some(message.platform_message_id.clone()),
+    );
 
     let result = handle
         .send_message_with_blocks(agent_id, blocks.clone())
@@ -1295,6 +1326,7 @@ async fn dispatch_with_blocks(
 
     match result {
         Ok(response) => {
+            let _ = adapter.clear_typing(&message.sender, Some(msg_id.as_str())).await;
             if lifecycle_reactions {
                 send_lifecycle_reaction(adapter, &message.sender, msg_id, AgentPhase::Done).await;
             }
@@ -1313,9 +1345,14 @@ async fn dispatch_with_blocks(
         Err(e) => {
             // Try re-resolution before reporting error
             if let Some(new_id) = try_reresolution(&e, &channel_key, handle, router).await {
-                let typing_task2 = spawn_typing_loop(adapter_arc.clone(), message.sender.clone());
+                let typing_task2 = spawn_typing_loop(
+                    adapter_arc.clone(),
+                    message.sender.clone(),
+                    Some(message.platform_message_id.clone()),
+                );
                 let retry = handle.send_message_with_blocks(new_id, blocks).await;
                 typing_task2.abort();
+                let _ = adapter.clear_typing(&message.sender, Some(msg_id.as_str())).await;
                 match retry {
                     Ok(response) => {
                         if lifecycle_reactions {
@@ -1377,6 +1414,7 @@ async fn dispatch_with_blocks(
                 return;
             }
 
+            let _ = adapter.clear_typing(&message.sender, Some(msg_id.as_str())).await;
             if lifecycle_reactions {
                 send_lifecycle_reaction(adapter, &message.sender, msg_id, AgentPhase::Error).await;
             }

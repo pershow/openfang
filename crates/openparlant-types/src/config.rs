@@ -2376,6 +2376,17 @@ impl Default for BlueskyConfig {
     }
 }
 
+/// Feishu inbound event receive mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum FeishuMode {
+    /// Receive events via HTTP webhook callback.
+    Webhook,
+    /// Receive events via WebSocket long connection (default).
+    #[default]
+    Websocket,
+}
+
 /// Feishu/Lark Open Platform channel adapter configuration.
 ///
 /// Supports both Feishu (China domestic, `open.feishu.cn`) and Lark
@@ -2387,6 +2398,8 @@ pub struct FeishuConfig {
     pub app_id: String,
     /// Env var name holding the app secret.
     pub app_secret_env: String,
+    /// How inbound events are received: webhook HTTP callback or WebSocket long connection.
+    pub mode: FeishuMode,
     /// Port for the incoming webhook.
     pub webhook_port: u16,
     /// Region: "cn" for Feishu (open.feishu.cn), "intl" for Lark (open.larksuite.com).
@@ -2412,6 +2425,7 @@ impl Default for FeishuConfig {
         Self {
             app_id: String::new(),
             app_secret_env: "FEISHU_APP_SECRET".to_string(),
+            mode: FeishuMode::Websocket,
             webhook_port: 8453,
             region: "cn".to_string(),
             webhook_path: "/feishu/webhook".to_string(),
@@ -4008,5 +4022,30 @@ mod tests {
     fn test_slack_config_unfurl_links_explicit_true() {
         let config: SlackConfig = toml::from_str("unfurl_links = true").unwrap();
         assert!(config.unfurl_links);
+    }
+
+    #[test]
+    fn test_feishu_mode_defaults_to_websocket() {
+        let toml_str = r#"
+            [channels.feishu]
+            app_id = "cli_test"
+            app_secret_env = "FEISHU_APP_SECRET"
+        "#;
+        let config: KernelConfig = toml::from_str(toml_str).unwrap();
+        let feishu = config.channels.feishu.unwrap();
+        assert_eq!(feishu.mode, FeishuMode::Websocket);
+    }
+
+    #[test]
+    fn test_feishu_mode_parses_websocket() {
+        let toml_str = r#"
+            [channels.feishu]
+            app_id = "cli_test"
+            app_secret_env = "FEISHU_APP_SECRET"
+            mode = "websocket"
+        "#;
+        let config: KernelConfig = toml::from_str(toml_str).unwrap();
+        let feishu = config.channels.feishu.unwrap();
+        assert_eq!(feishu.mode, FeishuMode::Websocket);
     }
 }

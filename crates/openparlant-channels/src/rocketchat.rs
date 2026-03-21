@@ -366,7 +366,7 @@ impl ChannelAdapter for RocketChatAdapter {
         Ok(())
     }
 
-    async fn send_typing(&self, user: &ChannelUser) -> Result<(), Box<dyn std::error::Error>> {
+    async fn send_typing(&self, user: &ChannelUser, _reply_to_message_id: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
         // Rocket.Chat supports typing notifications via REST
         let url = format!("{}/api/v1/chat.sendMessage", self.server_url);
         // There's no dedicated typing endpoint in REST; this is a no-op.

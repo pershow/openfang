@@ -54,6 +54,7 @@ use openparlant_channels::webhook::WebhookAdapter;
 use openparlant_channels::wecom::WeComAdapter;
 use openparlant_kernel::OpenFangKernel;
 use openparlant_types::agent::AgentId;
+use openparlant_types::config::FeishuMode;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
@@ -1431,16 +1432,22 @@ pub async fn start_channel_bridge_with_config(
                 .encrypt_key_env
                 .as_ref()
                 .and_then(|env| read_token(env, "Feishu encrypt_key"));
-            let adapter = Arc::new(FeishuAdapter::with_config(
-                fs_config.app_id.clone(),
-                secret,
-                fs_config.webhook_port,
-                region,
-                Some(fs_config.webhook_path.clone()),
-                fs_config.verification_token.clone(),
-                encrypt_key,
-                fs_config.bot_names.clone(),
-            ));
+            let adapter = match fs_config.mode {
+                FeishuMode::Webhook => Arc::new(FeishuAdapter::with_config(
+                    fs_config.app_id.clone(),
+                    secret,
+                    fs_config.webhook_port,
+                    region,
+                    Some(fs_config.webhook_path.clone()),
+                    fs_config.verification_token.clone(),
+                    encrypt_key,
+                    fs_config.bot_names.clone(),
+                )),
+                FeishuMode::Websocket => Arc::new(FeishuAdapter::new_websocket(
+                    fs_config.app_id.clone(),
+                    secret,
+                )),
+            };
             adapters.push((adapter, fs_config.default_agent.clone()));
         }
     }
@@ -1828,6 +1835,8 @@ pub async fn reload_channels_from_disk(
 
 #[cfg(test)]
 mod tests {
+    use openparlant_types::config::FeishuMode;
+
     #[tokio::test]
     async fn test_bridge_skips_when_no_config() {
         let config = openparlant_types::config::KernelConfig::default();
@@ -1874,5 +1883,36 @@ mod tests {
         assert!(config.channels.gotify.is_none());
         assert!(config.channels.webhook.is_none());
         assert!(config.channels.linkedin.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_feishu_bridge_mode_defaults_to_websocket() {
+        let config: openparlant_types::config::KernelConfig = toml::from_str(
+            r#"
+            [channels.feishu]
+            app_id = "cli_test"
+            app_secret_env = "FEISHU_APP_SECRET"
+            "#,
+        )
+        .unwrap();
+
+        let feishu = config.channels.feishu.expect("feishu config should exist");
+        assert_eq!(feishu.mode, FeishuMode::Websocket);
+    }
+
+    #[tokio::test]
+    async fn test_feishu_bridge_mode_supports_websocket() {
+        let config: openparlant_types::config::KernelConfig = toml::from_str(
+            r#"
+            [channels.feishu]
+            app_id = "cli_test"
+            app_secret_env = "FEISHU_APP_SECRET"
+            mode = "websocket"
+            "#,
+        )
+        .unwrap();
+
+        let feishu = config.channels.feishu.expect("feishu config should exist");
+        assert_eq!(feishu.mode, FeishuMode::Websocket);
     }
 }

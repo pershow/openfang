@@ -769,6 +769,17 @@ pub async fn build_router(
         .route("/api/control/test/compile-turn", axum::routing::post(control_routes::test_compile_turn))
         .route("/api/sessions/{session_id}/control-trace", axum::routing::get(control_routes::session_control_trace))
         .route("/api/sessions/{session_id}/journey-state", axum::routing::get(control_routes::session_journey_state))
+        // ── Phase 3: Tool Gate / Approval / Handoff ──────────────────────────
+        .route("/api/control/tool-policies", axum::routing::post(control_routes::create_tool_policy))
+        .route("/api/control/tool-policies/{policy_id}", axum::routing::get(control_routes::get_tool_policy))
+        .route("/api/control/scopes/{scope_id}/tool-policies", axum::routing::get(control_routes::list_tool_policies))
+        .route("/api/control/session-bindings", axum::routing::post(control_routes::create_session_binding))
+        .route("/api/sessions/{session_id}/binding", axum::routing::get(control_routes::get_session_binding))
+        .route("/api/sessions/{session_id}/manual-mode", axum::routing::post(control_routes::enable_manual_mode))
+        .route("/api/sessions/{session_id}/resume-ai", axum::routing::post(control_routes::resume_ai))
+        .route("/api/sessions/{session_id}/handoff", axum::routing::post(control_routes::create_handoff))
+        .route("/api/sessions/{session_id}/handoffs", axum::routing::get(control_routes::list_handoffs))
+        .route("/api/control/handoffs/{handoff_id}/status", axum::routing::patch(control_routes::update_handoff_status))
         .layer(axum::middleware::from_fn_with_state(
             auth_state,
             middleware::auth,

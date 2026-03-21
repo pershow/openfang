@@ -403,7 +403,7 @@ impl ChannelAdapter for MattermostAdapter {
         Ok(())
     }
 
-    async fn send_typing(&self, user: &ChannelUser) -> Result<(), Box<dyn std::error::Error>> {
+    async fn send_typing(&self, user: &ChannelUser, _reply_to_message_id: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
         // Mattermost supports typing indicators via the WebSocket, but since we
         // only hold a WebSocket reader in the spawn loop, we use the REST API
         // userTyping action via a POST to /api/v4/users/me/typing.

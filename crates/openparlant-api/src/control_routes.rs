@@ -870,3 +870,294 @@ pub async fn session_journey_state(
     }
 }
 
+// ─── Tool Exposure Policies ───────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateToolPolicyRequest {
+    pub scope_id: String,
+    pub tool_name: String,
+    pub skill_ref: Option<String>,
+    pub observation_ref: Option<String>,
+    pub journey_state_ref: Option<String>,
+    pub guideline_ref: Option<String>,
+    /// "none" | "required" | "conditional"
+    #[serde(default = "default_approval_mode")]
+    pub approval_mode: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+fn default_approval_mode() -> String { "none".to_string() }
+
+/// POST /api/control/tool-policies
+pub async fn create_tool_policy(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CreateToolPolicyRequest>,
+) -> impl IntoResponse {
+    use openparlant_types::control::{ApprovalMode, ScopeId, ToolExposurePolicy};
+    let policy_id = uuid::Uuid::new_v4().to_string();
+    let approval_mode: ApprovalMode = req.approval_mode.parse().unwrap_or_default();
+    let policy = ToolExposurePolicy {
+        policy_id: policy_id.clone(),
+        scope_id: ScopeId::new(req.scope_id.clone()),
+        tool_name: req.tool_name.clone(),
+        skill_ref: req.skill_ref.clone(),
+        observation_ref: req.observation_ref.clone(),
+        journey_state_ref: req.journey_state_ref.clone(),
+        guideline_ref: req.guideline_ref.clone(),
+        approval_mode,
+        enabled: req.enabled,
+    };
+    match state.policy_store.upsert_tool_exposure_policy(&policy) {
+        Ok(()) => (StatusCode::CREATED, Json(serde_json::json!({
+            "policy_id": policy_id,
+            "scope_id": req.scope_id,
+            "tool_name": req.tool_name,
+            "approval_mode": req.approval_mode,
+            "enabled": req.enabled,
+        }))),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/scopes/:scope_id/tool-policies
+pub async fn list_tool_policies(
+    State(state): State<Arc<AppState>>,
+    Path(scope_id): Path<String>,
+) -> impl IntoResponse {
+    use openparlant_types::control::ScopeId;
+    match state.policy_store.list_tool_exposure_policies(&ScopeId::new(scope_id)) {
+        Ok(policies) => {
+            let items: Vec<_> = policies.iter().map(|p| serde_json::json!({
+                "policy_id": p.policy_id,
+                "scope_id": p.scope_id.0,
+                "tool_name": p.tool_name,
+                "skill_ref": p.skill_ref,
+                "observation_ref": p.observation_ref,
+                "journey_state_ref": p.journey_state_ref,
+                "guideline_ref": p.guideline_ref,
+                "approval_mode": p.approval_mode.as_str(),
+                "enabled": p.enabled,
+            })).collect();
+            (StatusCode::OK, Json(serde_json::json!(items)))
+        }
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/tool-policies/:policy_id
+pub async fn get_tool_policy(
+    State(state): State<Arc<AppState>>,
+    Path(policy_id): Path<String>,
+) -> impl IntoResponse {
+    match state.policy_store.get_tool_exposure_policy(&policy_id) {
+        Ok(Some(p)) => (StatusCode::OK, Json(serde_json::json!({
+            "policy_id": p.policy_id,
+            "scope_id": p.scope_id.0,
+            "tool_name": p.tool_name,
+            "skill_ref": p.skill_ref,
+            "observation_ref": p.observation_ref,
+            "journey_state_ref": p.journey_state_ref,
+            "guideline_ref": p.guideline_ref,
+            "approval_mode": p.approval_mode.as_str(),
+            "enabled": p.enabled,
+        }))),
+        Ok(None) => not_found("policy"),
+        Err(e) => internal(e),
+    }
+}
+
+// ─── Session Binding + Manual Mode / Handoff ─────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct CreateSessionBindingRequest {
+    pub scope_id: String,
+    pub channel_type: String,
+    pub agent_id: String,
+    pub session_id: String,
+    pub external_user_id: Option<String>,
+    pub external_chat_id: Option<String>,
+}
+
+/// POST /api/control/session-bindings
+pub async fn create_session_binding(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CreateSessionBindingRequest>,
+) -> impl IntoResponse {
+    use openparlant_types::control::{ScopeId, SessionBinding};
+    let binding = SessionBinding {
+        binding_id: uuid::Uuid::new_v4().to_string(),
+        scope_id: ScopeId::new(req.scope_id.clone()),
+        channel_type: req.channel_type.clone(),
+        external_user_id: req.external_user_id.clone(),
+        external_chat_id: req.external_chat_id.clone(),
+        agent_id: req.agent_id.clone(),
+        session_id: req.session_id.clone(),
+        manual_mode: false,
+        active_journey_instance_id: None,
+    };
+    match state.control_store.upsert_session_binding(&binding) {
+        Ok(()) => (StatusCode::CREATED, Json(serde_json::json!({
+            "binding_id": binding.binding_id,
+            "scope_id": req.scope_id,
+            "session_id": req.session_id,
+            "manual_mode": false,
+        }))),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/sessions/:session_id/binding
+pub async fn get_session_binding(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+) -> impl IntoResponse {
+    match state.control_store.get_session_binding(&session_id) {
+        Ok(Some(b)) => (StatusCode::OK, Json(serde_json::json!({
+            "binding_id": b.binding_id,
+            "scope_id": b.scope_id.0,
+            "channel_type": b.channel_type,
+            "agent_id": b.agent_id,
+            "session_id": b.session_id,
+            "manual_mode": b.manual_mode,
+            "active_journey_instance_id": b.active_journey_instance_id,
+        }))),
+        Ok(None) => not_found("session_binding"),
+        Err(e) => internal(e),
+    }
+}
+
+/// POST /api/sessions/:session_id/manual-mode
+///
+/// Switches the session into manual (human-operator) mode.
+/// The AI will not respond until `resume-ai` is called.
+pub async fn enable_manual_mode(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+) -> impl IntoResponse {
+    match state.control_store.set_manual_mode(&session_id, true) {
+        Ok(true) => (StatusCode::OK, Json(serde_json::json!({
+            "session_id": session_id,
+            "manual_mode": true,
+            "message": "Session switched to manual mode. AI responses suppressed."
+        }))),
+        Ok(false) => not_found("session_binding"),
+        Err(e) => internal(e),
+    }
+}
+
+/// POST /api/sessions/:session_id/resume-ai
+///
+/// Resumes AI responses for a session that was in manual mode.
+pub async fn resume_ai(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+) -> impl IntoResponse {
+    match state.control_store.set_manual_mode(&session_id, false) {
+        Ok(true) => (StatusCode::OK, Json(serde_json::json!({
+            "session_id": session_id,
+            "manual_mode": false,
+            "message": "AI responses resumed."
+        }))),
+        Ok(false) => not_found("session_binding"),
+        Err(e) => internal(e),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HandoffRequest {
+    pub reason: String,
+    pub summary: Option<String>,
+}
+
+/// POST /api/sessions/:session_id/handoff
+///
+/// Creates a handoff record and automatically enables manual mode.
+pub async fn create_handoff(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+    Json(req): Json<HandoffRequest>,
+) -> impl IntoResponse {
+    use openparlant_types::control::{HandoffRecord, HandoffStatus, ScopeId};
+    use chrono::Utc;
+
+    let scope_id = state
+        .control_store
+        .get_session_binding(&session_id)
+        .ok()
+        .flatten()
+        .map(|b| b.scope_id)
+        .unwrap_or_else(ScopeId::default_scope);
+
+    let handoff_id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now();
+    let record = HandoffRecord {
+        handoff_id: handoff_id.clone(),
+        scope_id,
+        session_id: session_id.clone(),
+        reason: req.reason.clone(),
+        summary: req.summary.clone(),
+        status: HandoffStatus::Pending,
+        created_at: now,
+        updated_at: now,
+    };
+
+    if let Err(e) = state.control_store.create_handoff(&record) {
+        return internal(e);
+    }
+
+    let _ = state.control_store.set_manual_mode(&session_id, true);
+
+    (StatusCode::CREATED, Json(serde_json::json!({
+        "handoff_id": handoff_id,
+        "session_id": session_id,
+        "reason": req.reason,
+        "summary": req.summary,
+        "status": "pending",
+        "manual_mode": true,
+    })))
+}
+
+/// GET /api/sessions/:session_id/handoffs
+pub async fn list_handoffs(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+) -> impl IntoResponse {
+    match state.control_store.list_handoffs_by_session(&session_id, 20) {
+        Ok(items) => (StatusCode::OK, Json(serde_json::json!(items))),
+        Err(e) => internal(e),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HandoffStatusUpdate {
+    /// "accepted" | "resolved" | "cancelled"
+    pub status: String,
+}
+
+/// PATCH /api/control/handoffs/:handoff_id/status
+pub async fn update_handoff_status(
+    State(state): State<Arc<AppState>>,
+    Path(handoff_id): Path<String>,
+    Json(req): Json<HandoffStatusUpdate>,
+) -> impl IntoResponse {
+    use openparlant_types::control::HandoffStatus;
+    let status = match req.status.as_str() {
+        "accepted" => HandoffStatus::Accepted,
+        "resolved" => HandoffStatus::Resolved,
+        "cancelled" => HandoffStatus::Cancelled,
+        other => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("Unknown status: {}", other)})),
+            )
+        }
+    };
+    match state.control_store.update_handoff_status(&handoff_id, &status) {
+        Ok(true) => (StatusCode::OK, Json(serde_json::json!({
+            "handoff_id": handoff_id,
+            "status": req.status,
+        }))),
+        Ok(false) => not_found("handoff"),
+        Err(e) => internal(e),
+    }
+}

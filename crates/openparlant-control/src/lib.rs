@@ -8,7 +8,8 @@ use chrono::Utc;
 use openparlant_context::{KnowledgeBundle, KnowledgeCompiler, NoopKnowledgeCompiler};
 use openparlant_journey::{JourneyRuntime, NoopJourneyRuntime};
 use openparlant_policy::{
-    NoopObservationMatcher, NoopPolicyResolver, ObservationMatcher, PolicyResolver,
+    NoopObservationMatcher, NoopPolicyResolver, NoopToolGate,
+    ObservationMatcher, PolicyResolver, ToolGate,
 };
 use openparlant_types::control::{
     AuditMeta, CompiledTurnContext, PolicyMatchRecord, ResponseMode, ToolAuthorization,
@@ -17,30 +18,33 @@ use openparlant_types::control::{
 pub use store::ControlStore;
 use tracing::{debug, warn};
 
-/// Default coordinator wiring together policy, journey, and context compilation.
+/// Default coordinator wiring together policy, journey, context, and tool-gate compilation.
 ///
 /// `store` is optional – if supplied, every `compile_turn` writes a `turn_trace`
 /// and every `after_response` writes the three explainability sub-records.
-pub struct DefaultTurnControlCoordinator<OM, PR, JR, KC> {
+pub struct DefaultTurnControlCoordinator<OM, PR, JR, KC, TG = NoopToolGate> {
     observation_matcher: OM,
     policy_resolver: PR,
     journey_runtime: JR,
     knowledge_compiler: KC,
+    tool_gate: TG,
     store: Option<ControlStore>,
 }
 
-impl<OM, PR, JR, KC> DefaultTurnControlCoordinator<OM, PR, JR, KC> {
-    pub fn new(
+impl<OM, PR, JR, KC, TG> DefaultTurnControlCoordinator<OM, PR, JR, KC, TG> {
+    pub fn new_with_gate(
         observation_matcher: OM,
         policy_resolver: PR,
         journey_runtime: JR,
         knowledge_compiler: KC,
+        tool_gate: TG,
     ) -> Self {
         Self {
             observation_matcher,
             policy_resolver,
             journey_runtime,
             knowledge_compiler,
+            tool_gate,
             store: None,
         }
     }
@@ -52,12 +56,31 @@ impl<OM, PR, JR, KC> DefaultTurnControlCoordinator<OM, PR, JR, KC> {
     }
 }
 
+impl<OM, PR, JR, KC> DefaultTurnControlCoordinator<OM, PR, JR, KC, NoopToolGate> {
+    pub fn new(
+        observation_matcher: OM,
+        policy_resolver: PR,
+        journey_runtime: JR,
+        knowledge_compiler: KC,
+    ) -> Self {
+        Self {
+            observation_matcher,
+            policy_resolver,
+            journey_runtime,
+            knowledge_compiler,
+            tool_gate: NoopToolGate,
+            store: None,
+        }
+    }
+}
+
 impl
     DefaultTurnControlCoordinator<
         NoopObservationMatcher,
         NoopPolicyResolver,
         NoopJourneyRuntime,
         NoopKnowledgeCompiler,
+        NoopToolGate,
     >
 {
     /// Create a no-op coordinator useful for incremental integration.
@@ -72,12 +95,13 @@ impl
 }
 
 #[async_trait]
-impl<OM, PR, JR, KC> TurnControlCoordinator for DefaultTurnControlCoordinator<OM, PR, JR, KC>
+impl<OM, PR, JR, KC, TG> TurnControlCoordinator for DefaultTurnControlCoordinator<OM, PR, JR, KC, TG>
 where
     OM: ObservationMatcher,
     PR: PolicyResolver,
     JR: JourneyRuntime,
     KC: KnowledgeCompiler,
+    TG: ToolGate,
 {
     async fn compile_turn(&self, input: TurnInput) -> Result<CompiledTurnContext> {
         let observations = self
@@ -106,8 +130,46 @@ where
             .iter()
             .map(|auth| auth.tool_name.clone())
             .collect();
-        let response_mode = infer_response_mode(&knowledge, &policy.tool_authorizations);
 
+        // ── Tool Gate ─────────────────────────────────────────────────────────
+        // Evaluate which tools should be visible this turn and which need approval.
+        let active_guideline_names: Vec<String> = policy
+            .active_guidelines
+            .iter()
+            .map(|g| g.name.clone())
+            .collect();
+        let gate_decisions = self
+            .tool_gate
+            .evaluate(
+                &input.scope_id,
+                &allowed_tools,
+                &observations,
+                &active_guideline_names,
+            )
+            .await
+            .unwrap_or_default();
+
+        // Filter to only tools that the gate allows.
+        let gated_tools: Vec<String> = gate_decisions
+            .iter()
+            .filter(|d| d.allowed)
+            .map(|d| d.tool_name.clone())
+            .collect();
+        let approval_required_tools: Vec<String> = gate_decisions
+            .iter()
+            .filter(|d| d.allowed && d.requires_approval)
+            .map(|d| d.tool_name.clone())
+            .collect();
+
+        if !approval_required_tools.is_empty() {
+            debug!(
+                scope = %input.scope_id,
+                tools = ?approval_required_tools,
+                "tool gate: approval required for these tools"
+            );
+        }
+
+        let response_mode = infer_response_mode(&knowledge, &policy.tool_authorizations);
         let audit_meta = AuditMeta {
             scope_id: input.scope_id.clone(),
             compiled_at: Utc::now(),
@@ -154,7 +216,8 @@ where
             glossary_terms: knowledge.glossary_terms,
             context_variables: knowledge.context_variables,
             canned_response_candidates: knowledge.canned_response_candidates,
-            allowed_tools,
+            allowed_tools: gated_tools,
+            approval_required_tools,
             tool_authorizations: policy.tool_authorizations,
             response_mode,
             audit_meta,

@@ -5106,6 +5106,8 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
       <button class="tab-btn" :class="{ active: tab === 'guidelines' }" @click="tab='guidelines'; loadGuidelines()">Guidelines</button>
       <button class="tab-btn" :class="{ active: tab === 'journeys' }" @click="tab='journeys'; loadJourneys()">Journeys</button>
       <button class="tab-btn" :class="{ active: tab === 'knowledge' }" @click="tab='knowledge'">Knowledge</button>
+      <button class="tab-btn" :class="{ active: tab === 'toolgate' }" @click="tab='toolgate'; loadToolPolicies()">Tool Gate</button>
+      <button class="tab-btn" :class="{ active: tab === 'handoff' }" @click="tab='handoff'">Handoff</button>
     </div>
 
     <!-- ── Debug Tab ─────────────────────────────────────────────────────── -->
@@ -5488,6 +5490,179 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             </button>
           </div>
         </div>
+      </div>
+    </template>
+
+    <!-- ── Tool Gate Tab ────────────────────────────────────────────────────── -->
+    <template x-if="tab === 'toolgate'">
+      <div>
+        <!-- Create form -->
+        <div class="card mb-4">
+          <div class="card-header"><h3 class="card-title">New Tool Exposure Policy</h3></div>
+          <div class="card-body flex flex-col gap-3">
+            <div class="flex gap-3 flex-wrap">
+              <input class="input" placeholder="Tool name (e.g. shell, file_write)" x-model="tpForm.tool_name" style="flex:1;min-width:180px">
+              <select class="input" x-model="tpForm.approval_mode" style="width:140px">
+                <option value="none">none (always allowed)</option>
+                <option value="conditional">conditional</option>
+                <option value="required">required (always asks)</option>
+              </select>
+              <label class="flex items-center gap-1 text-sm"><input type="checkbox" x-model="tpForm.enabled"> Enabled</label>
+            </div>
+            <div class="flex gap-3 flex-wrap">
+              <input class="input" placeholder="observation_ref (optional)" x-model="tpForm.observation_ref" style="flex:1;min-width:160px">
+              <input class="input" placeholder="guideline_ref (optional)" x-model="tpForm.guideline_ref" style="flex:1;min-width:160px">
+              <input class="input" placeholder="journey_state_ref (optional)" x-model="tpForm.journey_state_ref" style="flex:1;min-width:160px">
+            </div>
+            <button class="btn btn-primary btn-sm" @click="createToolPolicy()" :disabled="tpCreating || !tpForm.tool_name.trim() || !selectedScope">
+              <span x-show="!tpCreating">+ Create Policy</span>
+              <span x-show="tpCreating">Creating…</span>
+            </button>
+            <p class="text-xs text-muted" x-show="!selectedScope">⚠ Select a scope first</p>
+          </div>
+        </div>
+        <!-- List -->
+        <div class="card">
+          <div class="card-header flex items-center justify-between">
+            <h3 class="card-title">Tool Policies <span class="badge badge-muted ml-1" x-text="toolPolicies.length"></span></h3>
+            <button class="btn btn-ghost btn-sm" @click="loadToolPolicies()">Refresh</button>
+          </div>
+          <div class="card-body">
+            <div x-show="tpLoading" class="text-muted text-sm">Loading…</div>
+            <div x-show="!tpLoading && toolPolicies.length === 0" class="text-muted text-sm">No tool policies yet. All tools are open by default.</div>
+            <table class="table table-sm" x-show="!tpLoading && toolPolicies.length > 0">
+              <thead><tr><th>Tool</th><th>Approval Mode</th><th>Observation Ref</th><th>Guideline Ref</th><th>Enabled</th></tr></thead>
+              <tbody>
+                <template x-for="p in toolPolicies" :key="p.policy_id">
+                  <tr>
+                    <td class="font-medium" x-text="p.tool_name"></td>
+                    <td><span :class="approvalModeBadge(p.approval_mode)" x-text="p.approval_mode"></span></td>
+                    <td class="text-xs text-muted" x-text="p.observation_ref || '—'"></td>
+                    <td class="text-xs text-muted" x-text="p.guideline_ref || '—'"></td>
+                    <td><span :class="p.enabled ? 'badge badge-ok' : 'badge badge-muted'" x-text="p.enabled ? 'yes' : 'no'"></span></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <!-- Explanation card -->
+        <div class="card mt-4" style="border-color:var(--accent-muted)">
+          <div class="card-body text-sm text-muted flex flex-col gap-1">
+            <p><strong>none</strong> — Tool is always visible; no approval needed.</p>
+            <p><strong>conditional</strong> — Tool is visible only when the specified observation/guideline/state matches; requires approval if matched.</p>
+            <p><strong>required</strong> — Tool is always visible but requires explicit human approval before execution.</p>
+            <p class="mt-1">Policies with no <code>observation_ref</code> / <code>guideline_ref</code> apply unconditionally to the tool.</p>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- ── Handoff Tab ───────────────────────────────────────────────────────── -->
+    <template x-if="tab === 'handoff'">
+      <div class="flex flex-col gap-4">
+
+        <!-- Manual Mode control -->
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Manual Mode</h3></div>
+          <div class="card-body flex flex-col gap-3">
+            <p class="text-sm text-muted">Enable manual mode to suppress AI responses while a human operator handles the session. Resume AI when ready.</p>
+            <div class="flex gap-3 flex-wrap items-end">
+              <div class="flex flex-col gap-1" style="flex:1;min-width:200px">
+                <label class="label text-xs">Session ID</label>
+                <input class="input" x-model="manualModeSessionId" placeholder="uuid…">
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="label text-xs">Operation</label>
+                <select class="input" x-model="manualModeOp" style="width:160px">
+                  <option value="enable">Enable Manual Mode</option>
+                  <option value="disable">Resume AI</option>
+                </select>
+              </div>
+              <button class="btn btn-primary btn-sm" @click="setManualMode()" :disabled="manualModeLoading || !manualModeSessionId.trim()">
+                <span x-show="!manualModeLoading" x-text="manualModeOp === 'enable' ? '🔴 Enable Manual' : '🟢 Resume AI'"></span>
+                <span x-show="manualModeLoading">…</span>
+              </button>
+            </div>
+            <template x-if="manualModeResult">
+              <div class="rounded p-3 text-sm" style="background:var(--surface-2)">
+                <span :class="manualModeResult.manual_mode ? 'badge badge-warn' : 'badge badge-ok'" x-text="manualModeResult.manual_mode ? 'Manual Mode ON' : 'AI Active'"></span>
+                <span class="ml-2 text-muted" x-text="manualModeResult.message"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Handoff creation -->
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Create Handoff</h3></div>
+          <div class="card-body flex flex-col gap-3">
+            <p class="text-sm text-muted">Creates a handoff record and automatically switches the session to manual mode.</p>
+            <div class="flex gap-3 flex-wrap">
+              <div class="flex flex-col gap-1" style="flex:1;min-width:200px">
+                <label class="label text-xs">Session ID</label>
+                <input class="input" x-model="handoffSessionId" placeholder="uuid…">
+              </div>
+              <div class="flex flex-col gap-1" style="flex:2;min-width:240px">
+                <label class="label text-xs">Reason</label>
+                <input class="input" x-model="handoffReason" placeholder="Why is this being handed off?">
+              </div>
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="label text-xs">Summary (optional)</label>
+              <textarea class="input" rows="2" x-model="handoffSummary" placeholder="Context summary for the human operator…"></textarea>
+            </div>
+            <div class="flex gap-2">
+              <button class="btn btn-primary btn-sm" @click="doHandoff()" :disabled="handoffCreating || !handoffSessionId.trim() || !handoffReason.trim()">
+                <span x-show="!handoffCreating">📤 Handoff to Human</span>
+                <span x-show="handoffCreating">Creating…</span>
+              </button>
+              <button class="btn btn-ghost btn-sm" @click="loadHandoffs()" :disabled="!handoffSessionId.trim()">Load History</button>
+            </div>
+            <template x-if="handoffResult">
+              <div class="rounded p-3 text-sm" style="background:var(--surface-2)">
+                <span class="badge badge-warn">Handoff Pending</span>
+                <span class="ml-2 font-mono text-xs" x-text="handoffResult.handoff_id"></span>
+                <span class="ml-2 text-muted">— manual mode enabled</span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Handoff history -->
+        <div class="card">
+          <div class="card-header flex items-center justify-between">
+            <h3 class="card-title">Handoff History <span class="badge badge-muted ml-1" x-text="handoffList.length"></span></h3>
+            <button class="btn btn-ghost btn-sm" @click="loadHandoffs()" :disabled="!handoffSessionId.trim()">Refresh</button>
+          </div>
+          <div class="card-body">
+            <div x-show="handoffListLoading" class="text-muted text-sm">Loading…</div>
+            <div x-show="!handoffListLoading && handoffList.length === 0" class="text-muted text-sm">No handoffs yet for this session.</div>
+            <table class="table table-sm" x-show="handoffList.length > 0">
+              <thead><tr><th>Reason</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+              <tbody>
+                <template x-for="h in handoffList" :key="h.handoff_id">
+                  <tr>
+                    <td>
+                      <div x-text="h.reason" class="text-sm"></div>
+                      <div class="text-xs text-muted" x-show="h.summary" x-text="h.summary"></div>
+                    </td>
+                    <td>
+                      <span :class="{ 'badge badge-warn': h.status === 'pending', 'badge badge-ok': h.status === 'resolved', 'badge badge-muted': h.status === 'cancelled', 'badge badge-info': h.status === 'accepted' }" x-text="h.status"></span>
+                    </td>
+                    <td class="text-xs text-muted" x-text="h.created_at ? h.created_at.substring(0, 16).replace('T',' ') : '—'"></td>
+                    <td class="flex gap-1">
+                      <button class="btn btn-ghost btn-xs" x-show="h.status === 'pending'" @click="updateHandoffStatus(h.handoff_id, 'accepted')">Accept</button>
+                      <button class="btn btn-ghost btn-xs" x-show="['pending','accepted'].includes(h.status)" @click="updateHandoffStatus(h.handoff_id, 'resolved')">Resolve</button>
+                      <button class="btn btn-ghost btn-xs" x-show="h.status === 'pending'" @click="updateHandoffStatus(h.handoff_id, 'cancelled')">Cancel</button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
     </template>
 

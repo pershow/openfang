@@ -1,10 +1,10 @@
-// OpenParlant Control Plane — Observations / Guidelines / Journeys + Debug
+// OpenParlant Control Plane — Observations / Guidelines / Journeys / Tool Gate + Debug
 'use strict';
 
 function controlPage() {
   return {
     // ── Tab routing ──────────────────────────────────────────────────────────
-    tab: 'debug',  // 'debug' | 'observations' | 'guidelines' | 'journeys' | 'knowledge'
+    tab: 'debug',  // 'debug' | 'observations' | 'guidelines' | 'journeys' | 'knowledge' | 'toolgate' | 'handoff'
 
     // ── Scope selection ──────────────────────────────────────────────────────
     scopes: [],
@@ -52,6 +52,28 @@ function controlPage() {
     varCreating: false,
     cannedForm: { name: '', template_text: '', priority: 0 },
     cannedCreating: false,
+
+    // ── Tool Gate ─────────────────────────────────────────────────────────────
+    toolPolicies: [],
+    tpLoading: false,
+    tpForm: {
+      tool_name: '', skill_ref: '', observation_ref: '', journey_state_ref: '',
+      guideline_ref: '', approval_mode: 'none', enabled: true,
+    },
+    tpCreating: false,
+
+    // ── Handoff / Manual Mode ────────────────────────────────────────────────
+    handoffSessionId: '',
+    handoffReason: '',
+    handoffSummary: '',
+    handoffCreating: false,
+    handoffResult: null,
+    handoffList: [],
+    handoffListLoading: false,
+    manualModeSessionId: '',
+    manualModeOp: 'enable',  // 'enable' | 'disable'
+    manualModeResult: null,
+    manualModeLoading: false,
 
     // ────────────────────────────────────────────────────────────────────────
 
@@ -378,6 +400,103 @@ function controlPage() {
         alert('Failed: ' + e.message);
       } finally {
         this.cannedCreating = false;
+      }
+    },
+
+    // ── Tool Policies ─────────────────────────────────────────────────────────
+
+    async loadToolPolicies() {
+      if (!this.selectedScope) return;
+      this.tpLoading = true;
+      try {
+        this.toolPolicies = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/tool-policies') || [];
+      } catch (e) {
+        this.toolPolicies = [];
+      } finally {
+        this.tpLoading = false;
+      }
+    },
+
+    async createToolPolicy() {
+      if (!this.tpForm.tool_name.trim() || !this.selectedScope) return;
+      this.tpCreating = true;
+      try {
+        var p = await OpenFangAPI.post('/api/control/tool-policies', {
+          scope_id: this.selectedScope,
+          tool_name: this.tpForm.tool_name,
+          skill_ref: this.tpForm.skill_ref || null,
+          observation_ref: this.tpForm.observation_ref || null,
+          journey_state_ref: this.tpForm.journey_state_ref || null,
+          guideline_ref: this.tpForm.guideline_ref || null,
+          approval_mode: this.tpForm.approval_mode,
+          enabled: this.tpForm.enabled,
+        });
+        this.toolPolicies.push(p);
+        this.tpForm = { tool_name: '', skill_ref: '', observation_ref: '', journey_state_ref: '', guideline_ref: '', approval_mode: 'none', enabled: true };
+      } catch (e) {
+        alert('Failed: ' + e.message);
+      } finally {
+        this.tpCreating = false;
+      }
+    },
+
+    approvalModeBadge(mode) {
+      var map = { 'none': 'badge-ok', 'conditional': 'badge-warn', 'required': 'badge-err' };
+      return 'badge ' + (map[mode] || 'badge-muted');
+    },
+
+    // ── Handoff / Manual Mode ─────────────────────────────────────────────────
+
+    async doHandoff() {
+      if (!this.handoffSessionId.trim() || !this.handoffReason.trim()) return;
+      this.handoffCreating = true;
+      this.handoffResult = null;
+      try {
+        this.handoffResult = await OpenFangAPI.post(
+          '/api/sessions/' + this.handoffSessionId + '/handoff',
+          { reason: this.handoffReason, summary: this.handoffSummary || null }
+        );
+      } catch (e) {
+        alert('Failed: ' + e.message);
+      } finally {
+        this.handoffCreating = false;
+      }
+    },
+
+    async loadHandoffs() {
+      if (!this.handoffSessionId.trim()) return;
+      this.handoffListLoading = true;
+      try {
+        this.handoffList = await OpenFangAPI.get('/api/sessions/' + this.handoffSessionId + '/handoffs') || [];
+      } catch (e) {
+        this.handoffList = [];
+      } finally {
+        this.handoffListLoading = false;
+      }
+    },
+
+    async setManualMode() {
+      if (!this.manualModeSessionId.trim()) return;
+      this.manualModeLoading = true;
+      this.manualModeResult = null;
+      var endpoint = this.manualModeOp === 'enable'
+        ? '/api/sessions/' + this.manualModeSessionId + '/manual-mode'
+        : '/api/sessions/' + this.manualModeSessionId + '/resume-ai';
+      try {
+        this.manualModeResult = await OpenFangAPI.post(endpoint, {});
+      } catch (e) {
+        alert('Failed: ' + e.message);
+      } finally {
+        this.manualModeLoading = false;
+      }
+    },
+
+    async updateHandoffStatus(handoffId, status) {
+      try {
+        await OpenFangAPI.patch('/api/control/handoffs/' + handoffId + '/status', { status });
+        await this.loadHandoffs();
+      } catch (e) {
+        alert('Failed: ' + e.message);
       }
     },
 

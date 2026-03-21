@@ -373,7 +373,7 @@ impl ChannelAdapter for TeamsAdapter {
         Ok(())
     }
 
-    async fn send_typing(&self, user: &ChannelUser) -> Result<(), Box<dyn std::error::Error>> {
+    async fn send_typing(&self, user: &ChannelUser, _reply_to_message_id: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
         let token = self.get_token().await?;
         let default_service_url = "https://smba.trafficmanager.net/teams/";
         let url = format!(

@@ -492,7 +492,7 @@ impl ChannelAdapter for RevoltAdapter {
         Ok(())
     }
 
-    async fn send_typing(&self, user: &ChannelUser) -> Result<(), Box<dyn std::error::Error>> {
+    async fn send_typing(&self, user: &ChannelUser, _reply_to_message_id: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
         // Revolt typing indicator via REST
         let url = format!("{}/channels/{}/typing", self.api_url, user.platform_id);
 

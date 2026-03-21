@@ -6,6 +6,7 @@ use openparlant_types::control::{
 };
 use openparlant_types::error::{OpenFangError, OpenFangResult};
 use rusqlite::{params, Connection};
+use serde_json;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
@@ -361,6 +362,182 @@ impl ControlStore {
         )
         .map_err(|e| OpenFangError::Memory(e.to_string()))?;
         Ok(())
+    }
+
+    // ── Session Bindings ──────────────────────────────────────────────────────
+
+    /// Upsert a session binding (creates or updates).
+    pub fn upsert_session_binding(
+        &self,
+        binding: &openparlant_types::control::SessionBinding,
+    ) -> OpenFangResult<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        conn.execute(
+            "INSERT INTO session_bindings
+                (binding_id, scope_id, channel_type, external_user_id, external_chat_id,
+                 agent_id, session_id, manual_mode, active_journey_instance_id, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now'))
+             ON CONFLICT(binding_id) DO UPDATE SET
+                manual_mode = excluded.manual_mode,
+                active_journey_instance_id = excluded.active_journey_instance_id,
+                updated_at = datetime('now')",
+            params![
+                binding.binding_id,
+                binding.scope_id.0.as_str(),
+                binding.channel_type,
+                binding.external_user_id,
+                binding.external_chat_id,
+                binding.agent_id,
+                binding.session_id,
+                binding.manual_mode as i64,
+                binding.active_journey_instance_id,
+            ],
+        )
+        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Look up the session binding for a session_id (first match).
+    pub fn get_session_binding(
+        &self,
+        session_id: &str,
+    ) -> OpenFangResult<Option<openparlant_types::control::SessionBinding>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let row = conn.query_row(
+            "SELECT binding_id, scope_id, channel_type, external_user_id, external_chat_id,
+                    agent_id, session_id, manual_mode, active_journey_instance_id
+             FROM session_bindings WHERE session_id = ?1 LIMIT 1",
+            params![session_id],
+            |row| {
+                Ok(openparlant_types::control::SessionBinding {
+                    binding_id: row.get(0)?,
+                    scope_id: openparlant_types::control::ScopeId::new(row.get::<_, String>(1)?),
+                    channel_type: row.get(2)?,
+                    external_user_id: row.get(3)?,
+                    external_chat_id: row.get(4)?,
+                    agent_id: row.get(5)?,
+                    session_id: row.get(6)?,
+                    manual_mode: row.get::<_, i64>(7)? != 0,
+                    active_journey_instance_id: row.get(8)?,
+                })
+            },
+        );
+        match row {
+            Ok(b) => Ok(Some(b)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(OpenFangError::Memory(e.to_string())),
+        }
+    }
+
+    /// Enable or disable manual mode for a session binding.
+    pub fn set_manual_mode(
+        &self,
+        session_id: &str,
+        manual: bool,
+    ) -> OpenFangResult<bool> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let rows = conn
+            .execute(
+                "UPDATE session_bindings SET manual_mode = ?1, updated_at = datetime('now')
+                 WHERE session_id = ?2",
+                params![manual as i64, session_id],
+            )
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        Ok(rows > 0)
+    }
+
+    // ── Handoff Records ───────────────────────────────────────────────────────
+
+    /// Insert a new handoff record.
+    pub fn create_handoff(
+        &self,
+        handoff: &openparlant_types::control::HandoffRecord,
+    ) -> OpenFangResult<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        conn.execute(
+            "INSERT INTO handoff_records
+                (handoff_id, scope_id, session_id, reason, summary, status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                handoff.handoff_id,
+                handoff.scope_id.0.as_str(),
+                handoff.session_id,
+                handoff.reason,
+                handoff.summary,
+                handoff.status.as_str(),
+                handoff.created_at.to_rfc3339(),
+                handoff.updated_at.to_rfc3339(),
+            ],
+        )
+        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Update the status of a handoff record.
+    pub fn update_handoff_status(
+        &self,
+        handoff_id: &str,
+        status: &openparlant_types::control::HandoffStatus,
+    ) -> OpenFangResult<bool> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let rows = conn
+            .execute(
+                "UPDATE handoff_records SET status = ?1, updated_at = datetime('now')
+                 WHERE handoff_id = ?2",
+                params![status.as_str(), handoff_id],
+            )
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        Ok(rows > 0)
+    }
+
+    /// List handoff records for a session (newest first).
+    pub fn list_handoffs_by_session(
+        &self,
+        session_id: &str,
+        limit: usize,
+    ) -> OpenFangResult<Vec<serde_json::Value>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT handoff_id, scope_id, session_id, reason, summary, status, created_at, updated_at
+                 FROM handoff_records WHERE session_id = ?1
+                 ORDER BY created_at DESC LIMIT ?2",
+            )
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![session_id, limit as i64], |row| {
+                Ok(serde_json::json!({
+                    "handoff_id": row.get::<_, String>(0)?,
+                    "scope_id": row.get::<_, String>(1)?,
+                    "session_id": row.get::<_, String>(2)?,
+                    "reason": row.get::<_, String>(3)?,
+                    "summary": row.get::<_, Option<String>>(4)?,
+                    "status": row.get::<_, String>(5)?,
+                    "created_at": row.get::<_, String>(6)?,
+                    "updated_at": row.get::<_, String>(7)?,
+                }))
+            })
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        let items: Vec<_> = rows.filter_map(|r| r.ok()).collect();
+        Ok(items)
     }
 }
 
