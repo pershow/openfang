@@ -750,12 +750,66 @@
               </div>
               <!-- Trace list -->
               <template x-for="(trace, ti) in controlTraces" :key="trace.trace_id || ti">
-                <div style="border-bottom:1px solid var(--border);padding:10px 12px">
-                  <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:4px" x-text="controlTraceLabel(trace)"></div>
-                  <!-- Response mode badge -->
-                  <span style="display:inline-block;font-size:10px;padding:1px 6px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);margin-bottom:6px" x-text="trace.response_mode || 'freeform'"></span>
-                  <!-- channel -->
-                  <div x-show="trace.channel_type" class="text-xs text-dim" x-text="'Channel: ' + (trace.channel_type || '')"></div>
+                <div style="border-bottom:1px solid var(--border);padding:10px 12px;font-size:11px">
+                  <!-- Header: timestamp + response mode -->
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+                    <span style="font-weight:600;color:var(--accent)" x-text="controlTraceLabel(trace)"></span>
+                    <span style="padding:1px 6px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)" x-text="trace.response_mode || 'freeform'"></span>
+                  </div>
+                  <!-- Channel -->
+                  <div x-show="trace.channel_type" class="text-dim" x-text="'ch: ' + (trace.channel_type || '')"></div>
+
+                  <!-- Observations -->
+                  <template x-if="trace.observation_hits && trace.observation_hits.length">
+                    <div style="margin-top:6px">
+                      <div style="font-weight:600;color:var(--text-dim);margin-bottom:2px">Observations (<span x-text="trace.observation_hits.length"></span>)</div>
+                      <template x-for="(o, oi) in trace.observation_hits" :key="oi">
+                        <div style="padding:2px 0;color:var(--success, #4ade80)" x-text="o.name || o"></div>
+                      </template>
+                    </div>
+                  </template>
+
+                  <!-- Active guidelines -->
+                  <template x-if="trace.guideline_hits && trace.guideline_hits.length">
+                    <div style="margin-top:6px">
+                      <div style="font-weight:600;color:var(--text-dim);margin-bottom:2px">Guidelines (<span x-text="trace.guideline_hits.length"></span>)</div>
+                      <template x-for="(g, gi) in trace.guideline_hits" :key="gi">
+                        <div style="padding:2px 0" x-text="(g.name || g) + (g.priority ? ' p' + g.priority : '')"></div>
+                      </template>
+                    </div>
+                  </template>
+
+                  <!-- Excluded guidelines -->
+                  <template x-if="trace.guideline_exclusions && trace.guideline_exclusions.length">
+                    <div style="margin-top:6px">
+                      <div style="font-weight:600;color:var(--danger);margin-bottom:2px">Excluded (<span x-text="trace.guideline_exclusions.length"></span>)</div>
+                      <template x-for="(e, ei) in trace.guideline_exclusions" :key="ei">
+                        <div style="padding:2px 0;color:var(--text-dim)" x-text="(e.name || e) + (e.reason ? ' — ' + e.reason : '')"></div>
+                      </template>
+                    </div>
+                  </template>
+
+                  <!-- Allowed tools -->
+                  <template x-if="trace.allowed_tools && trace.allowed_tools.length">
+                    <div style="margin-top:6px">
+                      <div style="font-weight:600;color:var(--text-dim);margin-bottom:2px">Tools (<span x-text="trace.allowed_tools.length"></span>)</div>
+                      <template x-for="(t, ti2) in trace.allowed_tools" :key="ti2">
+                        <div style="padding:2px 0;font-family:var(--font-mono);font-size:10px" x-text="t"></div>
+                      </template>
+                    </div>
+                  </template>
+
+                  <!-- Journey state change -->
+                  <template x-if="trace.journey_after_state">
+                    <div style="margin-top:6px">
+                      <div style="font-weight:600;color:var(--text-dim);margin-bottom:2px">Journey</div>
+                      <div style="display:flex;align-items:center;gap:4px;color:var(--text-dim)">
+                        <span x-text="trace.journey_before_state || '—'"></span>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                        <span x-text="trace.journey_after_state"></span>
+                      </div>
+                    </div>
+                  </template>
                 </div>
               </template>
             </div>
@@ -5103,14 +5157,25 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
     <!-- Control Plane Page -->
     <template x-if="page === 'control'" x-data>
-  <div x-data="controlPage()" x-init="init()" class="page-container">
+  <div x-data="controlPage()" x-init="init()">
+    <div class="page-header"><h2>Control Plane</h2></div>
+    <div class="page-body">
 
-    <!-- Header -->
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">Control Plane</h1>
-        <p class="page-subtitle">Manage observations, guidelines, journeys, and knowledge — then debug with compile-turn.</p>
-      </div>
+    <!-- Configuration guide -->
+    <div class="info-card">
+      <h4>配置说明</h4>
+      <p style="margin-top:6px;line-height:1.55">本页集中管理<strong>作用域（Scope）</strong>下的观察、指南、旅程、知识与工具策略；运行时由控制面在每轮对话前编译上下文。数据通过 <code style="font-size:11px;padding:1px 5px;border-radius:3px;background:var(--surface-2)">/api/control/*</code> 读写。</p>
+      <ul style="list-style:disc">
+        <li><strong>Scope</strong>：策略与知识的隔离边界；创建后在下拉框中选择。未选择时，Debug 的 Compile Turn 可能回退为使用 Agent ID 作为 scope（见页面提示）。</li>
+        <li><strong>Observations</strong>：按关键词 / 正则 / LLM 匹配用户消息，用于触发后续指南与审计。</li>
+        <li><strong>Guidelines</strong>：在条件满足时注入对模型的行为说明（可设置优先级与组合方式）。</li>
+        <li><strong>Journeys</strong>：多状态流程；可维护状态与转移规则。</li>
+        <li><strong>Knowledge</strong>：术语表、上下文变量、预设回复等待注入材料。</li>
+        <li><strong>Tool Gate</strong>：按策略限制工具是否暴露及是否需要人工审批。</li>
+        <li><strong>Handoff</strong>：人工接管、手动模式与交接记录。</li>
+        <li><strong>Debug</strong>：Compile Turn 干跑，查看本轮会激活的观察、指南、旅程、检索块与工具授权等（不发送真实模型请求）。</li>
+      </ul>
+      <p class="text-xs text-dim mt-2" style="line-height:1.5">从其他页面带入调试上下文：URL hash 支持 <code style="font-size:10px">#control?agent=&lt;uuid&gt;&amp;session=&lt;uuid&gt;</code>，打开本页时会预填 Debug 中的 Agent / Session。</p>
     </div>
 
     <!-- Scope selector -->
@@ -5134,14 +5199,15 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
     </div>
 
     <!-- Tab bar -->
-    <div class="tabs mb-4">
-      <button class="tab-btn" :class="{ active: tab === 'debug' }" @click="tab='debug'">🔍 Debug</button>
-      <button class="tab-btn" :class="{ active: tab === 'observations' }" @click="tab='observations'; loadObservations()">Observations</button>
-      <button class="tab-btn" :class="{ active: tab === 'guidelines' }" @click="tab='guidelines'; loadGuidelines()">Guidelines</button>
-      <button class="tab-btn" :class="{ active: tab === 'journeys' }" @click="tab='journeys'; loadJourneys()">Journeys</button>
-      <button class="tab-btn" :class="{ active: tab === 'knowledge' }" @click="tab='knowledge'">Knowledge</button>
-      <button class="tab-btn" :class="{ active: tab === 'toolgate' }" @click="tab='toolgate'; loadToolPolicies()">Tool Gate</button>
-      <button class="tab-btn" :class="{ active: tab === 'handoff' }" @click="tab='handoff'">Handoff</button>
+    <div class="tabs" role="tablist">
+      <div class="tab" role="tab" :class="{ active: tab === 'observations' }" @click="tab = 'observations'; loadObservations()">Observations</div>
+      <div class="tab" role="tab" :class="{ active: tab === 'guidelines' }" @click="tab = 'guidelines'; loadGuidelines()">Guidelines</div>
+      <div class="tab" role="tab" :class="{ active: tab === 'journeys' }" @click="tab = 'journeys'; loadJourneys()">Journeys</div>
+      <div class="tab" role="tab" :class="{ active: tab === 'knowledge' }" @click="tab = 'knowledge'">Knowledge</div>
+      <div class="tab" role="tab" :class="{ active: tab === 'toolgate' }" @click="tab = 'toolgate'; loadToolPolicies()">Tool Gate</div>
+      <div class="tab" role="tab" :class="{ active: tab === 'handoff' }" @click="tab = 'handoff'">Handoff</div>
+      <div class="tabs-separator"></div>
+      <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'debug' }" @click="tab = 'debug'">Debug</div>
     </div>
 
     <!-- ── Debug Tab ─────────────────────────────────────────────────────── -->
@@ -5700,6 +5766,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
       </div>
     </template>
 
+    </div>
   </div>
 </template>
 

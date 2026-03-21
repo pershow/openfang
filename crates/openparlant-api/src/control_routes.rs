@@ -459,6 +459,120 @@ pub async fn create_canned_response(
 
 // ─── Test: compile-turn ───────────────────────────────────────────────────────
 
+/// GET /api/control/scopes/:scope_id/glossary-terms
+pub async fn list_glossary_terms(
+    State(state): State<Arc<AppState>>,
+    Path(scope_id): Path<String>,
+) -> impl IntoResponse {
+    let conn = state.db_conn.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let c = conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = c
+            .prepare(
+                "SELECT term_id, scope_id, name, description, synonyms_json, enabled
+                 FROM glossary_terms WHERE scope_id = ?1 ORDER BY name",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![scope_id], |row| {
+                Ok(serde_json::json!({
+                    "term_id": row.get::<_, String>(0)?,
+                    "scope_id": row.get::<_, String>(1)?,
+                    "name": row.get::<_, String>(2)?,
+                    "description": row.get::<_, String>(3)?,
+                    "synonyms_json": row.get::<_, String>(4)?,
+                    "enabled": row.get::<_, bool>(5)?,
+                }))
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect::<Vec<_>>();
+        Ok::<_, String>(rows)
+    })
+    .await;
+    match result {
+        Ok(Ok(items)) => (StatusCode::OK, Json(serde_json::json!(items))),
+        Ok(Err(e)) => internal(e),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/scopes/:scope_id/context-variables
+pub async fn list_context_variables(
+    State(state): State<Arc<AppState>>,
+    Path(scope_id): Path<String>,
+) -> impl IntoResponse {
+    let conn = state.db_conn.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let c = conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = c
+            .prepare(
+                "SELECT variable_id, scope_id, name, value_source_type, value_source_config, enabled
+                 FROM context_variables WHERE scope_id = ?1 ORDER BY name",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![scope_id], |row| {
+                Ok(serde_json::json!({
+                    "variable_id": row.get::<_, String>(0)?,
+                    "scope_id": row.get::<_, String>(1)?,
+                    "name": row.get::<_, String>(2)?,
+                    "value_source_type": row.get::<_, String>(3)?,
+                    "value_source_config": row.get::<_, String>(4)?,
+                    "enabled": row.get::<_, bool>(5)?,
+                }))
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect::<Vec<_>>();
+        Ok::<_, String>(rows)
+    })
+    .await;
+    match result {
+        Ok(Ok(items)) => (StatusCode::OK, Json(serde_json::json!(items))),
+        Ok(Err(e)) => internal(e),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/scopes/:scope_id/canned-responses
+pub async fn list_canned_responses(
+    State(state): State<Arc<AppState>>,
+    Path(scope_id): Path<String>,
+) -> impl IntoResponse {
+    let conn = state.db_conn.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let c = conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = c
+            .prepare(
+                "SELECT response_id, scope_id, name, template_text, priority, enabled
+                 FROM canned_responses WHERE scope_id = ?1 ORDER BY priority DESC, name",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![scope_id], |row| {
+                Ok(serde_json::json!({
+                    "response_id": row.get::<_, String>(0)?,
+                    "scope_id": row.get::<_, String>(1)?,
+                    "name": row.get::<_, String>(2)?,
+                    "template_text": row.get::<_, String>(3)?,
+                    "priority": row.get::<_, i32>(4)?,
+                    "enabled": row.get::<_, bool>(5)?,
+                }))
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect::<Vec<_>>();
+        Ok::<_, String>(rows)
+    })
+    .await;
+    match result {
+        Ok(Ok(items)) => (StatusCode::OK, Json(serde_json::json!(items))),
+        Ok(Err(e)) => internal(e),
+        Err(e) => internal(e),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CompileTurnRequest {
     pub scope_id: String,
@@ -518,6 +632,10 @@ pub async fn test_compile_turn(
 // ─── Trace / explainability ───────────────────────────────────────────────────
 
 /// GET /api/sessions/:session_id/control-trace
+///
+/// Returns turn traces for this session, each enriched with the
+/// policy-match record (observations / guideline hits / exclusions)
+/// and the tool-authorization record (allowed tools / approval requirements).
 pub async fn session_control_trace(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
@@ -531,8 +649,104 @@ pub async fn session_control_trace(
             )
         }
     };
-    match state.control_store.list_turn_traces_by_session(sid, 50) {
-        Ok(traces) => (StatusCode::OK, Json(serde_json::json!(traces))),
+
+    // Load raw traces from control_store (uses rusqlite / Mutex).
+    let traces = match state.control_store.list_turn_traces_by_session(sid, 50) {
+        Ok(t) => t,
+        Err(e) => return internal(e),
+    };
+
+    // For each trace, attempt to load the policy-match and tool-auth sub-records
+    // and fold them into a richer JSON object.
+    let conn = state.db_conn.clone();
+    let trace_ids: Vec<String> = traces.iter().map(|t| t.trace_id.0.to_string()).collect();
+    let enriched = tokio::task::spawn_blocking(move || {
+        let c = conn.lock().map_err(|e| e.to_string())?;
+        let result: Vec<serde_json::Value> = traces
+            .into_iter()
+            .map(|trace| {
+                let tid = trace.trace_id.0.to_string();
+
+                // policy_match_records
+                let policy_row = c.query_row(
+                    "SELECT observation_hits_json, guideline_hits_json, guideline_exclusions_json
+                     FROM policy_match_records WHERE trace_id = ?1 LIMIT 1",
+                    rusqlite::params![&tid],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0).unwrap_or_else(|_| "[]".into()),
+                            row.get::<_, String>(1).unwrap_or_else(|_| "[]".into()),
+                            row.get::<_, String>(2).unwrap_or_else(|_| "[]".into()),
+                        ))
+                    },
+                )
+                .ok();
+
+                // tool_authorization_records
+                let tool_row = c.query_row(
+                    "SELECT allowed_tools_json, authorization_reasons_json, approval_requirements_json
+                     FROM tool_authorization_records WHERE trace_id = ?1 LIMIT 1",
+                    rusqlite::params![&tid],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0).unwrap_or_else(|_| "[]".into()),
+                            row.get::<_, String>(1).unwrap_or_else(|_| "{}".into()),
+                            row.get::<_, String>(2).unwrap_or_else(|_| "{}".into()),
+                        ))
+                    },
+                )
+                .ok();
+
+                // journey_transition_records
+                let journey_row = c.query_row(
+                    "SELECT before_state_id, after_state_id, decision_json
+                     FROM journey_transition_records WHERE trace_id = ?1 LIMIT 1",
+                    rusqlite::params![&tid],
+                    |row| {
+                        Ok((
+                            row.get::<_, Option<String>>(0)?,
+                            row.get::<_, Option<String>>(1)?,
+                            row.get::<_, String>(2).unwrap_or_else(|_| "{}".into()),
+                        ))
+                    },
+                )
+                .ok();
+
+                let parse_arr = |s: &str| -> serde_json::Value {
+                    serde_json::from_str(s).unwrap_or(serde_json::json!([]))
+                };
+                let parse_obj = |s: &str| -> serde_json::Value {
+                    serde_json::from_str(s).unwrap_or(serde_json::json!({}))
+                };
+
+                serde_json::json!({
+                    "trace_id": trace.trace_id,
+                    "scope_id": trace.scope_id,
+                    "session_id": trace.session_id,
+                    "agent_id": trace.agent_id,
+                    "channel_type": trace.channel_type,
+                    "response_mode": trace.response_mode,
+                    "created_at": trace.created_at,
+                    "observation_hits": policy_row.as_ref().map(|r| parse_arr(&r.0)).unwrap_or(serde_json::json!([])),
+                    "guideline_hits": policy_row.as_ref().map(|r| parse_arr(&r.1)).unwrap_or(serde_json::json!([])),
+                    "guideline_exclusions": policy_row.as_ref().map(|r| parse_arr(&r.2)).unwrap_or(serde_json::json!([])),
+                    "allowed_tools": tool_row.as_ref().map(|r| parse_arr(&r.0)).unwrap_or(serde_json::json!([])),
+                    "authorization_reasons": tool_row.as_ref().map(|r| parse_obj(&r.1)).unwrap_or(serde_json::json!({})),
+                    "approval_required_tools": tool_row.as_ref().map(|r| parse_obj(&r.2)).unwrap_or(serde_json::json!({})),
+                    "journey_before_state": journey_row.as_ref().and_then(|r| r.0.clone()),
+                    "journey_after_state": journey_row.as_ref().and_then(|r| r.1.clone()),
+                    "journey_decision": journey_row.as_ref().map(|r| parse_obj(&r.2)).unwrap_or(serde_json::json!({})),
+                })
+            })
+            .collect();
+        Ok::<_, String>(result)
+    })
+    .await;
+
+    let _ = trace_ids; // suppress unused warning
+    match enriched {
+        Ok(Ok(items)) => (StatusCode::OK, Json(serde_json::json!(items))),
+        Ok(Err(e)) => internal(e),
         Err(e) => internal(e),
     }
 }

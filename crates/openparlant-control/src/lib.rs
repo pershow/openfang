@@ -240,6 +240,28 @@ where
 
         // Persist explainability sub-records (best-effort)
         if let Some(store) = &self.store {
+            use openparlant_types::control::{JourneyTransitionRecord, TraceId};
+
+            // ── Journey transition record ──────────────────────────────────────
+            if let Some(ref update) = journey_update {
+                let jtr = JourneyTransitionRecord {
+                    record_id: TraceId::new(),
+                    trace_id: outcome.trace_id,
+                    journey_instance_id: String::new(), // instance_id is inside JourneyUpdate if needed
+                    before_state_id: update.before_state.clone(),
+                    after_state_id: update.after_state.clone(),
+                    decision_json: serde_json::to_string(&serde_json::json!({
+                        "handoff_requested": update.handoff_requested,
+                        "completed": update.completed,
+                    }))
+                    .unwrap_or_default(),
+                };
+                if let Err(e) = store.upsert_journey_transition_record(&jtr) {
+                    warn!(trace_id = %outcome.trace_id, error = %e, "failed to persist journey transition record");
+                }
+            }
+
+            // ── Policy match record ────────────────────────────────────────────
             let rec_id = openparlant_types::control::TraceId::new();
             let pmr = PolicyMatchRecord {
                 record_id: rec_id,
@@ -252,6 +274,7 @@ where
                 warn!(trace_id = %outcome.trace_id, error = %e, "failed to persist policy match record");
             }
 
+            // ── Tool authorization record ──────────────────────────────────────
             let tar = ToolAuthorizationRecord {
                 record_id: openparlant_types::control::TraceId::new(),
                 trace_id: outcome.trace_id,

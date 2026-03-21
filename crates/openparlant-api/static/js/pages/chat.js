@@ -1124,9 +1124,18 @@ function chatPage() {
     },
 
     formatToolJson: function(text) {
-      if (!text) return '';
-      try { return JSON.stringify(JSON.parse(text), null, 2); }
-      catch(e) { return text; }
+      if (text == null || text === '') return '';
+      if (typeof text === 'object') {
+        try { return JSON.stringify(text, null, 2); }
+        catch (e) { return String(text); }
+      }
+      if (typeof text === 'string') {
+        var trimmed = text.trim();
+        if (!trimmed) return '';
+        try { return JSON.stringify(JSON.parse(trimmed), null, 2); }
+        catch (e) { return text; }
+      }
+      return String(text);
     },
 
     // Voice: start recording

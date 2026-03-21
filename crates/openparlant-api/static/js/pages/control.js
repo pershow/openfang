@@ -4,7 +4,7 @@
 function controlPage() {
   return {
     // ── Tab routing ──────────────────────────────────────────────────────────
-    tab: 'debug',  // 'debug' | 'observations' | 'guidelines' | 'journeys' | 'knowledge' | 'toolgate' | 'handoff'
+    tab: 'observations',  // 'debug' | 'observations' | 'guidelines' | 'journeys' | 'knowledge' | 'toolgate' | 'handoff'
 
     // ── Scope selection ──────────────────────────────────────────────────────
     scopes: [],
