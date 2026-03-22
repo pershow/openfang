@@ -45,10 +45,7 @@ impl ContextStore {
     // ── Retrievers ────────────────────────────────────────────────────────────
 
     /// Load all enabled retrievers for a scope.
-    pub async fn list_retrievers(
-        &self,
-        scope_id: &ScopeId,
-    ) -> Result<Vec<RetrieverDefinition>> {
+    pub async fn list_retrievers(&self, scope_id: &ScopeId) -> Result<Vec<RetrieverDefinition>> {
         let rows = sqlx::query(
             "SELECT retriever_id, scope_id, name, retriever_type, config_json
              FROM retrievers
@@ -153,13 +150,15 @@ impl ContextStore {
                 let matched = bindings_by_retriever
                     .get(&retriever.retriever_id)
                     .map(|bindings| {
-                        bindings.iter().any(|(bind_type, bind_ref)| match bind_type.as_str() {
-                            "journey_state" => active_journey_state == Some(bind_ref.as_str()),
-                            "guideline" => active_guidelines.contains(bind_ref.as_str()),
-                            "scope" => bind_ref == &scope_id.0,
-                            "always" => true,
-                            _ => false,
-                        })
+                        bindings
+                            .iter()
+                            .any(|(bind_type, bind_ref)| match bind_type.as_str() {
+                                "journey_state" => active_journey_state == Some(bind_ref.as_str()),
+                                "guideline" => active_guidelines.contains(bind_ref.as_str()),
+                                "scope" => bind_ref == &scope_id.0,
+                                "always" => true,
+                                _ => false,
+                            })
                     })
                     .unwrap_or(false);
                 if !matched {
@@ -170,10 +169,15 @@ impl ContextStore {
             match retriever.retriever_type.as_str() {
                 "static" => {
                     // Expect config_json = { "items": [ { "title": "...", "content": "..." }, ... ] }
-                    if let Some(items) = retriever.config_json.get("items").and_then(|v| v.as_array()) {
+                    if let Some(items) = retriever
+                        .config_json
+                        .get("items")
+                        .and_then(|v| v.as_array())
+                    {
                         for item in items {
                             let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
-                            let content = item.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                            let content =
+                                item.get("content").and_then(|v| v.as_str()).unwrap_or("");
                             if title.to_lowercase().contains(&query_lower)
                                 || content.to_lowercase().contains(&query_lower)
                             {
@@ -206,20 +210,25 @@ impl ContextStore {
                     for row in rows {
                         let name: String = row.try_get("name").unwrap_or_default();
                         let description: String = row.try_get("description").unwrap_or_default();
-                        let synonyms_json: String = row.try_get("synonyms_json").unwrap_or_default();
+                        let synonyms_json: String =
+                            row.try_get("synonyms_json").unwrap_or_default();
                         let synonyms: Vec<String> =
                             serde_json::from_str(&synonyms_json).unwrap_or_default();
 
                         let hit = name.to_lowercase().contains(&query_lower)
                             || description.to_lowercase().contains(&query_lower)
-                            || synonyms.iter().any(|s| s.to_lowercase().contains(&query_lower));
+                            || synonyms
+                                .iter()
+                                .any(|s| s.to_lowercase().contains(&query_lower));
 
                         if hit {
                             chunks.push(RetrievedChunk {
                                 source: format!("faq_sqlite:{}", retriever.name),
                                 content: format!("{name}: {description}"),
                                 score: Some(0.9),
-                                metadata: Some(serde_json::json!({ "retriever_id": retriever.retriever_id })),
+                                metadata: Some(
+                                    serde_json::json!({ "retriever_id": retriever.retriever_id }),
+                                ),
                             });
                         }
                     }
@@ -255,14 +264,8 @@ impl ContextStore {
                     {
                         let mut emb_hits: Vec<RetrievedChunk> = Vec::new();
                         for chunk_val in stored_chunks {
-                            let text = chunk_val
-                                .get("text")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("");
-                            if let Some(arr) = chunk_val
-                                .get("vector")
-                                .and_then(|v| v.as_array())
-                            {
+                            let text = chunk_val.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                            if let Some(arr) = chunk_val.get("vector").and_then(|v| v.as_array()) {
                                 let stored_vec: Vec<f32> = arr
                                     .iter()
                                     .filter_map(|v| v.as_f64().map(|f| f as f32))
@@ -353,7 +356,11 @@ impl ContextStore {
             let config_json: String = row.try_get("value_source_config")?;
             let visibility_rule: Option<String> = row.try_get("visibility_rule").ok();
 
-            if !matches_text_rule(visibility_rule.as_deref(), message_text, active_journey_state) {
+            if !matches_text_rule(
+                visibility_rule.as_deref(),
+                message_text,
+                active_journey_state,
+            ) {
                 continue;
             }
 

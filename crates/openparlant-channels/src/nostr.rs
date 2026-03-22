@@ -412,7 +412,11 @@ impl ChannelAdapter for NostrAdapter {
         Ok(())
     }
 
-    async fn send_typing(&self, _user: &ChannelUser, _reply_to_message_id: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    async fn send_typing(
+        &self,
+        _user: &ChannelUser,
+        _reply_to_message_id: Option<&str>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // Nostr does not have a typing indicator protocol
         Ok(())
     }

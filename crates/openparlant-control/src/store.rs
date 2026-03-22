@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 use openparlant_types::agent::{AgentId, SessionId};
 use openparlant_types::control::{
-    ControlScope, PolicyMatchRecord, JourneyTransitionRecord, ToolAuthorizationRecord,
-    ResponseMode, ScopeId, TraceId, TurnTraceRecord,
+    ControlScope, JourneyTransitionRecord, PolicyMatchRecord, ResponseMode, ScopeId,
+    ToolAuthorizationRecord, TraceId, TurnTraceRecord,
 };
 use openparlant_types::error::{OpenFangError, OpenFangResult};
 use rusqlite::{params, Connection};
@@ -440,11 +440,7 @@ impl ControlStore {
     }
 
     /// Enable or disable manual mode for a session binding.
-    pub fn set_manual_mode(
-        &self,
-        session_id: &str,
-        manual: bool,
-    ) -> OpenFangResult<bool> {
+    pub fn set_manual_mode(&self, session_id: &str, manual: bool) -> OpenFangResult<bool> {
         let conn = self
             .conn
             .lock()
@@ -463,7 +459,10 @@ impl ControlStore {
 
     /// Insert or update a retriever definition.
     pub fn upsert_retriever(&self, r: &serde_json::Value) -> OpenFangResult<()> {
-        let conn = self.conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
         conn.execute(
             "INSERT INTO retrievers (retriever_id, scope_id, name, retriever_type, config_json, enabled)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -486,21 +485,28 @@ impl ControlStore {
 
     /// List retrievers for a scope.
     pub fn list_retrievers(&self, scope_id: &ScopeId) -> OpenFangResult<Vec<serde_json::Value>> {
-        let conn = self.conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
-        let mut stmt = conn.prepare(
-            "SELECT retriever_id, scope_id, name, retriever_type, config_json, enabled
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT retriever_id, scope_id, name, retriever_type, config_json, enabled
              FROM retrievers WHERE scope_id = ?1 ORDER BY name ASC",
-        ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        let rows = stmt.query_map(params![scope_id.0.as_str()], |row| {
-            Ok(serde_json::json!({
-                "retriever_id": row.get::<_, String>(0)?,
-                "scope_id":     row.get::<_, String>(1)?,
-                "name":         row.get::<_, String>(2)?,
-                "retriever_type": row.get::<_, String>(3)?,
-                "config_json":  row.get::<_, String>(4)?,
-                "enabled":      row.get::<_, i64>(5)? != 0,
-            }))
-        }).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            )
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![scope_id.0.as_str()], |row| {
+                Ok(serde_json::json!({
+                    "retriever_id": row.get::<_, String>(0)?,
+                    "scope_id":     row.get::<_, String>(1)?,
+                    "name":         row.get::<_, String>(2)?,
+                    "retriever_type": row.get::<_, String>(3)?,
+                    "config_json":  row.get::<_, String>(4)?,
+                    "enabled":      row.get::<_, i64>(5)? != 0,
+                }))
+            })
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
@@ -515,12 +521,16 @@ impl ControlStore {
         published_by: &str,
     ) -> OpenFangResult<()> {
         // Mark any current "published" release as "superseded" first.
-        let conn = self.conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
         conn.execute(
             "UPDATE control_releases SET status = 'superseded'
              WHERE scope_id = ?1 AND status = 'published'",
             params![scope_id.0.as_str()],
-        ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        )
+        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
         conn.execute(
             "INSERT INTO control_releases (release_id, scope_id, version, status, published_by, created_at)
              VALUES (?1, ?2, ?3, 'published', ?4, datetime('now'))",
@@ -531,20 +541,26 @@ impl ControlStore {
 
     /// Rollback: mark the latest published release as rolled_back and re-activate the previous one.
     pub fn rollback_release(&self, scope_id: &ScopeId) -> OpenFangResult<Option<String>> {
-        let conn = self.conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
         // Find the currently published release.
-        let current: Option<String> = conn.query_row(
-            "SELECT release_id FROM control_releases
+        let current: Option<String> = conn
+            .query_row(
+                "SELECT release_id FROM control_releases
              WHERE scope_id = ?1 AND status = 'published'
              ORDER BY created_at DESC LIMIT 1",
-            params![scope_id.0.as_str()],
-            |row| row.get(0),
-        ).ok();
+                params![scope_id.0.as_str()],
+                |row| row.get(0),
+            )
+            .ok();
         if let Some(ref rid) = current {
             conn.execute(
                 "UPDATE control_releases SET status = 'rolled_back' WHERE release_id = ?1",
                 params![rid],
-            ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            )
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
             // Promote the most recent "superseded" release back to "published".
             conn.execute(
                 "UPDATE control_releases SET status = 'published'
@@ -555,36 +571,41 @@ impl ControlStore {
                      ORDER BY created_at DESC LIMIT 1
                  )",
                 params![scope_id.0.as_str(), scope_id.0.as_str()],
-            ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            )
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
         }
         Ok(current)
     }
 
     /// List releases for a scope (newest first).
     pub fn list_releases(&self, scope_id: &ScopeId) -> OpenFangResult<Vec<serde_json::Value>> {
-        let conn = self.conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
-        let mut stmt = conn.prepare(
-            "SELECT release_id, scope_id, version, status, published_by, created_at
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT release_id, scope_id, version, status, published_by, created_at
              FROM control_releases WHERE scope_id = ?1 ORDER BY created_at DESC",
-        ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        let rows = stmt.query_map(params![scope_id.0.as_str()], |row| {
-            Ok(serde_json::json!({
-                "release_id":   row.get::<_, String>(0)?,
-                "scope_id":     row.get::<_, String>(1)?,
-                "version":      row.get::<_, String>(2)?,
-                "status":       row.get::<_, String>(3)?,
-                "published_by": row.get::<_, String>(4)?,
-                "created_at":   row.get::<_, String>(5)?,
-            }))
-        }).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            )
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![scope_id.0.as_str()], |row| {
+                Ok(serde_json::json!({
+                    "release_id":   row.get::<_, String>(0)?,
+                    "scope_id":     row.get::<_, String>(1)?,
+                    "version":      row.get::<_, String>(2)?,
+                    "status":       row.get::<_, String>(3)?,
+                    "published_by": row.get::<_, String>(4)?,
+                    "created_at":   row.get::<_, String>(5)?,
+                }))
+            })
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
     /// Return the currently published release version for a scope, if any.
-    pub fn current_release_version(
-        &self,
-        scope_id: &ScopeId,
-    ) -> OpenFangResult<Option<String>> {
+    pub fn current_release_version(&self, scope_id: &ScopeId) -> OpenFangResult<Option<String>> {
         let conn = self
             .conn
             .lock()

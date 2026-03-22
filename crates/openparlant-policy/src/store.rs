@@ -361,7 +361,8 @@ impl PolicyStore {
         for row in rows {
             let (pid, sid, tool, skill, obs, js, gr, am, en) =
                 row.map_err(|e| OpenFangError::Memory(e.to_string()))?;
-            let approval_mode = am.parse::<openparlant_types::control::ApprovalMode>()
+            let approval_mode = am
+                .parse::<openparlant_types::control::ApprovalMode>()
                 .unwrap_or_default();
             result.push(openparlant_types::control::ToolExposurePolicy {
                 policy_id: pid,
@@ -408,7 +409,8 @@ impl PolicyStore {
         );
         match row {
             Ok((pid, sid, tool, skill, obs, js, gr, am, en)) => {
-                let approval_mode = am.parse::<openparlant_types::control::ApprovalMode>()
+                let approval_mode = am
+                    .parse::<openparlant_types::control::ApprovalMode>()
                     .unwrap_or_default();
                 Ok(Some(openparlant_types::control::ToolExposurePolicy {
                     policy_id: pid,

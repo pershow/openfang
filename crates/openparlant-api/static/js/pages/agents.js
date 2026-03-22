@@ -598,7 +598,13 @@ function agentsPage() {
       if (!this.detailAgent) return;
       this.configSaving = true;
       try {
-        await OpenFangAPI.patch('/api/agents/' + this.detailAgent.id + '/config', this.configForm);
+        // Always send control_scope_id as a string — JSON.stringify omits keys whose value is
+        // undefined, and the API only updates metadata when control_scope_id is present in the body.
+        var f = this.configForm;
+        var cs = f.control_scope_id != null && f.control_scope_id !== undefined
+          ? String(f.control_scope_id)
+          : '';
+        await OpenFangAPI.patch('/api/agents/' + this.detailAgent.id + '/config', Object.assign({}, f, { control_scope_id: cs }));
         OpenFangToast.success('Config updated');
         await Alpine.store('app').refreshAgents();
       } catch(e) {

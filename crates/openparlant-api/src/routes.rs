@@ -374,7 +374,11 @@ pub async fn send_message(
     // (not as a separate session message which the LLM may not process).
     let content_blocks = if !req.attachments.is_empty() {
         let image_blocks = resolve_attachments(&req.attachments);
-        if image_blocks.is_empty() { None } else { Some(image_blocks) }
+        if image_blocks.is_empty() {
+            None
+        } else {
+            Some(image_blocks)
+        }
     } else {
         None
     };
@@ -439,7 +443,9 @@ pub async fn send_message(
 }
 
 /// Build chat messages JSON for WebChat / session replay (same shape as `GET /api/agents/:id/session`).
-pub fn build_session_messages_json(session: &openparlant_memory::session::Session) -> Vec<serde_json::Value> {
+pub fn build_session_messages_json(
+    session: &openparlant_memory::session::Session,
+) -> Vec<serde_json::Value> {
     // Two-pass approach: ToolUse blocks live in Assistant messages while
     // ToolResult blocks arrive in subsequent User messages.  Pass 1
     // collects all tool_use entries keyed by id; pass 2 attaches results.
@@ -461,10 +467,7 @@ pub fn build_session_messages_json(session: &openparlant_memory::session::Sessio
                         openparlant_types::message::ContentBlock::Text { text, .. } => {
                             texts.push(text.clone());
                         }
-                        openparlant_types::message::ContentBlock::Image {
-                            media_type,
-                            data,
-                        } => {
+                        openparlant_types::message::ContentBlock::Image { media_type, data } => {
                             texts.push("[Image]".to_string());
                             let file_id = uuid::Uuid::new_v4().to_string();
                             let upload_dir = std::env::temp_dir().join("openparlant_uploads");
@@ -3452,7 +3455,9 @@ pub async fn prometheus_metrics(State(state): State<Arc<AppState>>) -> impl Into
     out.push_str(&format!("openparlant_agents_total {}\n\n", agents.len()));
 
     // Per-agent token and tool usage
-    out.push_str("# HELP openparlant_tokens_total Total tokens consumed (rolling hourly window).\n");
+    out.push_str(
+        "# HELP openparlant_tokens_total Total tokens consumed (rolling hourly window).\n",
+    );
     out.push_str("# TYPE openparlant_tokens_total gauge\n");
     out.push_str("# HELP openparlant_tool_calls_total Total tool calls (rolling hourly window).\n");
     out.push_str("# TYPE openparlant_tool_calls_total gauge\n");
@@ -3475,7 +3480,10 @@ pub async fn prometheus_metrics(State(state): State<Arc<AppState>>) -> impl Into
     let health = state.kernel.supervisor.health();
     out.push_str("# HELP openparlant_panics_total Total supervisor panics since start.\n");
     out.push_str("# TYPE openparlant_panics_total counter\n");
-    out.push_str(&format!("openparlant_panics_total {}\n", health.panic_count));
+    out.push_str(&format!(
+        "openparlant_panics_total {}\n",
+        health.panic_count
+    ));
     out.push_str("# HELP openparlant_restarts_total Total supervisor restarts since start.\n");
     out.push_str("# TYPE openparlant_restarts_total counter\n");
     out.push_str(&format!(
@@ -8992,7 +9000,11 @@ pub async fn patch_agent_config(
     // Persist updated manifest to database so changes survive restart
     if let Some(entry) = state.kernel.registry.get(agent_id) {
         if let Err(e) = state.kernel.memory.save_agent(&entry) {
-            tracing::warn!("Failed to persist agent config update: {e}");
+            tracing::error!("Failed to persist agent config update: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to persist agent: {e}")})),
+            );
         }
     }
 
@@ -9568,7 +9580,9 @@ pub async fn serve_upload(Path(file_id): Path<String>) -> impl IntoResponse {
         );
     }
 
-    let file_path = std::env::temp_dir().join("openparlant_uploads").join(&file_id);
+    let file_path = std::env::temp_dir()
+        .join("openparlant_uploads")
+        .join(&file_id);
 
     // Look up metadata from registry; fall back to disk probe for generated images
     // (image_generate saves files without registering in UPLOAD_REGISTRY).
@@ -11323,8 +11337,9 @@ pub async fn auth_login(
     let token =
         crate::session_auth::create_session_token(username, &secret, auth_cfg.session_ttl_hours);
     let ttl_secs = auth_cfg.session_ttl_hours * 3600;
-    let cookie =
-        format!("openparlant_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={ttl_secs}");
+    let cookie = format!(
+        "openparlant_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={ttl_secs}"
+    );
 
     state.kernel.audit_log.record(
         "system",
@@ -11492,7 +11507,10 @@ mod channel_config_tests {
             .iter()
             .find(|f| f.key == "mode")
             .expect("mode field should exist for Feishu");
-        assert!(!mode.advanced, "mode must appear in the basic channel form (not only under Advanced)");
+        assert!(
+            !mode.advanced,
+            "mode must appear in the basic channel form (not only under Advanced)"
+        );
     }
 
     #[test]

@@ -521,7 +521,11 @@ impl ChannelAdapter for MastodonAdapter {
         Ok(())
     }
 
-    async fn send_typing(&self, _user: &ChannelUser, _reply_to_message_id: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    async fn send_typing(
+        &self,
+        _user: &ChannelUser,
+        _reply_to_message_id: Option<&str>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // Mastodon does not support typing indicators
         Ok(())
     }

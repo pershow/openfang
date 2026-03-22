@@ -2058,7 +2058,10 @@ fn cmd_doctor(json: bool, repair: bool) {
         // --- Check 1: OpenParlant directory ---
         if openparlant_dir.exists() {
             if !json {
-                ui::check_ok(&format!("OpenParlant directory: {}", openparlant_dir.display()));
+                ui::check_ok(&format!(
+                    "OpenParlant directory: {}",
+                    openparlant_dir.display()
+                ));
             }
             checks.push(serde_json::json!({"check": "openparlant_dir", "status": "ok", "path": openparlant_dir.display().to_string()}));
         } else if repair {
@@ -2220,7 +2223,9 @@ decay_rate = 0.05
             if cfg_path.exists() {
                 std::fs::read_to_string(&cfg_path)
                     .ok()
-                    .and_then(|s| toml::from_str::<openparlant_types::config::KernelConfig>(&s).ok())
+                    .and_then(|s| {
+                        toml::from_str::<openparlant_types::config::KernelConfig>(&s).ok()
+                    })
                     .map(|c| c.api_listen)
                     .unwrap_or_else(|| "127.0.0.1:4200".to_string())
             } else {
@@ -2652,7 +2657,8 @@ decay_rate = 0.05
         let mut injection_warnings = 0;
         for skill in &skills {
             if let Some(ref prompt) = skill.manifest.prompt_context {
-                let warnings = openparlant_skills::verify::SkillVerifier::scan_prompt_content(prompt);
+                let warnings =
+                    openparlant_skills::verify::SkillVerifier::scan_prompt_content(prompt);
                 let has_critical = warnings.iter().any(|w| {
                     matches!(
                         w.severity,
@@ -3481,9 +3487,11 @@ fn cmd_skill_install(source: &str) {
                         let dest = skills_dir.join(&manifest.skill.name);
                         // Copy skill directory
                         copy_dir_recursive(&source_path, &dest);
-                        if let Err(e) = openparlant_skills::openclaw_compat::write_openparlant_manifest(
-                            &dest, &manifest,
-                        ) {
+                        if let Err(e) =
+                            openparlant_skills::openclaw_compat::write_openparlant_manifest(
+                                &dest, &manifest,
+                            )
+                        {
                             eprintln!("Failed to write manifest: {e}");
                             std::process::exit(1);
                         }
@@ -3939,7 +3947,9 @@ fn cmd_channel_setup(channel: Option<&str>) {
                     Err(_) => println!("    export EMAIL_PASSWORD=your_app_password"),
                 }
             } else {
-                ui::hint("Set later: openparlant config set-key email (or export EMAIL_PASSWORD=...)");
+                ui::hint(
+                    "Set later: openparlant config set-key email (or export EMAIL_PASSWORD=...)",
+                );
             }
 
             ui::blank();
@@ -4885,7 +4895,9 @@ fn cmd_config_test_key(provider: &str) {
         println!("{}", "OK".bright_green());
     } else {
         println!("{}", "FAILED (401/403)".bright_red());
-        ui::hint(&format!("Update key: openparlant config set-key {provider}"));
+        ui::hint(&format!(
+            "Update key: openparlant config set-key {provider}"
+        ));
         std::process::exit(1);
     }
 }
@@ -6317,7 +6329,10 @@ fn cmd_reset(confirm: bool) {
     }
 
     if !confirm {
-        println!("  This will delete all data in {}", openparlant_dir.display());
+        println!(
+            "  This will delete all data in {}",
+            openparlant_dir.display()
+        );
         println!("  Including: config, database, agent manifests, credentials.");
         println!();
         let answer = prompt_input("  Are you sure? Type 'yes' to confirm: ");
@@ -6330,7 +6345,10 @@ fn cmd_reset(confirm: bool) {
     match std::fs::remove_dir_all(&openparlant_dir) {
         Ok(()) => ui::success(&format!("Removed {}", openparlant_dir.display())),
         Err(e) => {
-            ui::error(&format!("Failed to remove {}: {e}", openparlant_dir.display()));
+            ui::error(&format!(
+                "Failed to remove {}: {e}",
+                openparlant_dir.display()
+            ));
             std::process::exit(1);
         }
     }
@@ -6427,7 +6445,10 @@ fn cmd_uninstall(confirm: bool, keep_config: bool) {
         } else {
             match std::fs::remove_dir_all(&openparlant_dir) {
                 Ok(()) => ui::success(&format!("Removed {}", openparlant_dir.display())),
-                Err(e) => ui::error(&format!("Failed to remove {}: {e}", openparlant_dir.display())),
+                Err(e) => ui::error(&format!(
+                    "Failed to remove {}: {e}",
+                    openparlant_dir.display()
+                )),
             }
         }
     }
@@ -6602,7 +6623,8 @@ fn clean_path_entries(home: &std::path::Path, openparlant_dir: &str) {
 #[cfg(any(not(windows), test))]
 fn is_openparlant_path_line(line: &str, openparlant_dir: &str) -> bool {
     let lower = line.to_lowercase();
-    let has_openparlant = lower.contains("openparlant") || lower.contains(&openparlant_dir.to_lowercase());
+    let has_openparlant =
+        lower.contains("openparlant") || lower.contains(&openparlant_dir.to_lowercase());
     if !has_openparlant {
         return false;
     }
@@ -6791,7 +6813,8 @@ args = ["-y", "@modelcontextprotocol/server-github"]
     #[test]
     fn test_doctor_skill_injection_scan_clean() {
         let clean_content = "This is a normal skill prompt with helpful instructions.";
-        let warnings = openparlant_skills::verify::SkillVerifier::scan_prompt_content(clean_content);
+        let warnings =
+            openparlant_skills::verify::SkillVerifier::scan_prompt_content(clean_content);
         assert!(warnings.is_empty(), "Clean content should have no warnings");
     }
 

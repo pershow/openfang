@@ -360,6 +360,12 @@ pub struct CompiledTurnContext {
     pub glossary_terms: Vec<GlossaryEntry>,
     pub context_variables: Vec<ResolvedVariable>,
     pub canned_response_candidates: Vec<CannedResponseCandidate>,
+    /// When true, this scope is using control-plane-managed tool authorization.
+    ///
+    /// In this mode, an empty `allowed_tools` means "deny all tools this turn".
+    /// When false, legacy runtime visibility rules remain in effect.
+    #[serde(default)]
+    pub tool_control_active: bool,
     /// Tools that are allowed this turn (after ToolGate evaluation).
     pub allowed_tools: Vec<String>,
     /// Subset of `allowed_tools` that require human approval before execution.
@@ -384,6 +390,7 @@ impl Default for CompiledTurnContext {
             glossary_terms: Vec::new(),
             context_variables: Vec::new(),
             canned_response_candidates: Vec::new(),
+            tool_control_active: false,
             allowed_tools: Vec::new(),
             approval_required_tools: Vec::new(),
             tool_authorizations: Vec::new(),
@@ -400,6 +407,9 @@ pub struct TurnInput {
     pub agent_id: AgentId,
     pub session_id: SessionId,
     pub message: CanonicalMessage,
+    /// Runtime-visible candidate tools for this turn.
+    #[serde(default)]
+    pub candidate_tools: Vec<ToolCandidate>,
     /// Tool calls produced in the previous preparation iteration (empty on the first call).
     ///
     /// When non-empty, the coordinator will use these results to enrich the message context
@@ -417,6 +427,15 @@ pub struct ToolCallRecord {
     /// Serialized result or error message from the tool call (used in preparation iteration).
     #[serde(default)]
     pub result: Option<String>,
+}
+
+/// Runtime-visible tool candidate for control-plane gating.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct ToolCandidate {
+    pub tool_name: String,
+    /// Skill group this tool belongs to, if it is provided by a skill.
+    #[serde(default)]
+    pub skill_ref: Option<String>,
 }
 
 /// Session-level flags resolved from `session_bindings` (control plane).
@@ -460,7 +479,16 @@ impl ControlExplainabilitySnapshot {
                 )
             })
             .collect();
-        let authorization_reasons_json = serde_json::json!({ "tool_reasons": tool_reasons }).to_string();
+        let authorization_reasons_json = serde_json::json!({
+            "tool_reasons": tool_reasons,
+            "tool_control_active": ctx.tool_control_active,
+            "tool_control_mode": if ctx.tool_control_active {
+                "managed_deny_by_default"
+            } else {
+                "legacy_open_by_default"
+            },
+        })
+        .to_string();
         Self {
             observation_hits_json: serde_json::to_string(&ctx.active_observations)
                 .unwrap_or_else(|_| "[]".into()),
@@ -511,6 +539,14 @@ impl Default for TurnOutcome {
 pub trait TurnControlCoordinator: Send + Sync {
     /// Compile all control-plane inputs needed before calling the runtime loop.
     async fn compile_turn(&self, input: TurnInput) -> Result<CompiledTurnContext>;
+
+    /// Re-compile the turn after tool results are available.
+    ///
+    /// Implementations that do not support iterative preparation can reuse
+    /// `compile_turn`, which preserves backward compatibility for callers.
+    async fn compile_turn_iterative(&self, input: TurnInput) -> Result<CompiledTurnContext> {
+        self.compile_turn(input).await
+    }
 
     /// Persist control-plane state after the runtime loop completes.
     async fn after_response(&self, outcome: &TurnOutcome) -> Result<()>;
@@ -767,6 +803,7 @@ mod tests {
             name: "g2".to_string(),
             reason: "lower priority".to_string(),
         });
+        ctx.tool_control_active = true;
         ctx.allowed_tools = vec!["search".to_string()];
         ctx.tool_authorizations.push(ToolAuthorization {
             tool_name: "search".to_string(),
@@ -783,10 +820,16 @@ mod tests {
         let auth: serde_json::Value =
             serde_json::from_str(&snap.authorization_reasons_json).unwrap();
         assert!(auth.get("tool_reasons").is_some());
+        assert_eq!(
+            auth.get("tool_control_mode").and_then(|mode| mode.as_str()),
+            Some("managed_deny_by_default")
+        );
         let appr: serde_json::Value =
             serde_json::from_str(&snap.approval_requirements_json).unwrap();
         assert_eq!(
-            appr.get("tools").and_then(|t| t.as_array()).map(|a| a.len()),
+            appr.get("tools")
+                .and_then(|t| t.as_array())
+                .map(|a| a.len()),
             Some(1)
         );
     }

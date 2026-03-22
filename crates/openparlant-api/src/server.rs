@@ -62,9 +62,7 @@ impl openparlant_types::control::ControlLlmCaller for KernelLlmCaller {
             .driver
             .complete(req)
             .await
-            .map_err(|e: openparlant_runtime::llm_driver::LlmError| {
-                anyhow::anyhow!("{e}")
-            })?;
+            .map_err(|e: openparlant_runtime::llm_driver::LlmError| anyhow::anyhow!("{e}"))?;
 
         Ok(resp.text())
     }
@@ -141,14 +139,11 @@ pub async fn build_router(
         .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
         .unwrap_or(false);
 
-    let llm_caller: Arc<dyn openparlant_types::control::ControlLlmCaller> = Arc::new(KernelLlmCaller {
-        driver: kernel.default_llm_driver(),
-        model: kernel
-            .config
-            .default_model
-            .model
-            .clone(),
-    });
+    let llm_caller: Arc<dyn openparlant_types::control::ControlLlmCaller> =
+        Arc::new(KernelLlmCaller {
+            driver: kernel.default_llm_driver(),
+            model: kernel.config.default_model.model.clone(),
+        });
 
     // Build knowledge compiler, wiring in the embedding driver when available.
     let knowledge_compiler = {
@@ -870,52 +865,171 @@ pub async fn build_router(
         .route("/api/auth/logout", axum::routing::post(routes::auth_logout))
         .route("/api/auth/check", axum::routing::get(routes::auth_check))
         // ── Control plane API ──────────────────────────────────────────────
-        .route("/api/control/scopes", axum::routing::get(control_routes::list_scopes).post(control_routes::create_scope))
-        .route("/api/control/scopes/{scope_id}", axum::routing::get(control_routes::get_scope))
-        .route("/api/control/scopes/{scope_id}/observations", axum::routing::get(control_routes::list_observations))
-        .route("/api/control/scopes/{scope_id}/guidelines", axum::routing::get(control_routes::list_guidelines))
-        .route("/api/control/scopes/{scope_id}/journeys", axum::routing::get(control_routes::list_journeys))
-        .route("/api/control/observations", axum::routing::post(control_routes::create_observation))
-        .route("/api/control/observations/{observation_id}", axum::routing::get(control_routes::get_observation))
-        .route("/api/control/guidelines", axum::routing::post(control_routes::create_guideline))
-        .route("/api/control/guidelines/{guideline_id}", axum::routing::get(control_routes::get_guideline))
-        .route("/api/control/journeys", axum::routing::post(control_routes::create_journey))
-        .route("/api/control/journeys/{journey_id}", axum::routing::get(control_routes::get_journey))
-        .route("/api/control/glossary-terms", axum::routing::post(control_routes::create_glossary_term))
-        .route("/api/control/context-variables", axum::routing::post(control_routes::create_context_variable))
-        .route("/api/control/canned-responses", axum::routing::post(control_routes::create_canned_response))
-        .route("/api/control/scopes/{scope_id}/glossary-terms", axum::routing::get(control_routes::list_glossary_terms))
-        .route("/api/control/scopes/{scope_id}/context-variables", axum::routing::get(control_routes::list_context_variables))
-        .route("/api/control/scopes/{scope_id}/canned-responses", axum::routing::get(control_routes::list_canned_responses))
-        .route("/api/control/guideline-relationships", axum::routing::post(control_routes::create_guideline_relationship))
-        .route("/api/control/scopes/{scope_id}/guideline-relationships", axum::routing::get(control_routes::list_guideline_relationships))
-        .route("/api/control/journeys/{journey_id}/states", axum::routing::get(control_routes::list_journey_states).post(control_routes::create_journey_state))
-        .route("/api/control/journeys/{journey_id}/transitions", axum::routing::get(control_routes::list_journey_transitions).post(control_routes::create_journey_transition))
-        .route("/api/control/test/compile-turn", axum::routing::post(control_routes::test_compile_turn))
+        .route(
+            "/api/control/scopes",
+            axum::routing::get(control_routes::list_scopes).post(control_routes::create_scope),
+        )
+        .route(
+            "/api/control/scopes/{scope_id}",
+            axum::routing::get(control_routes::get_scope),
+        )
+        .route(
+            "/api/control/scopes/{scope_id}/observations",
+            axum::routing::get(control_routes::list_observations),
+        )
+        .route(
+            "/api/control/scopes/{scope_id}/guidelines",
+            axum::routing::get(control_routes::list_guidelines),
+        )
+        .route(
+            "/api/control/scopes/{scope_id}/journeys",
+            axum::routing::get(control_routes::list_journeys),
+        )
+        .route(
+            "/api/control/observations",
+            axum::routing::post(control_routes::create_observation),
+        )
+        .route(
+            "/api/control/observations/{observation_id}",
+            axum::routing::get(control_routes::get_observation),
+        )
+        .route(
+            "/api/control/guidelines",
+            axum::routing::post(control_routes::create_guideline),
+        )
+        .route(
+            "/api/control/guidelines/{guideline_id}",
+            axum::routing::get(control_routes::get_guideline),
+        )
+        .route(
+            "/api/control/journeys",
+            axum::routing::post(control_routes::create_journey),
+        )
+        .route(
+            "/api/control/journeys/{journey_id}",
+            axum::routing::get(control_routes::get_journey),
+        )
+        .route(
+            "/api/control/glossary-terms",
+            axum::routing::post(control_routes::create_glossary_term),
+        )
+        .route(
+            "/api/control/context-variables",
+            axum::routing::post(control_routes::create_context_variable),
+        )
+        .route(
+            "/api/control/canned-responses",
+            axum::routing::post(control_routes::create_canned_response),
+        )
+        .route(
+            "/api/control/scopes/{scope_id}/glossary-terms",
+            axum::routing::get(control_routes::list_glossary_terms),
+        )
+        .route(
+            "/api/control/scopes/{scope_id}/context-variables",
+            axum::routing::get(control_routes::list_context_variables),
+        )
+        .route(
+            "/api/control/scopes/{scope_id}/canned-responses",
+            axum::routing::get(control_routes::list_canned_responses),
+        )
+        .route(
+            "/api/control/guideline-relationships",
+            axum::routing::post(control_routes::create_guideline_relationship),
+        )
+        .route(
+            "/api/control/scopes/{scope_id}/guideline-relationships",
+            axum::routing::get(control_routes::list_guideline_relationships),
+        )
+        .route(
+            "/api/control/journeys/{journey_id}/states",
+            axum::routing::get(control_routes::list_journey_states)
+                .post(control_routes::create_journey_state),
+        )
+        .route(
+            "/api/control/journeys/{journey_id}/transitions",
+            axum::routing::get(control_routes::list_journey_transitions)
+                .post(control_routes::create_journey_transition),
+        )
+        .route(
+            "/api/control/test/compile-turn",
+            axum::routing::post(control_routes::test_compile_turn),
+        )
         .route(
             "/api/sessions/{session_id}/replay",
             axum::routing::get(routes::get_session_replay),
         )
-        .route("/api/sessions/{session_id}/control-trace", axum::routing::get(control_routes::session_control_trace))
-        .route("/api/sessions/{session_id}/journey-state", axum::routing::get(control_routes::session_journey_state))
+        .route(
+            "/api/sessions/{session_id}/control-trace",
+            axum::routing::get(control_routes::session_control_trace),
+        )
+        .route(
+            "/api/sessions/{session_id}/journey-state",
+            axum::routing::get(control_routes::session_journey_state),
+        )
         // ── Phase 3: Tool Gate / Approval / Handoff ──────────────────────────
-        .route("/api/control/tool-policies", axum::routing::post(control_routes::create_tool_policy))
-        .route("/api/control/tool-policies/{policy_id}", axum::routing::get(control_routes::get_tool_policy))
-        .route("/api/control/scopes/{scope_id}/tool-policies", axum::routing::get(control_routes::list_tool_policies))
-        .route("/api/control/session-bindings", axum::routing::post(control_routes::create_session_binding))
-        .route("/api/sessions/{session_id}/binding", axum::routing::get(control_routes::get_session_binding))
-        .route("/api/sessions/{session_id}/manual-mode", axum::routing::post(control_routes::enable_manual_mode))
-        .route("/api/sessions/{session_id}/resume-ai", axum::routing::post(control_routes::resume_ai))
-        .route("/api/sessions/{session_id}/handoff", axum::routing::post(control_routes::create_handoff))
-        .route("/api/sessions/{session_id}/handoffs", axum::routing::get(control_routes::list_handoffs))
-        .route("/api/control/handoffs/{handoff_id}/status", axum::routing::patch(control_routes::update_handoff_status))
+        .route(
+            "/api/control/tool-policies",
+            axum::routing::post(control_routes::create_tool_policy),
+        )
+        .route(
+            "/api/control/tool-policies/{policy_id}",
+            axum::routing::get(control_routes::get_tool_policy),
+        )
+        .route(
+            "/api/control/scopes/{scope_id}/tool-policies",
+            axum::routing::get(control_routes::list_tool_policies),
+        )
+        .route(
+            "/api/control/session-bindings",
+            axum::routing::post(control_routes::create_session_binding),
+        )
+        .route(
+            "/api/sessions/{session_id}/binding",
+            axum::routing::get(control_routes::get_session_binding),
+        )
+        .route(
+            "/api/sessions/{session_id}/manual-mode",
+            axum::routing::post(control_routes::enable_manual_mode),
+        )
+        .route(
+            "/api/sessions/{session_id}/resume-ai",
+            axum::routing::post(control_routes::resume_ai),
+        )
+        .route(
+            "/api/sessions/{session_id}/handoff",
+            axum::routing::post(control_routes::create_handoff),
+        )
+        .route(
+            "/api/sessions/{session_id}/handoffs",
+            axum::routing::get(control_routes::list_handoffs),
+        )
+        .route(
+            "/api/control/handoffs/{handoff_id}/status",
+            axum::routing::patch(control_routes::update_handoff_status),
+        )
         // ── Retrievers ───────────────────────────────────────────────────────
-        .route("/api/control/retrievers", axum::routing::post(control_routes::create_retriever))
-        .route("/api/control/scopes/{scope_id}/retrievers", axum::routing::get(control_routes::list_retrievers))
+        .route(
+            "/api/control/retrievers",
+            axum::routing::post(control_routes::create_retriever),
+        )
+        .route(
+            "/api/control/scopes/{scope_id}/retrievers",
+            axum::routing::get(control_routes::list_retrievers),
+        )
         // ── Releases ─────────────────────────────────────────────────────────
-        .route("/api/control/releases/publish", axum::routing::post(control_routes::publish_release))
-        .route("/api/control/releases/rollback", axum::routing::post(control_routes::rollback_release))
-        .route("/api/control/scopes/{scope_id}/releases", axum::routing::get(control_routes::list_releases))
+        .route(
+            "/api/control/releases/publish",
+            axum::routing::post(control_routes::publish_release),
+        )
+        .route(
+            "/api/control/releases/rollback",
+            axum::routing::post(control_routes::rollback_release),
+        )
+        .route(
+            "/api/control/scopes/{scope_id}/releases",
+            axum::routing::get(control_routes::list_releases),
+        )
         .layer(axum::middleware::from_fn_with_state(
             auth_state,
             middleware::auth,

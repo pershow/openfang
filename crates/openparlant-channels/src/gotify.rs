@@ -317,7 +317,11 @@ impl ChannelAdapter for GotifyAdapter {
         self.api_send_message("OpenParlant", &text, 5).await
     }
 
-    async fn send_typing(&self, _user: &ChannelUser, _reply_to_message_id: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    async fn send_typing(
+        &self,
+        _user: &ChannelUser,
+        _reply_to_message_id: Option<&str>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // Gotify has no typing indicator.
         Ok(())
     }

@@ -922,7 +922,9 @@ pub fn run() -> InitResult {
 fn handle_migration_key(
     state: &mut State,
     code: KeyCode,
-    migrate_tx: &std::sync::mpsc::Sender<Result<openparlant_migrate::report::MigrationReport, String>>,
+    migrate_tx: &std::sync::mpsc::Sender<
+        Result<openparlant_migrate::report::MigrationReport, String>,
+    >,
 ) {
     match state.migration_phase {
         MigrationPhase::Detecting => {} // auto-resolves, no keys
@@ -962,8 +964,8 @@ fn handle_migration_key(
                             target_dir,
                             dry_run: false,
                         };
-                        let result =
-                            openparlant_migrate::run_migration(&options).map_err(|e| format!("{e}"));
+                        let result = openparlant_migrate::run_migration(&options)
+                            .map_err(|e| format!("{e}"));
                         let _ = tx.send(result);
                     });
                 } else {

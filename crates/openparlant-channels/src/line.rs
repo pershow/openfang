@@ -482,7 +482,11 @@ impl ChannelAdapter for LineAdapter {
         Ok(())
     }
 
-    async fn send_typing(&self, _user: &ChannelUser, _reply_to_message_id: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    async fn send_typing(
+        &self,
+        _user: &ChannelUser,
+        _reply_to_message_id: Option<&str>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // LINE does not support typing indicators via REST API
         Ok(())
     }

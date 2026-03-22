@@ -1,8 +1,8 @@
 use openparlant_types::control::{JourneyDefinition, JourneyId, ScopeId};
 use openparlant_types::error::{OpenFangError, OpenFangResult};
 use rusqlite::{params, Connection};
-use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex};
 
 /// A journey transition row returned from the store.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,7 +89,10 @@ impl JourneyStore {
     }
 
     /// Fetch a journey definition by ID.
-    pub async fn get_journey(&self, journey_id: &JourneyId) -> OpenFangResult<Option<JourneyDefinition>> {
+    pub async fn get_journey(
+        &self,
+        journey_id: &JourneyId,
+    ) -> OpenFangResult<Option<JourneyDefinition>> {
         let conn = self
             .conn
             .lock()
@@ -165,7 +168,10 @@ impl JourneyStore {
     }
 
     /// Synchronous variant of `get_journey` — usable outside an async context.
-    pub fn get_journey_sync(&self, journey_id: &JourneyId) -> OpenFangResult<Option<JourneyDefinition>> {
+    pub fn get_journey_sync(
+        &self,
+        journey_id: &JourneyId,
+    ) -> OpenFangResult<Option<JourneyDefinition>> {
         let conn = self
             .conn
             .lock()
@@ -350,7 +356,8 @@ impl JourneyStore {
                     state_id,
                     name,
                     description,
-                    required_fields: serde_json::from_str(&required_fields_json).unwrap_or_default(),
+                    required_fields: serde_json::from_str(&required_fields_json)
+                        .unwrap_or_default(),
                     guideline_actions: serde_json::from_str(&actions_json).unwrap_or_default(),
                 }))
             }
@@ -393,11 +400,7 @@ impl JourneyStore {
     }
 
     /// Mark a journey instance as completed or abandoned.
-    pub fn set_instance_status(
-        &self,
-        instance_id: &str,
-        status: &str,
-    ) -> OpenFangResult<()> {
+    pub fn set_instance_status(&self, instance_id: &str, status: &str) -> OpenFangResult<()> {
         let conn = self
             .conn
             .lock()
@@ -412,11 +415,7 @@ impl JourneyStore {
     }
 
     /// Advance an instance to a new state.
-    pub fn advance_instance(
-        &self,
-        instance_id: &str,
-        new_state_id: &str,
-    ) -> OpenFangResult<()> {
+    pub fn advance_instance(&self, instance_id: &str, new_state_id: &str) -> OpenFangResult<()> {
         let conn = self
             .conn
             .lock()
@@ -495,17 +494,14 @@ impl JourneyStore {
             )
             .map_err(|e| OpenFangError::Memory(e.to_string()))?;
         let rows = stmt
-            .query_map(
-                params![journey_id.0.to_string(), from_state_id],
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                    ))
-                },
-            )
+            .query_map(params![journey_id.0.to_string(), from_state_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
             .map_err(|e| OpenFangError::Memory(e.to_string()))?;
         let mut out = Vec::new();
         for row in rows {
@@ -582,7 +578,11 @@ mod tests {
         store.upsert_journey(&journey).unwrap();
         store.upsert_journey(&disabled).unwrap();
 
-        let loaded = store.get_journey(&journey.journey_id).await.unwrap().unwrap();
+        let loaded = store
+            .get_journey(&journey.journey_id)
+            .await
+            .unwrap()
+            .unwrap();
         let enabled = store.list_journeys(&scope_id, true).await.unwrap();
         let all = store.list_journeys(&scope_id, false).await.unwrap();
 

@@ -14,10 +14,12 @@ use crate::loop_guard::{LoopGuard, LoopGuardConfig, LoopGuardVerdict};
 use crate::mcp::McpConnection;
 use crate::tool_runner;
 use crate::web_search::WebToolsContext;
+use async_trait::async_trait;
 use openparlant_memory::session::Session;
 use openparlant_memory::MemorySubstrate;
 use openparlant_skills::registry::SkillRegistry;
 use openparlant_types::agent::AgentManifest;
+use openparlant_types::control::ToolCallRecord;
 use openparlant_types::error::{OpenFangError, OpenFangResult};
 use openparlant_types::memory::{Memory, MemoryFilter, MemorySource};
 use openparlant_types::message::{
@@ -57,8 +59,15 @@ fn phantom_action_detected(text: &str) -> bool {
     let lower = text.to_lowercase();
     let action_verbs = ["sent ", "posted ", "emailed ", "delivered ", "forwarded "];
     let channel_refs = [
-        "telegram", "whatsapp", "slack", "discord", "email", "channel",
-        "message sent", "successfully sent", "has been sent",
+        "telegram",
+        "whatsapp",
+        "slack",
+        "discord",
+        "email",
+        "channel",
+        "message sent",
+        "successfully sent",
+        "has been sent",
     ];
     let has_action = action_verbs.iter().any(|v| lower.contains(v));
     let has_channel = channel_refs.iter().any(|c| lower.contains(c));
@@ -78,6 +87,111 @@ fn append_tool_error_guidance(tool_result_blocks: &mut Vec<ContentBlock>) {
             text: TOOL_ERROR_GUIDANCE.to_string(),
             provider_metadata: None,
         });
+    }
+}
+
+fn build_tool_call_records(
+    tool_calls: &[ToolCall],
+    tool_result_blocks: &[ContentBlock],
+) -> Vec<ToolCallRecord> {
+    let mut result_map: HashMap<&str, (&str, bool)> = HashMap::new();
+    for block in tool_result_blocks {
+        if let ContentBlock::ToolResult {
+            tool_use_id,
+            content,
+            is_error,
+            ..
+        } = block
+        {
+            result_map.insert(tool_use_id.as_str(), (content.as_str(), *is_error));
+        }
+    }
+
+    tool_calls
+        .iter()
+        .map(|tool_call| {
+            let (result, is_error) = result_map
+                .get(tool_call.id.as_str())
+                .map(|(content, is_error)| (Some((*content).to_string()), *is_error))
+                .unwrap_or((None, false));
+            let approved = result.as_deref().and_then(|content| {
+                if content.contains("requires human approval and was denied") {
+                    Some(false)
+                } else {
+                    None
+                }
+            });
+            ToolCallRecord {
+                tool_name: tool_call.name.clone(),
+                approved,
+                success: !is_error,
+                result,
+            }
+        })
+        .collect()
+}
+
+fn first_message_matches_text(messages: &[Message], text: &str) -> bool {
+    matches!(
+        messages.first(),
+        Some(Message {
+            role: Role::User,
+            content: MessageContent::Text(current),
+        }) if current == text
+    )
+}
+
+fn apply_iterative_control_update(
+    manifest: &mut AgentManifest,
+    recalled_memory_section: Option<&str>,
+    messages: &mut Vec<Message>,
+    current_canonical_context_message: &mut Option<String>,
+    available_tools: &mut Vec<ToolDefinition>,
+    update: IterativeControlUpdate,
+) {
+    manifest.model.system_prompt = update.system_prompt;
+    if let Some(section) = recalled_memory_section.filter(|section| !section.is_empty()) {
+        manifest.model.system_prompt.push_str("\n\n");
+        manifest.model.system_prompt.push_str(section);
+    }
+
+    *available_tools = update.available_tools;
+
+    match update.canonical_context_message {
+        Some(new_message) => {
+            manifest.metadata.insert(
+                "canonical_context_msg".to_string(),
+                serde_json::Value::String(new_message.clone()),
+            );
+            if let Some(current) = current_canonical_context_message.as_deref() {
+                if first_message_matches_text(messages, current) {
+                    messages[0] = Message::user(new_message.clone());
+                } else {
+                    messages.insert(0, Message::user(new_message.clone()));
+                }
+            } else {
+                messages.insert(0, Message::user(new_message.clone()));
+            }
+            *current_canonical_context_message = Some(new_message);
+        }
+        None => {
+            manifest.metadata.remove("canonical_context_msg");
+            if let Some(current) = current_canonical_context_message.as_deref() {
+                if first_message_matches_text(messages, current) {
+                    messages.remove(0);
+                }
+            }
+            *current_canonical_context_message = None;
+        }
+    }
+
+    if update.approval_required_tools.is_empty() {
+        manifest.metadata.remove("approval_required_tools");
+    } else {
+        manifest.metadata.insert(
+            "approval_required_tools".to_string(),
+            serde_json::json!(update.approval_required_tools),
+        );
     }
 }
 
@@ -119,6 +233,25 @@ pub enum LoopPhase {
 /// Callback for agent lifecycle phase changes.
 /// Implementations should be non-blocking (fire-and-forget) to avoid slowing the loop.
 pub type PhaseCallback = Arc<dyn Fn(LoopPhase) + Send + Sync>;
+
+/// Updated loop state returned by the control plane after tool-result re-evaluation.
+#[derive(Debug, Clone, Default)]
+pub struct IterativeControlUpdate {
+    pub system_prompt: String,
+    pub canonical_context_message: Option<String>,
+    pub available_tools: Vec<ToolDefinition>,
+    pub approval_required_tools: Vec<String>,
+}
+
+/// Optional callback invoked after each tool-result round so the caller can
+/// re-evaluate guidelines and tool visibility before the next LLM request.
+#[async_trait]
+pub trait IterativeControlCallback: Send + Sync {
+    async fn on_tool_results(
+        &self,
+        tool_calls: &[ToolCallRecord],
+    ) -> OpenFangResult<Option<IterativeControlUpdate>>;
+}
 
 /// Result of an agent loop execution.
 #[derive(Debug)]
@@ -163,6 +296,7 @@ pub async fn run_agent_loop(
     hooks: Option<&crate::hooks::HookRegistry>,
     context_window_tokens: Option<usize>,
     process_manager: Option<&crate::process_manager::ProcessManager>,
+    iterative_control: Option<&dyn IterativeControlCallback>,
     user_content_blocks: Option<Vec<ContentBlock>>,
 ) -> OpenFangResult<AgentLoopResult> {
     info!(agent = %manifest.name, "Starting agent loop");
@@ -236,16 +370,21 @@ pub async fn run_agent_loop(
         let _ = hook_reg.fire(&ctx);
     }
 
-    // Build the system prompt — base prompt comes from kernel (prompt_builder),
-    // we append recalled memories here since they are resolved at loop time.
-    let mut system_prompt = manifest.model.system_prompt.clone();
-    if !memories.is_empty() {
+    // Build the mutable loop manifest so control-plane re-evaluation can update
+    // prompt/tool visibility without mutating the caller's manifest.
+    let mut loop_manifest = manifest.clone();
+    let recalled_memory_section = if memories.is_empty() {
+        None
+    } else {
         let mem_pairs: Vec<(String, String)> = memories
             .iter()
             .map(|m| (String::new(), m.content.clone()))
             .collect();
-        system_prompt.push_str("\n\n");
-        system_prompt.push_str(&crate::prompt_builder::build_memory_section(&mem_pairs));
+        Some(crate::prompt_builder::build_memory_section(&mem_pairs))
+    };
+    if let Some(section) = recalled_memory_section.as_deref() {
+        loop_manifest.model.system_prompt.push_str("\n\n");
+        loop_manifest.model.system_prompt.push_str(section);
     }
 
     // Add the user message to session history.
@@ -272,7 +411,9 @@ pub async fn run_agent_loop(
     // The LLM already received them via llm_messages above.
     for msg in session.messages.iter_mut() {
         if let MessageContent::Blocks(blocks) = &mut msg.content {
-            let had_images = blocks.iter().any(|b| matches!(b, ContentBlock::Image { .. }));
+            let had_images = blocks
+                .iter()
+                .any(|b| matches!(b, ContentBlock::Image { .. }));
             if had_images {
                 blocks.retain(|b| !matches!(b, ContentBlock::Image { .. }));
                 if blocks.is_empty() {
@@ -290,18 +431,19 @@ pub async fn run_agent_loop(
 
     // Inject canonical context as the first user message (not in system prompt)
     // to keep the system prompt stable across turns for provider prompt caching.
-    if let Some(cc_msg) = manifest
+    let mut current_canonical_context_message = loop_manifest
         .metadata
         .get("canonical_context_msg")
         .and_then(|v| v.as_str())
-    {
-        if !cc_msg.is_empty() {
-            messages.insert(0, Message::user(cc_msg));
-        }
+        .filter(|cc_msg| !cc_msg.is_empty())
+        .map(str::to_string);
+    if let Some(cc_msg) = current_canonical_context_message.as_deref() {
+        messages.insert(0, Message::user(cc_msg));
     }
 
     let mut total_usage = TokenUsage::default();
     let final_response;
+    let mut available_tools = available_tools.to_vec();
 
     // Safety valve: trim excessively long message histories to prevent context overflow.
     // The full compaction system handles sophisticated summarization, but this prevents
@@ -348,8 +490,12 @@ pub async fn run_agent_loop(
         debug!(iteration, "Agent loop iteration");
 
         // Context overflow recovery pipeline (replaces emergency_trim_messages)
-        let recovery =
-            recover_from_overflow(&mut messages, &system_prompt, available_tools, ctx_window);
+        let recovery = recover_from_overflow(
+            &mut messages,
+            &loop_manifest.model.system_prompt,
+            &available_tools,
+            ctx_window,
+        );
         if recovery == RecoveryStage::FinalError {
             warn!("Context overflow unrecoverable — suggest /reset or /compact");
         }
@@ -361,18 +507,19 @@ pub async fn run_agent_loop(
         }
 
         // Context guard: compact oversized tool results before LLM call
-        apply_context_guard(&mut messages, &context_budget, available_tools);
+        apply_context_guard(&mut messages, &context_budget, &available_tools);
 
         // Strip provider prefix: "openrouter/google/gemini-2.5-flash" → "google/gemini-2.5-flash"
-        let api_model = strip_provider_prefix(&manifest.model.model, &manifest.model.provider);
+        let api_model =
+            strip_provider_prefix(&loop_manifest.model.model, &loop_manifest.model.provider);
 
         let request = CompletionRequest {
             model: api_model,
             messages: messages.clone(),
-            tools: available_tools.to_vec(),
-            max_tokens: manifest.model.max_tokens,
-            temperature: manifest.model.temperature,
-            system: Some(system_prompt.clone()),
+            tools: available_tools.clone(),
+            max_tokens: loop_manifest.model.max_tokens,
+            temperature: loop_manifest.model.temperature,
+            system: Some(loop_manifest.model.system_prompt.clone()),
             thinking: None,
         };
 
@@ -382,7 +529,7 @@ pub async fn run_agent_loop(
         }
 
         // Call LLM with retry, error classification, and circuit breaker
-        let provider_name = manifest.model.provider.as_str();
+        let provider_name = loop_manifest.model.provider.as_str();
         let mut response = call_with_retry(&*driver, request, Some(provider_name), None).await?;
 
         total_usage.input_tokens += response.usage.input_tokens;
@@ -395,7 +542,7 @@ pub async fn run_agent_loop(
             StopReason::EndTurn | StopReason::StopSequence
         ) && response.tool_calls.is_empty()
         {
-            let recovered = recover_text_tool_calls(&response.text(), available_tools);
+            let recovered = recover_text_tool_calls(&response.text(), &available_tools);
             if !recovered.is_empty() {
                 info!(
                     count = recovered.len(),
@@ -454,7 +601,10 @@ pub async fn run_agent_loop(
                 // One-shot retry: if the LLM returns empty text with no tool use,
                 // try once more before accepting the empty result.
                 // Triggers on first call OR when input_tokens=0 (silently failed request).
-                if text.trim().is_empty() && response.tool_calls.is_empty() && !response.has_any_content() {
+                if text.trim().is_empty()
+                    && response.tool_calls.is_empty()
+                    && !response.has_any_content()
+                {
                     let is_silent_failure =
                         response.usage.input_tokens == 0 && response.usage.output_tokens == 0;
                     if iteration == 0 || is_silent_failure {
@@ -499,7 +649,10 @@ pub async fn run_agent_loop(
                 // channel action (send, post, email, etc.) but never actually
                 // called the corresponding tool, re-prompt once to force real
                 // tool usage instead of hallucinated completion.
-                let text = if !any_tools_executed && iteration == 0 && phantom_action_detected(&text) {
+                let text = if !any_tools_executed
+                    && iteration == 0
+                    && phantom_action_detected(&text)
+                {
                     warn!(agent = %manifest.name, "Phantom action detected — re-prompting for real tool use");
                     messages.push(Message::assistant(text));
                     messages.push(Message::user(
@@ -707,7 +860,7 @@ pub async fn run_agent_loop(
                     }
 
                     // Resolve effective exec policy (per-agent override or global)
-                    let effective_exec_policy = manifest.exec_policy.as_ref();
+                    let effective_exec_policy = loop_manifest.exec_policy.as_ref();
 
                     // Timeout-wrapped execution
                     let result = match tokio::time::timeout(
@@ -734,7 +887,7 @@ pub async fn run_agent_loop(
                             tts_engine,
                             docker_config,
                             process_manager,
-                            Some(manifest),
+                            Some(&loop_manifest),
                         ),
                     )
                     .await
@@ -841,6 +994,27 @@ pub async fn run_agent_loop(
                 // Interim save after tool execution to prevent data loss on crash
                 if let Err(e) = memory.save_session_async(session).await {
                     warn!("Failed to interim-save session: {e}");
+                }
+
+                if let Some(callback) = iterative_control {
+                    let tool_call_records =
+                        build_tool_call_records(&response.tool_calls, &tool_result_blocks);
+                    match callback.on_tool_results(&tool_call_records).await {
+                        Ok(Some(update)) => {
+                            apply_iterative_control_update(
+                                &mut loop_manifest,
+                                recalled_memory_section.as_deref(),
+                                &mut messages,
+                                &mut current_canonical_context_message,
+                                &mut available_tools,
+                                update,
+                            );
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            warn!(error = %e, "iterative control callback failed");
+                        }
+                    }
                 }
             }
             StopReason::MaxTokens => {
@@ -1171,6 +1345,7 @@ pub async fn run_agent_loop_streaming(
     hooks: Option<&crate::hooks::HookRegistry>,
     context_window_tokens: Option<usize>,
     process_manager: Option<&crate::process_manager::ProcessManager>,
+    iterative_control: Option<&dyn IterativeControlCallback>,
     user_content_blocks: Option<Vec<ContentBlock>>,
 ) -> OpenFangResult<AgentLoopResult> {
     info!(agent = %manifest.name, "Starting streaming agent loop");
@@ -1244,16 +1419,21 @@ pub async fn run_agent_loop_streaming(
         let _ = hook_reg.fire(&ctx);
     }
 
-    // Build the system prompt — base prompt comes from kernel (prompt_builder),
-    // we append recalled memories here since they are resolved at loop time.
-    let mut system_prompt = manifest.model.system_prompt.clone();
-    if !memories.is_empty() {
+    // Build the mutable loop manifest so control-plane re-evaluation can update
+    // prompt/tool visibility without mutating the caller's manifest.
+    let mut loop_manifest = manifest.clone();
+    let recalled_memory_section = if memories.is_empty() {
+        None
+    } else {
         let mem_pairs: Vec<(String, String)> = memories
             .iter()
             .map(|m| (String::new(), m.content.clone()))
             .collect();
-        system_prompt.push_str("\n\n");
-        system_prompt.push_str(&crate::prompt_builder::build_memory_section(&mem_pairs));
+        Some(crate::prompt_builder::build_memory_section(&mem_pairs))
+    };
+    if let Some(section) = recalled_memory_section.as_deref() {
+        loop_manifest.model.system_prompt.push_str("\n\n");
+        loop_manifest.model.system_prompt.push_str(section);
     }
 
     // Add the user message to session history.
@@ -1276,7 +1456,9 @@ pub async fn run_agent_loop_streaming(
     // The LLM already received them via llm_messages above.
     for msg in session.messages.iter_mut() {
         if let MessageContent::Blocks(blocks) = &mut msg.content {
-            let had_images = blocks.iter().any(|b| matches!(b, ContentBlock::Image { .. }));
+            let had_images = blocks
+                .iter()
+                .any(|b| matches!(b, ContentBlock::Image { .. }));
             if had_images {
                 blocks.retain(|b| !matches!(b, ContentBlock::Image { .. }));
                 if blocks.is_empty() {
@@ -1294,18 +1476,19 @@ pub async fn run_agent_loop_streaming(
 
     // Inject canonical context as the first user message (not in system prompt)
     // to keep the system prompt stable across turns for provider prompt caching.
-    if let Some(cc_msg) = manifest
+    let mut current_canonical_context_message = loop_manifest
         .metadata
         .get("canonical_context_msg")
         .and_then(|v| v.as_str())
-    {
-        if !cc_msg.is_empty() {
-            messages.insert(0, Message::user(cc_msg));
-        }
+        .filter(|cc_msg| !cc_msg.is_empty())
+        .map(str::to_string);
+    if let Some(cc_msg) = current_canonical_context_message.as_deref() {
+        messages.insert(0, Message::user(cc_msg));
     }
 
     let mut total_usage = TokenUsage::default();
     let final_response;
+    let mut available_tools = available_tools.to_vec();
 
     // Safety valve: trim excessively long message histories to prevent context overflow.
     if messages.len() > MAX_HISTORY_MESSAGES {
@@ -1350,8 +1533,12 @@ pub async fn run_agent_loop_streaming(
         debug!(iteration, "Streaming agent loop iteration");
 
         // Context overflow recovery pipeline (replaces emergency_trim_messages)
-        let recovery =
-            recover_from_overflow(&mut messages, &system_prompt, available_tools, ctx_window);
+        let recovery = recover_from_overflow(
+            &mut messages,
+            &loop_manifest.model.system_prompt,
+            &available_tools,
+            ctx_window,
+        );
         match &recovery {
             RecoveryStage::None => {}
             RecoveryStage::FinalError => {
@@ -1373,18 +1560,19 @@ pub async fn run_agent_loop_streaming(
         }
 
         // Context guard: compact oversized tool results before LLM call
-        apply_context_guard(&mut messages, &context_budget, available_tools);
+        apply_context_guard(&mut messages, &context_budget, &available_tools);
 
         // Strip provider prefix: "openrouter/google/gemini-2.5-flash" → "google/gemini-2.5-flash"
-        let api_model = strip_provider_prefix(&manifest.model.model, &manifest.model.provider);
+        let api_model =
+            strip_provider_prefix(&loop_manifest.model.model, &loop_manifest.model.provider);
 
         let request = CompletionRequest {
             model: api_model,
             messages: messages.clone(),
-            tools: available_tools.to_vec(),
-            max_tokens: manifest.model.max_tokens,
-            temperature: manifest.model.temperature,
-            system: Some(system_prompt.clone()),
+            tools: available_tools.clone(),
+            max_tokens: loop_manifest.model.max_tokens,
+            temperature: loop_manifest.model.temperature,
+            system: Some(loop_manifest.model.system_prompt.clone()),
             thinking: None,
         };
 
@@ -1400,7 +1588,7 @@ pub async fn run_agent_loop_streaming(
         }
 
         // Stream LLM call with retry, error classification, and circuit breaker
-        let provider_name = manifest.model.provider.as_str();
+        let provider_name = loop_manifest.model.provider.as_str();
         let mut response = stream_with_retry(
             &*driver,
             request,
@@ -1419,7 +1607,7 @@ pub async fn run_agent_loop_streaming(
             StopReason::EndTurn | StopReason::StopSequence
         ) && response.tool_calls.is_empty()
         {
-            let recovered = recover_text_tool_calls(&response.text(), available_tools);
+            let recovered = recover_text_tool_calls(&response.text(), &available_tools);
             if !recovered.is_empty() {
                 info!(
                     count = recovered.len(),
@@ -1476,7 +1664,10 @@ pub async fn run_agent_loop_streaming(
                 // One-shot retry: if the LLM returns empty text with no tool use,
                 // try once more before accepting the empty result.
                 // Triggers on first call OR when input_tokens=0 (silently failed request).
-                if text.trim().is_empty() && response.tool_calls.is_empty() && !response.has_any_content() {
+                if text.trim().is_empty()
+                    && response.tool_calls.is_empty()
+                    && !response.has_any_content()
+                {
                     let is_silent_failure =
                         response.usage.input_tokens == 0 && response.usage.output_tokens == 0;
                     if iteration == 0 || is_silent_failure {
@@ -1707,7 +1898,7 @@ pub async fn run_agent_loop_streaming(
                     }
 
                     // Resolve effective exec policy (per-agent override or global)
-                    let effective_exec_policy = manifest.exec_policy.as_ref();
+                    let effective_exec_policy = loop_manifest.exec_policy.as_ref();
 
                     // Timeout-wrapped execution
                     let result = match tokio::time::timeout(
@@ -1734,7 +1925,7 @@ pub async fn run_agent_loop_streaming(
                             tts_engine,
                             docker_config,
                             process_manager,
-                            Some(manifest),
+                            Some(&loop_manifest),
                         ),
                     )
                     .await
@@ -1853,6 +2044,27 @@ pub async fn run_agent_loop_streaming(
 
                 if let Err(e) = memory.save_session_async(session).await {
                     warn!("Failed to interim-save session: {e}");
+                }
+
+                if let Some(callback) = iterative_control {
+                    let tool_call_records =
+                        build_tool_call_records(&response.tool_calls, &tool_result_blocks);
+                    match callback.on_tool_results(&tool_call_records).await {
+                        Ok(Some(update)) => {
+                            apply_iterative_control_update(
+                                &mut loop_manifest,
+                                recalled_memory_section.as_deref(),
+                                &mut messages,
+                                &mut current_canonical_context_message,
+                                &mut available_tools,
+                                update,
+                            );
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            warn!(error = %e, "iterative control callback failed (streaming)");
+                        }
+                    }
                 }
             }
             StopReason::MaxTokens => {
@@ -2918,6 +3130,94 @@ mod tests {
         }
     }
 
+    struct InspectingIterativeControlDriver {
+        call_count: AtomicU32,
+    }
+
+    impl InspectingIterativeControlDriver {
+        fn new() -> Self {
+            Self {
+                call_count: AtomicU32::new(0),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl LlmDriver for InspectingIterativeControlDriver {
+        async fn complete(
+            &self,
+            request: CompletionRequest,
+        ) -> Result<CompletionResponse, LlmError> {
+            let call = self.call_count.fetch_add(1, Ordering::Relaxed);
+            if call == 0 {
+                assert!(
+                    request.tools.iter().any(|tool| tool.name == "system_time"),
+                    "first request should expose system_time"
+                );
+                Ok(CompletionResponse {
+                    content: vec![ContentBlock::ToolUse {
+                        id: "tool-1".to_string(),
+                        name: "system_time".to_string(),
+                        input: serde_json::json!({}),
+                        provider_metadata: None,
+                    }],
+                    stop_reason: StopReason::ToolUse,
+                    tool_calls: vec![ToolCall {
+                        id: "tool-1".to_string(),
+                        name: "system_time".to_string(),
+                        input: serde_json::json!({}),
+                    }],
+                    usage: TokenUsage {
+                        input_tokens: 8,
+                        output_tokens: 3,
+                    },
+                })
+            } else {
+                let system_prompt = request.system.unwrap_or_default();
+                assert!(
+                    system_prompt.contains("Updated iterative prompt"),
+                    "second request should use updated system prompt, got: {system_prompt:?}"
+                );
+                assert!(
+                    request.tools.is_empty(),
+                    "second request should use updated tool visibility"
+                );
+                Ok(CompletionResponse {
+                    content: vec![ContentBlock::Text {
+                        text: "Iterative control applied.".to_string(),
+                        provider_metadata: None,
+                    }],
+                    stop_reason: StopReason::EndTurn,
+                    tool_calls: vec![],
+                    usage: TokenUsage {
+                        input_tokens: 12,
+                        output_tokens: 4,
+                    },
+                })
+            }
+        }
+    }
+
+    struct StaticIterativeControlCallback;
+
+    #[async_trait]
+    impl IterativeControlCallback for StaticIterativeControlCallback {
+        async fn on_tool_results(
+            &self,
+            tool_calls: &[ToolCallRecord],
+        ) -> OpenFangResult<Option<IterativeControlUpdate>> {
+            assert_eq!(tool_calls.len(), 1);
+            assert_eq!(tool_calls[0].tool_name, "system_time");
+            assert!(tool_calls[0].result.is_some());
+            Ok(Some(IterativeControlUpdate {
+                system_prompt: "Updated iterative prompt".to_string(),
+                canonical_context_message: None,
+                available_tools: Vec::new(),
+                approval_required_tools: Vec::new(),
+            }))
+        }
+    }
+
     #[tokio::test]
     async fn test_empty_response_after_tool_use_returns_fallback() {
         let memory = openparlant_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
@@ -2953,6 +3253,7 @@ mod tests {
             None, // hooks
             None, // context_window_tokens
             None, // process_manager
+            None, // iterative_control
             None, // user_content_blocks
         )
         .await
@@ -2969,6 +3270,108 @@ mod tests {
             "Expected fallback message, got: {:?}",
             result.response
         );
+    }
+
+    #[tokio::test]
+    async fn test_iterative_control_callback_updates_next_iteration_prompt_and_tools() {
+        let memory = openparlant_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
+        let agent_id = openparlant_types::agent::AgentId::new();
+        let mut session = openparlant_memory::session::Session {
+            id: openparlant_types::agent::SessionId::new(),
+            agent_id,
+            messages: Vec::new(),
+            context_window_tokens: 0,
+            label: None,
+        };
+        let manifest = test_manifest();
+        let driver: Arc<dyn LlmDriver> = Arc::new(InspectingIterativeControlDriver::new());
+        let iterative_control = StaticIterativeControlCallback;
+
+        let result = run_agent_loop(
+            &manifest,
+            "Use a tool and then continue",
+            &mut session,
+            &memory,
+            driver,
+            &[ToolDefinition {
+                name: "system_time".into(),
+                description: "Get the current system time".into(),
+                input_schema: serde_json::json!({}),
+            }],
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None, // on_phase
+            None, // media_engine
+            None, // tts_engine
+            None, // docker_config
+            None, // hooks
+            None, // context_window_tokens
+            None, // process_manager
+            Some(&iterative_control),
+            None, // user_content_blocks
+        )
+        .await
+        .expect("Loop should apply iterative control update");
+
+        assert_eq!(result.response, "Iterative control applied.");
+        assert_eq!(result.iterations, 2);
+    }
+
+    #[tokio::test]
+    async fn test_streaming_iterative_control_callback_updates_next_iteration_prompt_and_tools() {
+        let memory = openparlant_memory::MemorySubstrate::open_in_memory(0.01).unwrap();
+        let agent_id = openparlant_types::agent::AgentId::new();
+        let mut session = openparlant_memory::session::Session {
+            id: openparlant_types::agent::SessionId::new(),
+            agent_id,
+            messages: Vec::new(),
+            context_window_tokens: 0,
+            label: None,
+        };
+        let manifest = test_manifest();
+        let driver: Arc<dyn LlmDriver> = Arc::new(InspectingIterativeControlDriver::new());
+        let iterative_control = StaticIterativeControlCallback;
+        let (tx, _rx) = mpsc::channel(64);
+
+        let result = run_agent_loop_streaming(
+            &manifest,
+            "Use a tool and then continue",
+            &mut session,
+            &memory,
+            driver,
+            &[ToolDefinition {
+                name: "system_time".into(),
+                description: "Get the current system time".into(),
+                input_schema: serde_json::json!({}),
+            }],
+            None,
+            tx,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None, // on_phase
+            None, // media_engine
+            None, // tts_engine
+            None, // docker_config
+            None, // hooks
+            None, // context_window_tokens
+            None, // process_manager
+            Some(&iterative_control),
+            None, // user_content_blocks
+        )
+        .await
+        .expect("Streaming loop should apply iterative control update");
+
+        assert_eq!(result.response, "Iterative control applied.");
+        assert_eq!(result.iterations, 2);
     }
 
     #[tokio::test]
@@ -3006,6 +3409,7 @@ mod tests {
             None, // hooks
             None, // context_window_tokens
             None, // process_manager
+            None, // iterative_control
             None, // user_content_blocks
         )
         .await
@@ -3061,6 +3465,7 @@ mod tests {
             None, // hooks
             None, // context_window_tokens
             None, // process_manager
+            None, // iterative_control
             None, // user_content_blocks
         )
         .await
@@ -3114,6 +3519,7 @@ mod tests {
             None, // hooks
             None, // context_window_tokens
             None, // process_manager
+            None, // iterative_control
             None, // user_content_blocks
         )
         .await
@@ -3160,6 +3566,7 @@ mod tests {
             None, // hooks
             None, // context_window_tokens
             None, // process_manager
+            None, // iterative_control
             None, // user_content_blocks
         )
         .await
@@ -3284,6 +3691,7 @@ mod tests {
             None,
             None, // context_window_tokens
             None, // process_manager
+            None, // iterative_control
             None, // user_content_blocks
         )
         .await
@@ -3331,6 +3739,7 @@ mod tests {
             None,
             None, // context_window_tokens
             None, // process_manager
+            None, // iterative_control
             None, // user_content_blocks
         )
         .await
@@ -3386,6 +3795,7 @@ mod tests {
             None, // hooks
             None, // context_window_tokens
             None, // process_manager
+            None, // iterative_control
             None, // user_content_blocks
         )
         .await
@@ -4274,6 +4684,7 @@ mod tests {
             None, // hooks
             None, // context_window_tokens
             None, // process_manager
+            None, // iterative_control
             None, // user_content_blocks
         )
         .await
@@ -4327,6 +4738,7 @@ mod tests {
             &memory,
             driver,
             &tools, // tools available but not used
+            None,
             None,
             None,
             None,
@@ -4404,6 +4816,7 @@ mod tests {
             None, // hooks
             None, // context_window_tokens
             None, // process_manager
+            None, // iterative_control
             None, // user_content_blocks
         )
         .await

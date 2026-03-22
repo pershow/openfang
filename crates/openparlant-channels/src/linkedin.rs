@@ -376,7 +376,11 @@ impl ChannelAdapter for LinkedInAdapter {
         self.api_send_message(&user.platform_id, &text).await
     }
 
-    async fn send_typing(&self, _user: &ChannelUser, _reply_to_message_id: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    async fn send_typing(
+        &self,
+        _user: &ChannelUser,
+        _reply_to_message_id: Option<&str>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // LinkedIn Messaging API does not support typing indicators.
         Ok(())
     }

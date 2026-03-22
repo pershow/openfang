@@ -157,7 +157,9 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
             manual_mode,
             active_journey_instance_id,
         };
-        store.upsert_session_binding(&binding).map_err(|e| e.to_string())
+        store
+            .upsert_session_binding(&binding)
+            .map_err(|e| e.to_string())
     }
 
     async fn is_manual_mode(
@@ -299,7 +301,9 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
             let status = match p.auth_status {
                 openparlant_types::model_catalog::AuthStatus::Configured => "configured",
                 openparlant_types::model_catalog::AuthStatus::Missing => "not configured",
-                openparlant_types::model_catalog::AuthStatus::NotRequired => "local (no key needed)",
+                openparlant_types::model_catalog::AuthStatus::NotRequired => {
+                    "local (no key needed)"
+                }
             };
             msg.push_str(&format!(
                 "  {} — {} [{}, {} model(s)]\n",
@@ -1506,7 +1510,8 @@ pub async fn start_channel_bridge_with_config(
     // Feishu/Lark
     if let Some(ref fs_config) = config.feishu {
         if let Some(secret) = read_token(&fs_config.app_secret_env, "Feishu") {
-            let region = openparlant_channels::feishu::FeishuRegion::parse_region(&fs_config.region);
+            let region =
+                openparlant_channels::feishu::FeishuRegion::parse_region(&fs_config.region);
             let encrypt_key = fs_config
                 .encrypt_key_env
                 .as_ref()

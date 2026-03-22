@@ -5,8 +5,8 @@ mod store;
 use anyhow::Result;
 use async_trait::async_trait;
 use openparlant_types::control::{
-    CanonicalMessage, ExcludedGuideline, GuidelineActivation, ObservationDefinition, ObservationHit,
-    ScopeId, ToolAuthorization,
+    CanonicalMessage, ExcludedGuideline, GuidelineActivation, ObservationDefinition,
+    ObservationHit, ScopeId, ToolAuthorization, ToolCandidate, ToolExposurePolicy,
 };
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -19,6 +19,30 @@ pub struct PolicyResolution {
     pub active_guidelines: Vec<GuidelineActivation>,
     pub excluded_guidelines: Vec<ExcludedGuideline>,
     pub tool_authorizations: Vec<ToolAuthorization>,
+    /// When true, this scope is using control-plane-managed tool authorization.
+    ///
+    /// Managed scopes switch to deny-by-default for tools; unmanaged scopes
+    /// keep the legacy runtime-visible tool set for backward compatibility.
+    pub tool_control_active: bool,
+}
+
+/// Normalize relationship names coming from control-plane APIs or legacy data.
+///
+/// The control-plane UI/API historically used friendlier names such as
+/// `"overrides"` / `"conflicts_with"` / `"requires"`, while the resolver
+/// logic expects canonical internal names such as
+/// `"prioritizes_over"` / `"excludes"` / `"depends_on"`.
+pub fn canonical_guideline_relation_type(relation_type: &str) -> Option<&'static str> {
+    match relation_type.trim().to_ascii_lowercase().as_str() {
+        "requires" | "depends_on" => Some("depends_on"),
+        "conflicts_with" | "excludes" => Some("excludes"),
+        "overrides" | "prioritizes_over" => Some("prioritizes_over"),
+        // Keep complements as a recognised no-op relation so older payloads
+        // round-trip cleanly even though the current MVP resolver has no
+        // additional semantics for it yet.
+        "complements" => Some("complements"),
+        _ => None,
+    }
 }
 
 /// Match structured observations from an inbound message.
@@ -40,6 +64,7 @@ pub trait PolicyResolver: Send + Sync {
         message: &CanonicalMessage,
         observations: &[ObservationHit],
         active_journey_state: Option<&str>,
+        candidate_tools: &[ToolCandidate],
     ) -> Result<PolicyResolution>;
 }
 
@@ -113,10 +138,7 @@ fn match_observation_deterministic(
         }
 
         "regex" => {
-            let pattern = obs
-                .matcher_config
-                .get("pattern")
-                .and_then(|v| v.as_str())?;
+            let pattern = obs.matcher_config.get("pattern").and_then(|v| v.as_str())?;
             match regex_lite::Regex::new(pattern) {
                 Ok(re) => {
                     if re.is_match(text) {
@@ -153,7 +175,11 @@ fn match_observation_deterministic(
         return None;
     }
 
-    if let Some(arr) = obs.matcher_config.get("contains").and_then(|v| v.as_array()) {
+    if let Some(arr) = obs
+        .matcher_config
+        .get("contains")
+        .and_then(|v| v.as_array())
+    {
         let terms: Vec<String> = arr
             .iter()
             .filter_map(|v| v.as_str().map(|s| s.to_lowercase()))
@@ -245,6 +271,140 @@ mod observation_deterministic_tests {
     }
 }
 
+fn tool_policy_preconditions_match(
+    policy: &ToolExposurePolicy,
+    obs_names: &[&str],
+    active_guideline_names: &[String],
+    active_journey_state: Option<&str>,
+) -> bool {
+    if !policy.enabled {
+        return false;
+    }
+    if let Some(ref obs_ref) = policy.observation_ref {
+        if !obs_names.contains(&obs_ref.as_str()) {
+            return false;
+        }
+    }
+    if let Some(ref g_ref) = policy.guideline_ref {
+        if !active_guideline_names.contains(g_ref) {
+            return false;
+        }
+    }
+    if let Some(ref journey_state_ref) = policy.journey_state_ref {
+        if active_journey_state != Some(journey_state_ref.as_str()) {
+            return false;
+        }
+    }
+    true
+}
+
+fn candidate_matches_policy(candidate: &ToolCandidate, policy: &ToolExposurePolicy) -> bool {
+    let tool_matches = if policy.skill_ref.is_some() {
+        !policy.tool_name.trim().is_empty()
+            && policy.tool_name != "*"
+            && policy.tool_name == candidate.tool_name
+    } else {
+        policy.tool_name == "*"
+            || (!policy.tool_name.trim().is_empty() && policy.tool_name == candidate.tool_name)
+    };
+    let skill_matches = policy
+        .skill_ref
+        .as_ref()
+        .zip(candidate.skill_ref.as_ref())
+        .is_some_and(|(policy_skill, candidate_skill)| policy_skill == candidate_skill);
+    tool_matches || skill_matches
+}
+
+fn tool_policy_reason(policy: &ToolExposurePolicy) -> String {
+    let mut reason = format!("policy:{}", policy.policy_id);
+    if let Some(ref skill_ref) = policy.skill_ref {
+        reason.push_str(&format!(" (skill:{skill_ref})"));
+    }
+    if let Some(ref obs_ref) = policy.observation_ref {
+        reason.push_str(&format!(" (observation:{obs_ref})"));
+    }
+    if let Some(ref g_ref) = policy.guideline_ref {
+        reason.push_str(&format!(" (guideline:{g_ref})"));
+    }
+    if let Some(ref journey_state_ref) = policy.journey_state_ref {
+        reason.push_str(&format!(" (journey_state:{journey_state_ref})"));
+    }
+    reason
+}
+
+fn scope_uses_managed_tool_control(policies: &[ToolExposurePolicy]) -> bool {
+    !policies.is_empty()
+}
+
+fn build_tool_authorizations(
+    policies: &[ToolExposurePolicy],
+    candidate_tools: &[ToolCandidate],
+    observations: &[ObservationHit],
+    active_guideline_names: &[String],
+    active_journey_state: Option<&str>,
+) -> Vec<ToolAuthorization> {
+    let obs_names: Vec<&str> = observations.iter().map(|o| o.name.as_str()).collect();
+
+    if candidate_tools.is_empty() {
+        return policies
+            .iter()
+            .filter(|policy| {
+                tool_policy_preconditions_match(
+                    policy,
+                    &obs_names,
+                    active_guideline_names,
+                    active_journey_state,
+                )
+            })
+            .map(|policy| ToolAuthorization {
+                tool_name: policy.tool_name.clone(),
+                reasons: vec![tool_policy_reason(policy)],
+                requires_approval: matches!(
+                    policy.approval_mode,
+                    openparlant_types::control::ApprovalMode::Required
+                        | openparlant_types::control::ApprovalMode::Conditional
+                ),
+            })
+            .collect();
+    }
+
+    let mut authorizations = Vec::new();
+    for candidate in candidate_tools {
+        let matching: Vec<&ToolExposurePolicy> = policies
+            .iter()
+            .filter(|policy| {
+                tool_policy_preconditions_match(
+                    policy,
+                    &obs_names,
+                    active_guideline_names,
+                    active_journey_state,
+                ) && candidate_matches_policy(candidate, policy)
+            })
+            .collect();
+
+        if matching.is_empty() {
+            continue;
+        }
+
+        authorizations.push(ToolAuthorization {
+            tool_name: candidate.tool_name.clone(),
+            reasons: matching
+                .iter()
+                .map(|policy| tool_policy_reason(policy))
+                .collect(),
+            requires_approval: matching.iter().any(|policy| {
+                matches!(
+                    policy.approval_mode,
+                    openparlant_types::control::ApprovalMode::Required
+                        | openparlant_types::control::ApprovalMode::Conditional
+                )
+            }),
+        });
+    }
+
+    authorizations
+}
+
 pub struct SqlitePolicyResolver {
     store: PolicyStore,
 }
@@ -265,6 +425,7 @@ impl PolicyResolver for SqlitePolicyResolver {
         _message: &CanonicalMessage,
         observations: &[ObservationHit],
         active_journey_state: Option<&str>,
+        candidate_tools: &[ToolCandidate],
     ) -> Result<PolicyResolution> {
         let guidelines = self.store.list_guidelines(scope_id, true)?;
 
@@ -277,9 +438,11 @@ impl PolicyResolver for SqlitePolicyResolver {
                 continue;
             }
 
-            let is_active =
-                guideline.condition_ref.is_empty() || guideline.condition_ref == "always"
-                || observations.iter().any(|obs| obs.name == guideline.condition_ref);
+            let is_active = guideline.condition_ref.is_empty()
+                || guideline.condition_ref == "always"
+                || observations
+                    .iter()
+                    .any(|obs| obs.name == guideline.condition_ref);
 
             if !is_active {
                 continue;
@@ -319,7 +482,7 @@ impl PolicyResolver for SqlitePolicyResolver {
         let mut exclusion_reasons: HashMap<String, String> = HashMap::new();
 
         for (_, from_id, to_id, relation_type) in &relationships {
-            match relation_type.as_str() {
+            match canonical_guideline_relation_type(relation_type).unwrap_or("") {
                 "depends_on" => {
                     // `from` requires `to` to be active; if `to` is not active, exclude `from`.
                     if id_to_idx.contains_key(from_id) && !id_to_idx.contains_key(to_id) {
@@ -356,10 +519,8 @@ impl PolicyResolver for SqlitePolicyResolver {
                     // `from` explicitly wins over `to`; exclude `to` if both active.
                     if id_to_idx.contains_key(from_id) && id_to_idx.contains_key(to_id) {
                         to_exclude.insert(to_id.clone());
-                        exclusion_reasons.insert(
-                            to_id.clone(),
-                            format!("prioritized_over by {from_id}"),
-                        );
+                        exclusion_reasons
+                            .insert(to_id.clone(), format!("prioritized_over by {from_id}"));
                     }
                 }
                 _ => {}
@@ -391,59 +552,26 @@ impl PolicyResolver for SqlitePolicyResolver {
         // Build tool_authorizations from tool_exposure_policies.
         // Each enabled policy whose preconditions match the current observations / guidelines
         // contributes a ToolAuthorization entry.
-        let tool_policies = self.store.list_tool_exposure_policies(scope_id).unwrap_or_default();
-        let obs_names: Vec<&str> = observations.iter().map(|o| o.name.as_str()).collect();
-        let guideline_names: Vec<&str> = active_guidelines.iter().map(|g| g.name.as_str()).collect();
-
-        let mut tool_authorizations: Vec<ToolAuthorization> = Vec::new();
-        for policy in &tool_policies {
-            if !policy.enabled {
-                continue;
-            }
-            // Check observation_ref precondition.
-            if let Some(ref obs_ref) = policy.observation_ref {
-                if !obs_names.contains(&obs_ref.as_str()) {
-                    continue;
-                }
-            }
-            // Check guideline_ref precondition.
-            if let Some(ref g_ref) = policy.guideline_ref {
-                if !guideline_names.contains(&g_ref.as_str()) {
-                    continue;
-                }
-            }
-            // Check journey_state_ref precondition.
-            if let Some(ref journey_state_ref) = policy.journey_state_ref {
-                if active_journey_state != Some(journey_state_ref.as_str()) {
-                    continue;
-                }
-            }
-            let requires_approval = matches!(
-                policy.approval_mode,
-                openparlant_types::control::ApprovalMode::Required
-                    | openparlant_types::control::ApprovalMode::Conditional
-            );
-            let mut reason = format!("policy:{}", policy.policy_id);
-            if let Some(ref obs_ref) = policy.observation_ref {
-                reason.push_str(&format!(" (observation:{obs_ref})"));
-            }
-            if let Some(ref g_ref) = policy.guideline_ref {
-                reason.push_str(&format!(" (guideline:{g_ref})"));
-            }
-            if let Some(ref journey_state_ref) = policy.journey_state_ref {
-                reason.push_str(&format!(" (journey_state:{journey_state_ref})"));
-            }
-            tool_authorizations.push(ToolAuthorization {
-                tool_name: policy.tool_name.clone(),
-                reasons: vec![reason],
-                requires_approval,
-            });
-        }
+        let tool_policies = self
+            .store
+            .list_tool_exposure_policies(scope_id)
+            .unwrap_or_default();
+        let tool_control_active = scope_uses_managed_tool_control(&tool_policies);
+        let guideline_names: Vec<String> =
+            active_guidelines.iter().map(|g| g.name.clone()).collect();
+        let tool_authorizations = build_tool_authorizations(
+            &tool_policies,
+            candidate_tools,
+            observations,
+            &guideline_names,
+            active_journey_state,
+        );
 
         Ok(PolicyResolution {
             active_guidelines,
             excluded_guidelines,
             tool_authorizations,
+            tool_control_active,
         })
     }
 }
@@ -477,6 +605,7 @@ impl PolicyResolver for NoopPolicyResolver {
         _message: &CanonicalMessage,
         _observations: &[ObservationHit],
         _active_journey_state: Option<&str>,
+        _candidate_tools: &[ToolCandidate],
     ) -> Result<PolicyResolution> {
         Ok(PolicyResolution::default())
     }
@@ -494,7 +623,7 @@ pub trait ToolGate: Send + Sync {
     async fn evaluate(
         &self,
         scope_id: &ScopeId,
-        candidate_tools: &[String],
+        candidate_tools: &[ToolCandidate],
         observations: &[ObservationHit],
         active_guideline_names: &[String],
         active_journey_state: Option<&str>,
@@ -504,9 +633,9 @@ pub trait ToolGate: Send + Sync {
 /// SQLite-backed tool gate.
 ///
 /// Evaluates `tool_exposure_policies` for each candidate tool.
-/// When a policy is found and its preconditions match, the policy's
-/// `approval_mode` determines whether approval is needed.
-/// Tools with no policy entry are allowed by default (open-by-default MVP).
+/// When a scope has any tool policy entries, the scope is treated as
+/// control-plane-managed and switches to deny-by-default.
+/// Scopes with no tool policies keep the legacy open-by-default behavior.
 pub struct SqliteToolGate {
     store: PolicyStore,
 }
@@ -524,62 +653,66 @@ impl ToolGate for SqliteToolGate {
     async fn evaluate(
         &self,
         scope_id: &ScopeId,
-        candidate_tools: &[String],
+        candidate_tools: &[ToolCandidate],
         observations: &[ObservationHit],
         active_guideline_names: &[String],
         active_journey_state: Option<&str>,
     ) -> Result<Vec<ToolGateDecision>> {
         let policies = self.store.list_tool_exposure_policies(scope_id)?;
+        let tool_control_active = scope_uses_managed_tool_control(&policies);
         let obs_names: Vec<&str> = observations.iter().map(|o| o.name.as_str()).collect();
 
         let mut decisions = Vec::new();
-        for tool in candidate_tools {
-            // Find matching enabled policy for this tool name.
-            let matching = policies
+        for candidate in candidate_tools {
+            let matching: Vec<&ToolExposurePolicy> = policies
                 .iter()
-                .filter(|p| p.enabled && p.tool_name == *tool)
-                .find(|p| {
-                    // Check observation_ref precondition (if any).
-                    if let Some(ref obs_ref) = p.observation_ref {
-                        if !obs_names.contains(&obs_ref.as_str()) {
-                            return false;
-                        }
-                    }
-                    // Check guideline_ref precondition (if any).
-                    if let Some(ref g_ref) = p.guideline_ref {
-                        if !active_guideline_names.contains(g_ref) {
-                            return false;
-                        }
-                    }
-                    // Check journey_state_ref precondition (if any).
-                    if let Some(ref journey_state_ref) = p.journey_state_ref {
-                        if active_journey_state != Some(journey_state_ref.as_str()) {
-                            return false;
-                        }
-                    }
-                    true
-                });
+                .filter(|policy| {
+                    tool_policy_preconditions_match(
+                        policy,
+                        &obs_names,
+                        active_guideline_names,
+                        active_journey_state,
+                    ) && candidate_matches_policy(candidate, policy)
+                })
+                .collect();
 
-            let decision = if let Some(policy) = matching {
-                let requires_approval = matches!(
-                    policy.approval_mode,
-                    ApprovalMode::Required | ApprovalMode::Conditional
-                );
+            let decision = if !matching.is_empty() {
+                let requires_approval = matching.iter().any(|policy| {
+                    matches!(
+                        policy.approval_mode,
+                        ApprovalMode::Required | ApprovalMode::Conditional
+                    )
+                });
                 ToolGateDecision {
-                    tool_name: tool.clone(),
+                    tool_name: candidate.tool_name.clone(),
                     allowed: true,
-                    reason: format!(
-                        "policy '{}' (approval_mode={})",
-                        policy.policy_id, policy.approval_mode
-                    ),
+                    reason: matching
+                        .iter()
+                        .map(|policy| {
+                            format!(
+                                "{} (approval_mode={})",
+                                tool_policy_reason(policy),
+                                policy.approval_mode
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("; "),
                     requires_approval,
                 }
             } else {
-                // No policy → open by default.
+                let (allowed, reason) = if tool_control_active {
+                    (
+                        false,
+                        "scope managed by control plane; no matching tool authorization"
+                            .to_string(),
+                    )
+                } else {
+                    (true, "no policy (legacy open by default)".to_string())
+                };
                 ToolGateDecision {
-                    tool_name: tool.clone(),
-                    allowed: true,
-                    reason: "no policy (open by default)".to_string(),
+                    tool_name: candidate.tool_name.clone(),
+                    allowed,
+                    reason,
                     requires_approval: false,
                 }
             };
@@ -598,7 +731,7 @@ impl ToolGate for NoopToolGate {
     async fn evaluate(
         &self,
         _scope_id: &ScopeId,
-        candidate_tools: &[String],
+        candidate_tools: &[ToolCandidate],
         _observations: &[ObservationHit],
         _active_guideline_names: &[String],
         _active_journey_state: Option<&str>,
@@ -606,7 +739,7 @@ impl ToolGate for NoopToolGate {
         Ok(candidate_tools
             .iter()
             .map(|t| ToolGateDecision {
-                tool_name: t.clone(),
+                tool_name: t.tool_name.clone(),
                 allowed: true,
                 reason: "noop gate".to_string(),
                 requires_approval: false,
@@ -629,7 +762,10 @@ pub struct LlmObservationMatcher {
 }
 
 impl LlmObservationMatcher {
-    pub fn new(conn: std::sync::Arc<Mutex<Connection>>, llm: std::sync::Arc<dyn ControlLlmCaller>) -> Self {
+    pub fn new(
+        conn: std::sync::Arc<Mutex<Connection>>,
+        llm: std::sync::Arc<dyn ControlLlmCaller>,
+    ) -> Self {
         Self {
             store: PolicyStore::new(conn),
             llm,
@@ -682,7 +818,10 @@ impl ObservationMatcher for LlmObservationMatcher {
                             .trim_end_matches("```")
                             .trim();
                         if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
-                            if v.get("triggered").and_then(|t| t.as_bool()).unwrap_or(false) {
+                            if v.get("triggered")
+                                .and_then(|t| t.as_bool())
+                                .unwrap_or(false)
+                            {
                                 let rationale = v
                                     .get("rationale")
                                     .and_then(|r| r.as_str())
@@ -734,7 +873,10 @@ pub struct LlmPolicyResolver {
 }
 
 impl LlmPolicyResolver {
-    pub fn new(conn: std::sync::Arc<Mutex<Connection>>, llm: std::sync::Arc<dyn ControlLlmCaller>) -> Self {
+    pub fn new(
+        conn: std::sync::Arc<Mutex<Connection>>,
+        llm: std::sync::Arc<dyn ControlLlmCaller>,
+    ) -> Self {
         Self {
             store: PolicyStore::new(conn),
             llm,
@@ -750,6 +892,7 @@ impl PolicyResolver for LlmPolicyResolver {
         message: &CanonicalMessage,
         observations: &[ObservationHit],
         active_journey_state: Option<&str>,
+        candidate_tools: &[ToolCandidate],
     ) -> Result<PolicyResolution> {
         let guidelines = self.store.list_guidelines(scope_id, true)?;
 
@@ -831,10 +974,8 @@ impl PolicyResolver for LlmPolicyResolver {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
                         if let Some(results) = v.get("results").and_then(|r| r.as_array()) {
                             for result in results {
-                                let id_str = result
-                                    .get("id")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("");
+                                let id_str =
+                                    result.get("id").and_then(|v| v.as_str()).unwrap_or("");
                                 let applies = result
                                     .get("applies")
                                     .and_then(|v| v.as_bool())
@@ -892,7 +1033,7 @@ impl PolicyResolver for LlmPolicyResolver {
         let mut exclusion_reasons: HashMap<String, String> = HashMap::new();
 
         for (_, from_id, to_id, relation_type) in &relationships {
-            match relation_type.as_str() {
+            match canonical_guideline_relation_type(relation_type).unwrap_or("") {
                 "depends_on" => {
                     if id_to_idx.contains_key(from_id) && !id_to_idx.contains_key(to_id) {
                         to_exclude.insert(from_id.clone());
@@ -926,10 +1067,8 @@ impl PolicyResolver for LlmPolicyResolver {
                 "prioritizes_over" => {
                     if id_to_idx.contains_key(from_id) && id_to_idx.contains_key(to_id) {
                         to_exclude.insert(to_id.clone());
-                        exclusion_reasons.insert(
-                            to_id.clone(),
-                            format!("prioritized_over by {from_id}"),
-                        );
+                        exclusion_reasons
+                            .insert(to_id.clone(), format!("prioritized_over by {from_id}"));
                     }
                 }
                 _ => {}
@@ -958,56 +1097,384 @@ impl PolicyResolver for LlmPolicyResolver {
             .collect();
 
         // Tool authorizations (same as SqlitePolicyResolver)
-        let tool_policies = self.store.list_tool_exposure_policies(scope_id).unwrap_or_default();
-        let obs_names: Vec<&str> = observations.iter().map(|o| o.name.as_str()).collect();
-        let guideline_names: Vec<&str> = active_guidelines.iter().map(|g| g.name.as_str()).collect();
-
-        let mut tool_authorizations: Vec<ToolAuthorization> = Vec::new();
-        for policy in &tool_policies {
-            if !policy.enabled {
-                continue;
-            }
-            if let Some(ref obs_ref) = policy.observation_ref {
-                if !obs_names.contains(&obs_ref.as_str()) {
-                    continue;
-                }
-            }
-            if let Some(ref g_ref) = policy.guideline_ref {
-                if !guideline_names.contains(&g_ref.as_str()) {
-                    continue;
-                }
-            }
-            if let Some(ref journey_state_ref) = policy.journey_state_ref {
-                if active_journey_state != Some(journey_state_ref.as_str()) {
-                    continue;
-                }
-            }
-            let requires_approval = matches!(
-                policy.approval_mode,
-                openparlant_types::control::ApprovalMode::Required
-                    | openparlant_types::control::ApprovalMode::Conditional
-            );
-            let mut reason = format!("policy:{}", policy.policy_id);
-            if let Some(ref obs_ref) = policy.observation_ref {
-                reason.push_str(&format!(" (observation:{obs_ref})"));
-            }
-            if let Some(ref g_ref) = policy.guideline_ref {
-                reason.push_str(&format!(" (guideline:{g_ref})"));
-            }
-            if let Some(ref journey_state_ref) = policy.journey_state_ref {
-                reason.push_str(&format!(" (journey_state:{journey_state_ref})"));
-            }
-            tool_authorizations.push(ToolAuthorization {
-                tool_name: policy.tool_name.clone(),
-                reasons: vec![reason],
-                requires_approval,
-            });
-        }
+        let tool_policies = self
+            .store
+            .list_tool_exposure_policies(scope_id)
+            .unwrap_or_default();
+        let tool_control_active = scope_uses_managed_tool_control(&tool_policies);
+        let guideline_names: Vec<String> =
+            active_guidelines.iter().map(|g| g.name.clone()).collect();
+        let tool_authorizations = build_tool_authorizations(
+            &tool_policies,
+            candidate_tools,
+            observations,
+            &guideline_names,
+            active_journey_state,
+        );
 
         Ok(PolicyResolution {
             active_guidelines,
             excluded_guidelines,
             tool_authorizations,
+            tool_control_active,
         })
+    }
+}
+
+#[cfg(test)]
+mod tool_policy_skill_tests {
+    use super::*;
+    use openparlant_types::control::{ApprovalMode, GuidelineId, ObservationId};
+
+    fn setup_conn() -> Arc<Mutex<Connection>> {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE guidelines (
+                guideline_id TEXT PRIMARY KEY,
+                scope_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                condition_ref TEXT NOT NULL,
+                action_text TEXT NOT NULL,
+                composition_mode TEXT NOT NULL,
+                priority INTEGER NOT NULL,
+                enabled INTEGER NOT NULL
+            );
+            CREATE TABLE guideline_relationships (
+                relationship_id TEXT PRIMARY KEY,
+                scope_id TEXT NOT NULL,
+                from_guideline_id TEXT NOT NULL,
+                to_guideline_id TEXT NOT NULL,
+                relation_type TEXT NOT NULL
+            );
+            CREATE TABLE tool_exposure_policies (
+                policy_id TEXT PRIMARY KEY,
+                scope_id TEXT NOT NULL,
+                tool_name TEXT NOT NULL,
+                skill_ref TEXT,
+                observation_ref TEXT,
+                journey_state_ref TEXT,
+                guideline_ref TEXT,
+                approval_mode TEXT NOT NULL,
+                enabled INTEGER NOT NULL
+            );
+            "#,
+        )
+        .unwrap();
+        Arc::new(Mutex::new(conn))
+    }
+
+    fn browser_candidates() -> Vec<ToolCandidate> {
+        vec![
+            ToolCandidate {
+                tool_name: "browser_navigate".to_string(),
+                skill_ref: Some("browser".to_string()),
+            },
+            ToolCandidate {
+                tool_name: "browser_click".to_string(),
+                skill_ref: Some("browser".to_string()),
+            },
+            ToolCandidate {
+                tool_name: "file_read".to_string(),
+                skill_ref: None,
+            },
+        ]
+    }
+
+    fn browser_observation() -> ObservationHit {
+        ObservationHit {
+            observation_id: ObservationId::new(),
+            name: "needs_browser".to_string(),
+            confidence: Some(1.0),
+            matched_by: "test".to_string(),
+        }
+    }
+
+    fn write_guideline(
+        store: &PolicyStore,
+        id: GuidelineId,
+        name: &str,
+        condition_ref: &str,
+        action_text: &str,
+        priority: i32,
+    ) {
+        store
+            .upsert_guideline(&openparlant_types::control::GuidelineDefinition {
+                guideline_id: id,
+                scope_id: ScopeId::default(),
+                name: name.to_string(),
+                condition_ref: condition_ref.to_string(),
+                action_text: action_text.to_string(),
+                composition_mode: "append".to_string(),
+                priority,
+                enabled: true,
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn sqlite_policy_resolver_expands_skill_ref_to_candidate_tools() {
+        futures::executor::block_on(async {
+            let conn = setup_conn();
+            let store = PolicyStore::new(conn.clone());
+            store
+                .upsert_tool_exposure_policy(&ToolExposurePolicy {
+                    policy_id: "policy-browser".to_string(),
+                    scope_id: ScopeId::default(),
+                    tool_name: "*".to_string(),
+                    skill_ref: Some("browser".to_string()),
+                    observation_ref: Some("needs_browser".to_string()),
+                    journey_state_ref: None,
+                    guideline_ref: None,
+                    approval_mode: ApprovalMode::Required,
+                    enabled: true,
+                })
+                .unwrap();
+
+            let resolver = SqlitePolicyResolver::new(conn);
+            let resolution = resolver
+                .resolve_policy(
+                    &ScopeId::default(),
+                    &CanonicalMessage::text(ScopeId::default(), "web", "open the page"),
+                    &[browser_observation()],
+                    None,
+                    &browser_candidates(),
+                )
+                .await
+                .unwrap();
+
+            let allowed: Vec<String> = resolution
+                .tool_authorizations
+                .iter()
+                .map(|auth| auth.tool_name.clone())
+                .collect();
+            assert_eq!(allowed, vec!["browser_navigate", "browser_click"]);
+            assert!(resolution
+                .tool_authorizations
+                .iter()
+                .all(|auth| auth.requires_approval));
+        });
+    }
+
+    #[test]
+    fn sqlite_tool_gate_applies_approval_by_skill_group() {
+        futures::executor::block_on(async {
+            let conn = setup_conn();
+            let store = PolicyStore::new(conn.clone());
+            store
+                .upsert_tool_exposure_policy(&ToolExposurePolicy {
+                    policy_id: "policy-browser".to_string(),
+                    scope_id: ScopeId::default(),
+                    tool_name: "*".to_string(),
+                    skill_ref: Some("browser".to_string()),
+                    observation_ref: Some("needs_browser".to_string()),
+                    journey_state_ref: None,
+                    guideline_ref: None,
+                    approval_mode: ApprovalMode::Required,
+                    enabled: true,
+                })
+                .unwrap();
+
+            let gate = SqliteToolGate::new(conn);
+            let decisions = gate
+                .evaluate(
+                    &ScopeId::default(),
+                    &browser_candidates()[..2],
+                    &[browser_observation()],
+                    &[],
+                    None,
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(decisions.len(), 2);
+            assert!(decisions.iter().all(|decision| decision.allowed));
+            assert!(decisions.iter().all(|decision| decision.requires_approval));
+        });
+    }
+
+    #[test]
+    fn sqlite_policy_resolver_marks_scope_as_managed_when_any_tool_policy_exists() {
+        futures::executor::block_on(async {
+            let conn = setup_conn();
+            let store = PolicyStore::new(conn.clone());
+            store
+                .upsert_tool_exposure_policy(&ToolExposurePolicy {
+                    policy_id: "policy-browser".to_string(),
+                    scope_id: ScopeId::default(),
+                    tool_name: "browser_navigate".to_string(),
+                    skill_ref: None,
+                    observation_ref: Some("different_observation".to_string()),
+                    journey_state_ref: None,
+                    guideline_ref: None,
+                    approval_mode: ApprovalMode::None,
+                    enabled: true,
+                })
+                .unwrap();
+
+            let resolver = SqlitePolicyResolver::new(conn);
+            let resolution = resolver
+                .resolve_policy(
+                    &ScopeId::default(),
+                    &CanonicalMessage::text(ScopeId::default(), "web", "open the page"),
+                    &[browser_observation()],
+                    None,
+                    &browser_candidates(),
+                )
+                .await
+                .unwrap();
+
+            assert!(resolution.tool_control_active);
+            assert!(resolution.tool_authorizations.is_empty());
+        });
+    }
+
+    #[test]
+    fn sqlite_tool_gate_keeps_legacy_open_mode_for_unmanaged_scope() {
+        futures::executor::block_on(async {
+            let conn = setup_conn();
+            let gate = SqliteToolGate::new(conn);
+            let decisions = gate
+                .evaluate(
+                    &ScopeId::default(),
+                    &browser_candidates(),
+                    &[browser_observation()],
+                    &[],
+                    None,
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(decisions.len(), 3);
+            assert!(decisions.iter().all(|decision| decision.allowed));
+            assert!(decisions
+                .iter()
+                .all(|decision| decision.reason.contains("legacy open by default")));
+        });
+    }
+
+    #[test]
+    fn sqlite_tool_gate_denies_unmatched_tools_once_scope_is_managed() {
+        futures::executor::block_on(async {
+            let conn = setup_conn();
+            let store = PolicyStore::new(conn.clone());
+            store
+                .upsert_tool_exposure_policy(&ToolExposurePolicy {
+                    policy_id: "policy-browser".to_string(),
+                    scope_id: ScopeId::default(),
+                    tool_name: "browser_navigate".to_string(),
+                    skill_ref: None,
+                    observation_ref: Some("needs_browser".to_string()),
+                    journey_state_ref: None,
+                    guideline_ref: None,
+                    approval_mode: ApprovalMode::None,
+                    enabled: true,
+                })
+                .unwrap();
+
+            let gate = SqliteToolGate::new(conn);
+            let decisions = gate
+                .evaluate(
+                    &ScopeId::default(),
+                    &[ToolCandidate {
+                        tool_name: "file_read".to_string(),
+                        skill_ref: None,
+                    }],
+                    &[browser_observation()],
+                    &[],
+                    None,
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(decisions.len(), 1);
+            assert!(!decisions[0].allowed);
+            assert!(decisions[0]
+                .reason
+                .contains("scope managed by control plane"));
+        });
+    }
+
+    #[test]
+    fn canonical_relation_type_supports_legacy_control_api_aliases() {
+        assert_eq!(
+            canonical_guideline_relation_type("requires"),
+            Some("depends_on")
+        );
+        assert_eq!(
+            canonical_guideline_relation_type("conflicts_with"),
+            Some("excludes")
+        );
+        assert_eq!(
+            canonical_guideline_relation_type("overrides"),
+            Some("prioritizes_over")
+        );
+        assert_eq!(
+            canonical_guideline_relation_type("complements"),
+            Some("complements")
+        );
+        assert_eq!(canonical_guideline_relation_type("unknown"), None);
+    }
+
+    #[test]
+    fn sqlite_policy_resolver_honors_legacy_override_relationship_alias() {
+        futures::executor::block_on(async {
+            let conn = setup_conn();
+            let store = PolicyStore::new(conn.clone());
+            let primary_id = GuidelineId::new();
+            let secondary_id = GuidelineId::new();
+
+            write_guideline(
+                &store,
+                primary_id,
+                "primary",
+                "needs_browser",
+                "Use the preferred action.",
+                100,
+            );
+            write_guideline(
+                &store,
+                secondary_id,
+                "secondary",
+                "needs_browser",
+                "Use the fallback action.",
+                50,
+            );
+
+            {
+                let guard = conn.lock().unwrap();
+                guard
+                    .execute(
+                        "INSERT INTO guideline_relationships
+                            (relationship_id, scope_id, from_guideline_id, to_guideline_id, relation_type)
+                         VALUES (?1, ?2, ?3, ?4, ?5)",
+                        rusqlite::params![
+                            uuid::Uuid::new_v4().to_string(),
+                            ScopeId::default().0,
+                            primary_id.0.to_string(),
+                            secondary_id.0.to_string(),
+                            "overrides",
+                        ],
+                    )
+                    .unwrap();
+            }
+
+            let resolver = SqlitePolicyResolver::new(conn);
+            let resolution = resolver
+                .resolve_policy(
+                    &ScopeId::default(),
+                    &CanonicalMessage::text(ScopeId::default(), "web", "open the page"),
+                    &[browser_observation()],
+                    None,
+                    &[],
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(resolution.active_guidelines.len(), 1);
+            assert_eq!(resolution.active_guidelines[0].name, "primary");
+            assert_eq!(resolution.excluded_guidelines.len(), 1);
+            assert_eq!(resolution.excluded_guidelines[0].name, "secondary");
+        });
     }
 }

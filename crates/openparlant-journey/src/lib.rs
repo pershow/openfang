@@ -116,10 +116,7 @@ impl JourneyRuntime for SqliteJourneyRuntime {
                                 "[journey:{}:state:{}] {}",
                                 j.name,
                                 cs.name,
-                                action_text
-                                    .chars()
-                                    .take(40)
-                                    .collect::<String>()
+                                action_text.chars().take(40).collect::<String>()
                             ),
                             action_text: action_text.clone(),
                             priority: 50, // mid-level priority
@@ -150,7 +147,11 @@ impl JourneyRuntime for SqliteJourneyRuntime {
             }
         }
 
-        let journeys = self.store.list_journeys(scope_id, true).await.unwrap_or_default();
+        let journeys = self
+            .store
+            .list_journeys(scope_id, true)
+            .await
+            .unwrap_or_default();
         for journey in journeys {
             if !journey_triggered(&journey.trigger_config, &message.text) {
                 continue;
@@ -377,14 +378,20 @@ fn evaluate_transition_condition(
     }
     // Tool-called condition.
     if let Some(tool_name) = condition_config.get("tool_called").and_then(|v| v.as_str()) {
-        return outcome.tool_calls.iter().any(|tc| tc.tool_name == tool_name);
+        return outcome
+            .tool_calls
+            .iter()
+            .any(|tc| tc.tool_name == tool_name);
     }
     // Response-contains condition.
     if let Some(text) = condition_config
         .get("response_contains")
         .and_then(|v| v.as_str())
     {
-        return outcome.response_text.to_lowercase().contains(&text.to_lowercase());
+        return outcome
+            .response_text
+            .to_lowercase()
+            .contains(&text.to_lowercase());
     }
     // Empty condition config → always fires (permissive default).
     if condition_config.as_object().map(|m| m.is_empty()) == Some(true) {

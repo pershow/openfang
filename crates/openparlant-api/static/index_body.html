@@ -1459,12 +1459,13 @@
 
     <!-- Page: Workflows -->
     <template x-if="page === 'workflows'">
-      <div x-data="{ wfTab: 'list' }">
+      <div x-data="{ wfTab: localStorage.getItem('openfang-workflows-view') || 'list', setWfTab(tab) { this.wfTab = tab; localStorage.setItem('openfang-workflows-view', tab); } }"
+           @wf-switch-tab.window="setWfTab($event.detail || 'builder')">
         <div class="page-header">
           <h2>Workflows</h2>
           <div class="flex gap-2">
-            <button class="btn btn-ghost btn-sm" :class="{ active: wfTab === 'list' }" @click="wfTab = 'list'">List</button>
-            <button class="btn btn-ghost btn-sm" :class="{ active: wfTab === 'builder' }" @click="wfTab = 'builder'">Visual Builder</button>
+            <button class="btn btn-ghost btn-sm" :class="{ active: wfTab === 'list' }" @click="setWfTab('list')">Library</button>
+            <button class="btn btn-ghost btn-sm" :class="{ active: wfTab === 'builder' }" @click="setWfTab('builder')">Visual Builder</button>
           </div>
         </div>
 
@@ -1484,11 +1485,12 @@
             <div class="text-sm text-dim" style="line-height:1.6">
               Workflows chain multiple agents into automated pipelines. Each step runs an agent with a prompt template,
               passing output from one step as input to the next. Steps can run sequentially, fan out in parallel, loop, or branch conditionally.
-              <br><span style="margin-top:4px;display:inline-block">Try the <strong style="color:var(--accent);cursor:pointer" @click="$dispatch('wf-switch-tab','builder')">Visual Builder</strong> to drag and drop workflow steps.</span>
+              <br><span style="margin-top:4px;display:inline-block">Use the <strong style="color:var(--accent);cursor:pointer" @click="$dispatch('wf-switch-tab', 'builder')">Visual Builder</strong> to sketch flows first, then save them back to the library.</span>
             </div>
           </div>
           <div class="flex gap-2 mb-4">
-            <button class="btn btn-primary btn-sm" @click="showCreateModal = true">+ New Workflow</button>
+            <button class="btn btn-primary btn-sm" @click="$dispatch('wf-switch-tab', 'builder')">Open Builder</button>
+            <button class="btn btn-ghost btn-sm" @click="showCreateModal = true">Quick Add</button>
           </div>
           <div class="table-wrap" x-show="workflows.length">
             <table>
@@ -1516,7 +1518,10 @@
             </div>
             <h3>No workflows yet</h3>
             <p>Chain multiple agents into automated pipelines with branching, fan-out, and loops.</p>
-            <button class="btn btn-primary" @click="showCreateModal = true">Create Workflow</button>
+            <div class="control-action-group" style="justify-content:center">
+              <button class="btn btn-primary" @click="$dispatch('wf-switch-tab', 'builder')">Start In Builder</button>
+              <button class="btn btn-ghost" @click="showCreateModal = true">Quick Add</button>
+            </div>
           </div>
           </div>
           <!-- Create modal -->
@@ -5226,7 +5231,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
     <!-- Control Plane Page -->
     <template x-if="page === 'control'" x-data>
-  <div x-data="controlPage()" x-init="init()">
+  <div x-data="controlPage()" x-init="init()" @control-journey-builder-saved.window="loadJourneys()">
     <div class="page-header"><h2>Control Plane</h2></div>
     <div class="page-body">
 
@@ -5267,16 +5272,55 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
       </div>
     </div>
 
+    <div class="control-summary-grid" x-show="selectedScope">
+      <button class="card control-summary-card" @click="switchTab('observations')">
+        <span class="control-summary-label">Observations</span>
+        <span class="control-summary-value" x-text="observations.length"></span>
+        <span class="control-summary-meta">Signal detectors that decide when downstream policy should wake up.</span>
+      </button>
+      <button class="card control-summary-card" @click="switchTab('guidelines')">
+        <span class="control-summary-label">Guidelines</span>
+        <span class="control-summary-value" x-text="guidelines.length"></span>
+        <span class="control-summary-meta">Behavior policies injected into the next compile turn.</span>
+      </button>
+      <button class="card control-summary-card" @click="switchTab('journeys', 'builder')">
+        <span class="control-summary-label">Journeys</span>
+        <span class="control-summary-value" x-text="journeys.length"></span>
+        <span class="control-summary-meta">State-machine flows for guided conversations and handoffs.</span>
+      </button>
+      <button class="card control-summary-card" @click="switchTab('toolgate')">
+        <span class="control-summary-label">Tool Policies</span>
+        <span class="control-summary-value" x-text="toolPolicies.length"></span>
+        <span class="control-summary-meta">Approval and exposure rules for hands, tools, and operators.</span>
+      </button>
+    </div>
+
+    <div class="card mb-4" x-show="selectedScope">
+      <div class="card-body control-action-bar">
+        <div>
+          <div class="control-summary-label">Active Scope</div>
+          <div class="font-bold" x-text="selectedScopeRecord() ? selectedScopeRecord().name : 'Unnamed scope'"></div>
+          <div class="text-xs text-dim" x-text="selectedScope"></div>
+        </div>
+        <div class="control-action-group">
+          <button class="btn btn-ghost btn-sm" @click="switchTab('observations')">New Observation</button>
+          <button class="btn btn-ghost btn-sm" @click="switchTab('guidelines')">New Guideline</button>
+          <button class="btn btn-primary btn-sm" @click="openJourneyBuilder()">Visual Journey Builder</button>
+          <button class="btn btn-ghost btn-sm" @click="switchTab('debug')">Compile Turn Debug</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Tab bar -->
     <div class="tabs" role="tablist">
-      <div class="tab" role="tab" :class="{ active: tab === 'observations' }" @click="tab = 'observations'; loadObservations()">Observations</div>
-      <div class="tab" role="tab" :class="{ active: tab === 'guidelines' }" @click="tab = 'guidelines'; loadGuidelines()">Guidelines</div>
-      <div class="tab" role="tab" :class="{ active: tab === 'journeys' }" @click="tab = 'journeys'; loadJourneys()">Journeys</div>
-      <div class="tab" role="tab" :class="{ active: tab === 'knowledge' }" @click="tab = 'knowledge'">Knowledge</div>
-      <div class="tab" role="tab" :class="{ active: tab === 'toolgate' }" @click="tab = 'toolgate'; loadToolPolicies()">Tool Gate</div>
-      <div class="tab" role="tab" :class="{ active: tab === 'handoff' }" @click="tab = 'handoff'">Handoff</div>
+      <div class="tab" role="tab" :class="{ active: tab === 'observations' }" @click="switchTab('observations')">Observations</div>
+      <div class="tab" role="tab" :class="{ active: tab === 'guidelines' }" @click="switchTab('guidelines')">Guidelines</div>
+      <div class="tab" role="tab" :class="{ active: tab === 'journeys' }" @click="switchTab('journeys')">Journeys</div>
+      <div class="tab" role="tab" :class="{ active: tab === 'knowledge' }" @click="switchTab('knowledge')">Knowledge</div>
+      <div class="tab" role="tab" :class="{ active: tab === 'toolgate' }" @click="switchTab('toolgate')">Tool Gate</div>
+      <div class="tab" role="tab" :class="{ active: tab === 'handoff' }" @click="switchTab('handoff')">Handoff</div>
       <div class="tabs-separator"></div>
-      <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'debug' }" @click="tab = 'debug'">Debug</div>
+      <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'debug' }" @click="switchTab('debug')">Debug</div>
     </div>
 
     <!-- ── Debug Tab ─────────────────────────────────────────────────────── -->
@@ -5511,99 +5555,300 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
     <!-- ── Journeys Tab ──────────────────────────────────────────────────── -->
     <template x-if="tab === 'journeys'">
-      <div>
-        <!-- Create form -->
-        <div class="card mb-4">
-          <div class="card-header"><h3 class="card-title">New Journey</h3></div>
-          <div class="card-body flex flex-col gap-3">
-            <div class="flex gap-3 flex-wrap">
-              <input class="input" placeholder="Journey name" x-model="jrForm.name" style="flex:1;min-width:160px">
-              <input class="input font-mono text-xs" placeholder='Trigger config JSON, e.g. {}' x-model="jrForm.trigger_config" style="flex:1;min-width:180px">
-              <label class="flex items-center gap-1 text-sm"><input type="checkbox" x-model="jrForm.enabled"> Enabled</label>
+      <div class="flex flex-col gap-4">
+        <div class="card">
+          <div class="card-body control-action-bar">
+            <div>
+              <div class="card-header" style="margin:0">Journeys</div>
+              <div class="control-builder-note">Use the visual builder to sketch the conversation path first. The library view remains available for raw JSON or low-level fixes.</div>
             </div>
-            <button class="btn btn-primary btn-sm" @click="createJourney()" :disabled="jrCreating || !jrForm.name.trim() || !selectedScope">
-              <span x-show="!jrCreating">+ Create Journey</span>
-              <span x-show="jrCreating">Creating…</span>
-            </button>
+            <div class="control-subnav">
+              <button class="btn btn-ghost btn-sm" :class="{ active: journeyView === 'list' }" @click="journeyView = 'list'">Library</button>
+              <button class="btn btn-ghost btn-sm" :class="{ active: journeyView === 'builder' }" @click="journeyView = 'builder'">Visual Builder</button>
+              <button class="btn btn-primary btn-sm" @click="openJourneyBuilder()">+ New Journey Flow</button>
+            </div>
           </div>
         </div>
-        <!-- List with expandable states/transitions -->
-        <div class="card">
-          <div class="card-header flex items-center justify-between">
-            <h3 class="card-title">Journeys <span class="badge badge-muted ml-1" x-text="journeys.length"></span></h3>
-            <button class="btn btn-ghost btn-sm" @click="loadJourneys()">Refresh</button>
-          </div>
-          <div class="card-body flex flex-col gap-2">
-            <div x-show="jrLoading" class="text-muted text-sm">Loading…</div>
-            <div x-show="!jrLoading && journeys.length === 0" class="text-muted text-sm">No journeys yet.</div>
-            <template x-for="j in journeys" :key="j.journey_id">
-              <div class="border rounded" style="border-color:var(--border)">
-                <!-- Journey header row -->
-                <div class="flex items-center gap-3 p-3 cursor-pointer" @click="toggleJourneyExpand(j.journey_id)">
-                  <span class="text-sm" x-text="expandedJourney === j.journey_id ? '▼' : '▶'"></span>
-                  <span class="font-medium" x-text="j.name"></span>
-                  <span :class="j.enabled ? 'badge badge-ok' : 'badge badge-muted'" x-text="j.enabled ? 'enabled' : 'disabled'"></span>
-                  <span class="text-xs text-muted ml-auto" x-text="j.journey_id.substring(0,8) + '…'"></span>
+
+        <div x-data="controlJourneyBuilder()" x-init="init()" x-show="journeyView === 'builder'">
+          <div class="wf-builder-layout" style="height:calc(100vh - 250px)">
+              <div class="wf-palette" style="width:280px;min-width:280px">
+                <div class="wf-palette-title">Journey Builder</div>
+                <div class="text-xs text-dim mb-3">Drag states into the canvas, connect them, then save the graph into the selected scope.</div>
+                <div class="wf-palette-node" draggable="true" @dragstart="onPaletteDragStart($event)" style="border-left:3px solid #60a5fa">
+                  <span class="wf-palette-icon" style="background:#60a5fa">S</span>
+                  <span class="text-xs">Conversation State</span>
                 </div>
-                <!-- Expanded: states + transitions -->
-                <template x-if="expandedJourney === j.journey_id">
-                  <div class="px-4 pb-4 flex flex-col gap-4 border-t" style="border-color:var(--border)">
-                    <!-- States -->
-                    <div class="mt-3">
-                      <h4 class="text-sm font-medium mb-2">States <span class="badge badge-muted" x-text="(journeyStates[j.journey_id] || []).length"></span></h4>
-                      <table class="table table-sm mb-3" x-show="(journeyStates[j.journey_id] || []).length > 0">
-                        <thead><tr><th>Name</th><th>Description</th><th>State ID</th></tr></thead>
-                        <tbody>
-                          <template x-for="s in (journeyStates[j.journey_id] || [])" :key="s.state_id">
-                            <tr>
-                              <td class="font-medium" x-text="s.name"></td>
-                              <td class="text-xs text-muted" x-text="s.description || '—'"></td>
-                              <td class="font-mono text-xs" x-text="s.state_id.substring(0,12) + '…'"></td>
-                            </tr>
-                          </template>
-                        </tbody>
-                      </table>
-                      <!-- Add state form -->
-                      <div class="flex gap-2 flex-wrap">
-                        <input class="input input-sm" placeholder="State name" x-model="stateForm.name" style="width:140px">
-                        <input class="input input-sm" placeholder="Description" x-model="stateForm.description" style="flex:1;min-width:120px">
-                        <button class="btn btn-ghost btn-sm" @click="createJourneyState(j.journey_id)" :disabled="stateCreating || !stateForm.name.trim()">+ State</button>
-                      </div>
+
+                <div class="info-card" x-show="builderMode === 'clone'" style="margin-top:12px">
+                  <h4>Loaded From Library</h4>
+                  <p>Existing journeys can be opened here for inspection and refinement. Saving creates a new journey copy, because update/delete endpoints do not exist yet.</p>
+                </div>
+
+                <div class="info-card" x-show="builderMode === 'saved'" style="margin-top:12px;border-left-color:var(--success)">
+                  <h4>Saved</h4>
+                  <p>Journey persisted. The library is already refreshed, so you can switch back and inspect the generated states and transitions.</p>
+                </div>
+
+                <hr style="border-color:var(--border);margin:12px 0">
+
+                <div class="form-group">
+                  <label>Journey Name</label>
+                  <input class="form-input" x-model="journeyMeta.name" placeholder="customer-escalation">
+                </div>
+                <div class="form-group">
+                  <label>Trigger Mode</label>
+                  <select class="form-select" x-model="journeyMeta.triggerMode">
+                    <option value="contains_any">Contains Any Term</option>
+                    <option value="contains_all">Contains All Terms</option>
+                    <option value="substring">Substring</option>
+                    <option value="regex">Regex</option>
+                    <option value="always">Always</option>
+                    <option value="json">Raw JSON</option>
+                  </select>
+                </div>
+                <div class="form-group" x-show="journeyMeta.triggerMode !== 'always' && journeyMeta.triggerMode !== 'json'">
+                  <label>Trigger Value</label>
+                  <input class="form-input" x-model="journeyMeta.triggerValue" placeholder="refund, chargeback">
+                </div>
+                <div class="form-group" x-show="journeyMeta.triggerMode === 'json'">
+                  <label>Trigger JSON</label>
+                  <textarea class="form-textarea" x-model="journeyMeta.triggerJsonText" placeholder='{"contains":["refund","chargeback"]}'></textarea>
+                </div>
+                <div class="form-group">
+                  <label>Completion Rule</label>
+                  <input class="form-input" x-model="journeyMeta.completionRule" placeholder="Optional, e.g. resolved or handoff_complete">
+                </div>
+                <label class="form-checkbox" style="margin-bottom:12px"><input type="checkbox" x-model="journeyMeta.enabled"> Enabled</label>
+
+                <div class="control-action-group" style="width:100%">
+                  <button class="btn btn-primary btn-sm btn-block" @click="saveJourney()" :disabled="saving || !scopeId">
+                    <span x-show="!saving">Save Journey Graph</span>
+                    <span x-show="saving">Saving…</span>
+                  </button>
+                  <button class="btn btn-ghost btn-sm btn-block" @click="addStateNode(150, 120, 'New State', false)">+ Add State</button>
+                  <button class="btn btn-ghost btn-sm btn-block" @click="autoLayout()">Auto Layout</button>
+                  <button class="btn btn-ghost btn-sm btn-block" @click="resetDraft()">Reset Draft</button>
+                </div>
+
+                <p class="text-xs text-dim mt-3" x-show="!scopeId">Select a scope first. Builder save is disabled until the scope is known.</p>
+                <p class="text-xs text-danger mt-2" x-show="builderError" x-text="builderError"></p>
+              </div>
+
+              <div class="wf-canvas-wrap">
+                <div class="wf-zoom-controls">
+                  <button class="btn btn-ghost btn-sm" @click="zoomOut()" title="Zoom out">-</button>
+                  <span class="text-xs" x-text="Math.round(zoom * 100) + '%'" style="min-width:36px;text-align:center"></span>
+                  <button class="btn btn-ghost btn-sm" @click="zoomIn()" title="Zoom in">+</button>
+                  <button class="btn btn-ghost btn-sm" @click="zoomReset()" title="Reset view">Fit</button>
+                </div>
+
+                <svg id="cp-journey-canvas" class="wf-canvas"
+                     @mousedown="onCanvasMouseDown($event)"
+                     @mousemove="onCanvasMouseMove($event)"
+                     @mouseup="onCanvasMouseUp()"
+                     @mouseleave="onCanvasMouseUp()"
+                     @wheel.prevent="onCanvasWheel($event)"
+                     @drop="onCanvasDrop($event)"
+                     @dragover="onCanvasDragOver($event)">
+                  <g :transform="'translate(' + (canvasOffset.x * zoom) + ',' + (canvasOffset.y * zoom) + ') scale(' + zoom + ')'">
+                    <defs>
+                      <pattern id="cp-journey-grid" width="22" height="22" patternUnits="userSpaceOnUse">
+                        <circle cx="1" cy="1" r="0.7" fill="var(--text-dim)" opacity="0.18"></circle>
+                      </pattern>
+                    </defs>
+                    <rect x="-2000" y="-2000" width="6000" height="6000" fill="url(#cp-journey-grid)"></rect>
+                    <g id="cp-journey-render-group" x-effect="nodes.length; connections.length; selectedNodeId; selectedConnectionId; connectingFromId; connectPreview; scheduleRender()"></g>
+                  </g>
+                </svg>
+
+                <div class="wf-canvas-hint" x-show="nodes.length <= 1">
+                  Drag a state in, connect the bottom port to the next state, then mark one node as the entry state from the editor.
+                </div>
+              </div>
+
+              <div class="wf-editor-panel" style="width:320px;min-width:320px">
+                <template x-if="selectedNode()">
+                  <div>
+                    <div class="wf-editor-header">
+                      <span class="font-bold text-sm">State</span>
+                      <span class="badge badge-info" x-text="selectedNode().isStart ? 'ENTRY' : 'STATE'"></span>
                     </div>
-                    <!-- Transitions -->
-                    <div>
-                      <h4 class="text-sm font-medium mb-2">Transitions <span class="badge badge-muted" x-text="(journeyTransitions[j.journey_id] || []).length"></span></h4>
-                      <table class="table table-sm mb-3" x-show="(journeyTransitions[j.journey_id] || []).length > 0">
-                        <thead><tr><th>From State ID</th><th>→</th><th>To State ID</th><th>Type</th></tr></thead>
-                        <tbody>
-                          <template x-for="t in (journeyTransitions[j.journey_id] || [])" :key="t.transition_id">
-                            <tr>
-                              <td class="font-mono text-xs" x-text="t.from_state_id.substring(0,12) + '…'"></td>
-                              <td>→</td>
-                              <td class="font-mono text-xs" x-text="t.to_state_id.substring(0,12) + '…'"></td>
-                              <td class="badge badge-muted text-xs" x-text="t.transition_type"></td>
-                            </tr>
-                          </template>
-                        </tbody>
-                      </table>
-                      <!-- Add transition form -->
-                      <div class="flex gap-2 flex-wrap">
-                        <input class="input input-sm font-mono" placeholder="from_state_id" x-model="transitionForm.from_state_id" style="width:150px">
-                        <input class="input input-sm font-mono" placeholder="to_state_id" x-model="transitionForm.to_state_id" style="width:150px">
-                        <select class="input input-sm" x-model="transitionForm.transition_type" style="width:100px">
-                          <option value="auto">auto</option>
-                          <option value="observation">observation</option>
-                          <option value="manual">manual</option>
-                        </select>
-                        <button class="btn btn-ghost btn-sm" @click="createJourneyTransition(j.journey_id)" :disabled="transitionCreating || !transitionForm.from_state_id || !transitionForm.to_state_id">+ Transition</button>
-                      </div>
+                    <div class="form-group">
+                      <label>Name</label>
+                      <input class="form-input" x-model="selectedNode().name" @input="scheduleRender()" placeholder="Qualification">
+                    </div>
+                    <div class="form-group">
+                      <label>Description</label>
+                      <textarea class="form-textarea" x-model="selectedNode().description" @input="scheduleRender()" placeholder="What should the agent collect or decide in this state?"></textarea>
+                    </div>
+                    <div class="form-group">
+                      <label>Required Fields</label>
+                      <input class="form-input" x-model="selectedNode().requiredFieldsText" @input="scheduleRender()" placeholder="email, account_id, plan">
+                    </div>
+                    <div class="form-group">
+                      <label>Projected Actions</label>
+                      <textarea class="form-textarea" x-model="selectedNode().guidelineActionsText" @input="scheduleRender()" placeholder="One line per action injected when this state is active."></textarea>
+                    </div>
+                    <div class="control-action-group" style="width:100%">
+                      <button class="btn btn-primary btn-sm btn-block" @click="setStartState(selectedNode().id)">Mark As Entry</button>
+                      <button class="btn btn-ghost btn-sm btn-block" @click="duplicateSelectedNode()">Duplicate State</button>
+                      <button class="btn btn-danger btn-sm btn-block" @click="deleteSelectedNode()">Delete State</button>
                     </div>
                   </div>
                 </template>
+
+                <template x-if="!selectedNode() && selectedConnection()">
+                  <div>
+                    <div class="wf-editor-header">
+                      <span class="font-bold text-sm">Transition</span>
+                      <span class="badge badge-muted" x-text="connectionLabel(selectedConnection())"></span>
+                    </div>
+                    <div class="form-group">
+                      <label>Transition Type</label>
+                      <select class="form-select" x-model="selectedConnection().transitionType" @change="scheduleRender()">
+                        <option value="auto">auto</option>
+                        <option value="manual">manual</option>
+                        <option value="observation">observation</option>
+                        <option value="complete">complete</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>Condition Mode</label>
+                      <select class="form-select" x-model="selectedConnection().conditionMode" @change="scheduleRender()">
+                        <option value="always">Always</option>
+                        <option value="response_contains">Response Contains</option>
+                        <option value="tool_called">Tool Called</option>
+                        <option value="json">Raw JSON</option>
+                      </select>
+                    </div>
+                    <div class="form-group" x-show="selectedConnection().conditionMode !== 'always' && selectedConnection().conditionMode !== 'json'">
+                      <label>Condition Value</label>
+                      <input class="form-input" x-model="selectedConnection().conditionValue" placeholder="refund confirmed">
+                    </div>
+                    <div class="form-group" x-show="selectedConnection().conditionMode === 'json'">
+                      <label>Condition JSON</label>
+                      <textarea class="form-textarea" x-model="selectedConnection().conditionJsonText" placeholder='{"response_contains":"refund"}'></textarea>
+                    </div>
+                    <button class="btn btn-danger btn-sm btn-block" @click="deleteSelectedConnection()">Delete Transition</button>
+                  </div>
+                </template>
+
+                <template x-if="!selectedNode() && !selectedConnection()">
+                  <div class="control-builder-empty">
+                    <div class="font-bold mb-2">Nothing Selected</div>
+                    <div>Pick a state to edit its fields, or pick a transition label to configure how the journey moves forward.</div>
+                  </div>
+                </template>
               </div>
-            </template>
           </div>
         </div>
+
+        <div class="flex flex-col gap-4" x-show="journeyView === 'list'">
+            <div class="info-card">
+              <h4>Recommended Flow</h4>
+              <p>Draft new journeys visually, then switch back to the library only when you need to inspect raw state IDs or add edges by hand. This removes the need to mentally map `from_state_id` / `to_state_id` while you are still designing.</p>
+            </div>
+
+            <details class="card">
+              <summary style="cursor:pointer;font-weight:700;font-size:13px">Quick Add With Raw Form</summary>
+              <div class="card-body flex flex-col gap-3" style="padding:16px 0 0">
+                <div class="flex gap-3 flex-wrap">
+                  <input class="input" placeholder="Journey name" x-model="jrForm.name" style="flex:1;min-width:160px">
+                  <input class="input font-mono text-xs" placeholder='Trigger config JSON, e.g. {"contains":["refund"]}' x-model="jrForm.trigger_config" style="flex:1;min-width:220px">
+                  <label class="flex items-center gap-1 text-sm"><input type="checkbox" x-model="jrForm.enabled"> Enabled</label>
+                </div>
+                <input class="input" placeholder="Completion rule (optional)" x-model="jrForm.completion_rule">
+                <button class="btn btn-primary btn-sm" @click="createJourney()" :disabled="jrCreating || !jrForm.name.trim() || !selectedScope">
+                  <span x-show="!jrCreating">+ Create Journey</span>
+                  <span x-show="jrCreating">Creating…</span>
+                </button>
+              </div>
+            </details>
+
+            <div class="card">
+              <div class="card-header flex items-center justify-between">
+                <h3 class="card-title">Journey Library <span class="badge badge-muted ml-1" x-text="journeys.length"></span></h3>
+                <button class="btn btn-ghost btn-sm" @click="loadJourneys()">Refresh</button>
+              </div>
+              <div class="card-body flex flex-col gap-3">
+                <div x-show="jrLoading" class="text-muted text-sm">Loading…</div>
+                <div x-show="!jrLoading && journeys.length === 0" class="control-builder-empty">
+                  <div class="font-bold mb-2">No journeys yet</div>
+                  <div>Create your first guided conversation path in the visual builder, then come back here for low-level inspection.</div>
+                  <button class="btn btn-primary btn-sm" style="margin-top:12px" @click="openJourneyBuilder()">Open Visual Builder</button>
+                </div>
+
+                <template x-for="j in journeys" :key="j.journey_id">
+                  <div class="border rounded" style="border-color:var(--border);background:var(--surface)">
+                    <div class="flex items-center gap-3 p-3 flex-wrap">
+                      <button class="btn btn-ghost btn-sm" @click="toggleJourneyExpand(j.journey_id)" x-text="expandedJourney === j.journey_id ? 'Hide' : 'Inspect'"></button>
+                      <div style="min-width:180px;flex:1">
+                        <div class="font-medium" x-text="j.name"></div>
+                        <div class="text-xs text-dim" x-text="'Trigger: ' + JSON.stringify(j.trigger_config || {})"></div>
+                      </div>
+                      <span :class="j.enabled ? 'badge badge-ok' : 'badge badge-muted'" x-text="j.enabled ? 'enabled' : 'disabled'"></span>
+                      <span class="badge badge-dim" x-show="j.completion_rule" x-text="j.completion_rule"></span>
+                      <button class="btn btn-primary btn-sm" @click="inspectJourneyInBuilder(j)">Open Graph</button>
+                    </div>
+
+                    <template x-if="expandedJourney === j.journey_id">
+                      <div class="px-4 pb-4 flex flex-col gap-4 border-t" style="border-color:var(--border)">
+                        <div class="mt-3">
+                          <h4 class="text-sm font-medium mb-2">States <span class="badge badge-muted" x-text="(journeyStates[j.journey_id] || []).length"></span></h4>
+                          <table class="table table-sm mb-3" x-show="(journeyStates[j.journey_id] || []).length > 0">
+                            <thead><tr><th>Name</th><th>Description</th><th>State ID</th></tr></thead>
+                            <tbody>
+                              <template x-for="s in (journeyStates[j.journey_id] || [])" :key="s.state_id">
+                                <tr>
+                                  <td class="font-medium" x-text="s.name"></td>
+                                  <td class="text-xs text-muted" x-text="s.description || '—'"></td>
+                                  <td class="font-mono text-xs" x-text="s.state_id.substring(0,12) + '…'"></td>
+                                </tr>
+                              </template>
+                            </tbody>
+                          </table>
+                          <div class="flex gap-2 flex-wrap">
+                            <input class="input input-sm" placeholder="State name" x-model="stateForm.name" style="width:140px">
+                            <input class="input input-sm" placeholder="Description" x-model="stateForm.description" style="flex:1;min-width:120px">
+                            <button class="btn btn-ghost btn-sm" @click="createJourneyState(j.journey_id)" :disabled="stateCreating || !stateForm.name.trim()">+ State</button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 class="text-sm font-medium mb-2">Transitions <span class="badge badge-muted" x-text="(journeyTransitions[j.journey_id] || []).length"></span></h4>
+                          <table class="table table-sm mb-3" x-show="(journeyTransitions[j.journey_id] || []).length > 0">
+                            <thead><tr><th>From State ID</th><th>→</th><th>To State ID</th><th>Type</th></tr></thead>
+                            <tbody>
+                              <template x-for="t in (journeyTransitions[j.journey_id] || [])" :key="t.transition_id">
+                                <tr>
+                                  <td class="font-mono text-xs" x-text="t.from_state_id.substring(0,12) + '…'"></td>
+                                  <td>→</td>
+                                  <td class="font-mono text-xs" x-text="t.to_state_id.substring(0,12) + '…'"></td>
+                                  <td class="badge badge-muted text-xs" x-text="t.transition_type"></td>
+                                </tr>
+                              </template>
+                            </tbody>
+                          </table>
+                          <div class="flex gap-2 flex-wrap">
+                            <input class="input input-sm font-mono" placeholder="from_state_id" x-model="transitionForm.from_state_id" style="width:150px">
+                            <input class="input input-sm font-mono" placeholder="to_state_id" x-model="transitionForm.to_state_id" style="width:150px">
+                            <select class="input input-sm" x-model="transitionForm.transition_type" style="width:120px">
+                              <option value="auto">auto</option>
+                              <option value="observation">observation</option>
+                              <option value="manual">manual</option>
+                              <option value="complete">complete</option>
+                            </select>
+                            <button class="btn btn-ghost btn-sm" @click="createJourneyTransition(j.journey_id)" :disabled="transitionCreating || !transitionForm.from_state_id || !transitionForm.to_state_id">+ Transition</button>
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
       </div>
     </template>
 

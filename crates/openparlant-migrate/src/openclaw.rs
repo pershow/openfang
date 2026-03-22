@@ -1886,8 +1886,9 @@ fn migrate_channels_from_json(
         report.skipped.push(SkippedItem {
             kind: ItemKind::Channel,
             name: "bluebubbles".to_string(),
-            reason: "No OpenParlant adapter available — consider using the iMessage channel instead"
-                .to_string(),
+            reason:
+                "No OpenParlant adapter available — consider using the iMessage channel instead"
+                    .to_string(),
         });
     }
 
@@ -2472,7 +2473,8 @@ fn report_skipped_features(root: &OpenClawRoot, source: &Path, report: &mut Migr
         report.skipped.push(SkippedItem {
             kind: ItemKind::Config,
             name: "hooks".to_string(),
-            reason: "Webhook hooks not supported — use OpenParlant's event system instead".to_string(),
+            reason: "Webhook hooks not supported — use OpenParlant's event system instead"
+                .to_string(),
         });
     }
 
@@ -2494,7 +2496,8 @@ fn report_skipped_features(root: &OpenClawRoot, source: &Path, report: &mut Migr
                 report.skipped.push(SkippedItem {
                     kind: ItemKind::Skill,
                     name: format!("{} skill entries", entries.len()),
-                    reason: "Skills must be reinstalled via `openparlant skill install`".to_string(),
+                    reason: "Skills must be reinstalled via `openparlant skill install`"
+                        .to_string(),
                 });
             }
         }
@@ -3236,8 +3239,9 @@ fn scan_legacy_skills(source: &Path, report: &mut MigrationReport) {
                     report.skipped.push(SkippedItem {
                         kind: ItemKind::Skill,
                         name: name.clone(),
-                        reason: "Node.js skill — run with `openparlant skill install` after migration"
-                            .to_string(),
+                        reason:
+                            "Node.js skill — run with `openparlant skill install` after migration"
+                                .to_string(),
                     });
                 } else {
                     report.skipped.push(SkippedItem {

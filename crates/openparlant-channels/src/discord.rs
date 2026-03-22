@@ -425,7 +425,11 @@ impl ChannelAdapter for DiscordAdapter {
         Ok(())
     }
 
-    async fn send_typing(&self, user: &ChannelUser, _reply_to_message_id: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    async fn send_typing(
+        &self,
+        user: &ChannelUser,
+        _reply_to_message_id: Option<&str>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         self.api_send_typing(&user.platform_id).await
     }
 

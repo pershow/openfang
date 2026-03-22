@@ -498,7 +498,11 @@ impl ChannelAdapter for MumbleAdapter {
         Ok(())
     }
 
-    async fn send_typing(&self, _user: &ChannelUser, _reply_to_message_id: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    async fn send_typing(
+        &self,
+        _user: &ChannelUser,
+        _reply_to_message_id: Option<&str>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // Mumble has no typing indicator in its protocol.
         Ok(())
     }

@@ -329,7 +329,8 @@ impl StructuredStore {
                 continue;
             }
 
-            let agent_id = match uuid::Uuid::parse_str(&id_str).map(openparlant_types::agent::AgentId)
+            let agent_id = match uuid::Uuid::parse_str(&id_str)
+                .map(openparlant_types::agent::AgentId)
             {
                 Ok(id) => id,
                 Err(e) => {

@@ -6,17 +6,17 @@
 //! Run: cargo test -p openparlant-api --test load_test -- --nocapture
 
 use axum::Router;
-use openparlant_control::{ControlStore, DefaultTurnControlCoordinator};
-use openparlant_journey::{JourneyStore, SqliteJourneyRuntime};
-use openparlant_memory::migration::run_migrations;
-use openparlant_policy::{PolicyStore, SqliteObservationMatcher, SqlitePolicyResolver};
-use rusqlite::Connection;
-use std::sync::Mutex;
 use openparlant_api::middleware;
 use openparlant_api::routes::{self, AppState};
+use openparlant_control::{ControlStore, DefaultTurnControlCoordinator};
+use openparlant_journey::{JourneyStore, SqliteJourneyRuntime};
 use openparlant_kernel::OpenFangKernel;
+use openparlant_memory::migration::run_migrations;
+use openparlant_policy::{PolicyStore, SqliteObservationMatcher, SqlitePolicyResolver};
 use openparlant_types::config::{DefaultModelConfig, KernelConfig};
+use rusqlite::Connection;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;

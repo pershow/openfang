@@ -439,7 +439,9 @@ pub async fn create_glossary_term(
     match result {
         Ok(Ok(id)) => (
             StatusCode::CREATED,
-            Json(serde_json::json!({"term_id": id, "scope_id": scope_id_clone, "name": name_clone})),
+            Json(
+                serde_json::json!({"term_id": id, "scope_id": scope_id_clone, "name": name_clone}),
+            ),
         ),
         Ok(Err(e)) => internal(e),
         Err(e) => internal(e),
@@ -470,8 +472,8 @@ pub async fn create_context_variable(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ContextVariableRequest>,
 ) -> impl IntoResponse {
-    let config_json = serde_json::to_string(&req.value_source_config)
-        .unwrap_or_else(|_| "{}".to_string());
+    let config_json =
+        serde_json::to_string(&req.value_source_config).unwrap_or_else(|_| "{}".to_string());
     let var_id = uuid::Uuid::new_v4().to_string();
     let scope_id_clone = req.scope_id.clone();
     let name_clone = req.name.clone();
@@ -505,7 +507,9 @@ pub async fn create_context_variable(
     match result {
         Ok(Ok(id)) => (
             StatusCode::CREATED,
-            Json(serde_json::json!({"variable_id": id, "scope_id": scope_id_clone, "name": name_clone})),
+            Json(
+                serde_json::json!({"variable_id": id, "scope_id": scope_id_clone, "name": name_clone}),
+            ),
         ),
         Ok(Err(e)) => internal(e),
         Err(e) => internal(e),
@@ -564,7 +568,9 @@ pub async fn create_canned_response(
     match result {
         Ok(Ok(id)) => (
             StatusCode::CREATED,
-            Json(serde_json::json!({"response_id": id, "scope_id": scope_id_clone, "name": name_clone})),
+            Json(
+                serde_json::json!({"response_id": id, "scope_id": scope_id_clone, "name": name_clone}),
+            ),
         ),
         Ok(Err(e)) => internal(e),
         Err(e) => internal(e),
@@ -739,6 +745,7 @@ pub async fn test_compile_turn(
         agent_id,
         session_id,
         message,
+        candidate_tools: state.kernel.control_candidate_tools(agent_id),
         prior_tool_calls: Vec::new(),
     };
 
@@ -796,7 +803,11 @@ pub struct GuidelineRelationshipRequest {
     pub scope_id: String,
     pub from_guideline_id: String,
     pub to_guideline_id: String,
-    /// "overrides" | "complements" | "conflicts_with" | "requires"
+    /// Accepted values:
+    /// - "overrides" | "prioritizes_over"
+    /// - "conflicts_with" | "excludes"
+    /// - "requires" | "depends_on"
+    /// - "complements"
     pub relation_type: String,
 }
 
@@ -805,12 +816,22 @@ pub async fn create_guideline_relationship(
     State(state): State<Arc<AppState>>,
     Json(req): Json<GuidelineRelationshipRequest>,
 ) -> impl IntoResponse {
+    let Some(canonical_relation_type) =
+        openparlant_policy::canonical_guideline_relation_type(&req.relation_type)
+    else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "Invalid relation_type. Use overrides/prioritizes_over, conflicts_with/excludes, requires/depends_on, or complements."
+            })),
+        );
+    };
     let rel_id = uuid::Uuid::new_v4().to_string();
     let conn = state.db_conn.clone();
     let scope_id_r = req.scope_id.clone();
     let from_r = req.from_guideline_id.clone();
     let to_r = req.to_guideline_id.clone();
-    let rel_type_r = req.relation_type.clone();
+    let rel_type_r = canonical_relation_type.to_string();
     let result = tokio::task::spawn_blocking(move || {
         let c = conn.lock().map_err(|e| e.to_string())?;
         c.execute(
@@ -826,13 +847,16 @@ pub async fn create_guideline_relationship(
     .await;
 
     match result {
-        Ok(Ok(id)) => (StatusCode::CREATED, Json(serde_json::json!({
-            "relationship_id": id,
-            "scope_id": req.scope_id,
-            "from_guideline_id": req.from_guideline_id,
-            "to_guideline_id": req.to_guideline_id,
-            "relation_type": req.relation_type,
-        }))),
+        Ok(Ok(id)) => (
+            StatusCode::CREATED,
+            Json(serde_json::json!({
+                "relationship_id": id,
+                "scope_id": req.scope_id,
+                "from_guideline_id": req.from_guideline_id,
+                "to_guideline_id": req.to_guideline_id,
+                "relation_type": canonical_relation_type,
+            })),
+        ),
         Ok(Err(e)) => internal(e),
         Err(e) => internal(e),
     }
@@ -921,11 +945,14 @@ pub async fn create_journey_state(
     .await;
 
     match result {
-        Ok(Ok(id)) => (StatusCode::CREATED, Json(serde_json::json!({
-            "state_id": id,
-            "journey_id": journey_id,
-            "name": name_clone,
-        }))),
+        Ok(Ok(id)) => (
+            StatusCode::CREATED,
+            Json(serde_json::json!({
+                "state_id": id,
+                "journey_id": journey_id,
+                "name": name_clone,
+            })),
+        ),
         Ok(Err(e)) => internal(e),
         Err(e) => internal(e),
     }
@@ -941,7 +968,8 @@ pub async fn list_journey_states(
         let c = conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = c
             .prepare(
-                "SELECT state_id, journey_id, name, description, required_fields
+                "SELECT state_id, journey_id, name, description, required_fields,
+                        COALESCE(guideline_actions_json, '[]')
                  FROM journey_states WHERE journey_id = ?1 ORDER BY name ASC",
             )
             .map_err(|e| e.to_string())?;
@@ -950,12 +978,16 @@ pub async fn list_journey_states(
                 let rf_json: String = row.get(4).unwrap_or_else(|_| "[]".into());
                 let required_fields: Vec<String> =
                     serde_json::from_str(&rf_json).unwrap_or_default();
+                let actions_json: String = row.get(5).unwrap_or_else(|_| "[]".into());
+                let guideline_actions: Vec<String> =
+                    serde_json::from_str(&actions_json).unwrap_or_default();
                 Ok(serde_json::json!({
                     "state_id": row.get::<_, String>(0)?,
                     "journey_id": row.get::<_, String>(1)?,
                     "name": row.get::<_, String>(2)?,
                     "description": row.get::<_, Option<String>>(3)?,
                     "required_fields": required_fields,
+                    "guideline_actions": guideline_actions,
                 }))
             })
             .map_err(|e| e.to_string())?;
@@ -994,8 +1026,7 @@ pub async fn create_journey_transition(
     Json(req): Json<JourneyTransitionRequest>,
 ) -> impl IntoResponse {
     let trans_id = uuid::Uuid::new_v4().to_string();
-    let cond_json =
-        serde_json::to_string(&req.condition_config).unwrap_or_else(|_| "{}".into());
+    let cond_json = serde_json::to_string(&req.condition_config).unwrap_or_else(|_| "{}".into());
     let conn = state.db_conn.clone();
     let jid_clone = journey_id.clone();
     let from_clone = req.from_state_id.clone();
@@ -1017,13 +1048,16 @@ pub async fn create_journey_transition(
     .await;
 
     match result {
-        Ok(Ok(id)) => (StatusCode::CREATED, Json(serde_json::json!({
-            "transition_id": id,
-            "journey_id": journey_id,
-            "from_state_id": req.from_state_id,
-            "to_state_id": req.to_state_id,
-            "transition_type": req.transition_type,
-        }))),
+        Ok(Ok(id)) => (
+            StatusCode::CREATED,
+            Json(serde_json::json!({
+                "transition_id": id,
+                "journey_id": journey_id,
+                "from_state_id": req.from_state_id,
+                "to_state_id": req.to_state_id,
+                "transition_type": req.transition_type,
+            })),
+        ),
         Ok(Err(e)) => internal(e),
         Err(e) => internal(e),
     }
@@ -1122,8 +1156,14 @@ pub async fn session_journey_state(
     .await;
 
     match result {
-        Ok(Ok(Some(data))) => (StatusCode::OK, Json(serde_json::json!({"active": true, "journey": data}))),
-        Ok(Ok(None)) => (StatusCode::OK, Json(serde_json::json!({"active": false, "journey": null}))),
+        Ok(Ok(Some(data))) => (
+            StatusCode::OK,
+            Json(serde_json::json!({"active": true, "journey": data})),
+        ),
+        Ok(Ok(None)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({"active": false, "journey": null})),
+        ),
         Ok(Err(e)) => internal(e),
         Err(e) => internal(e),
     }
@@ -1145,7 +1185,9 @@ pub struct CreateToolPolicyRequest {
     #[serde(default = "default_true")]
     pub enabled: bool,
 }
-fn default_approval_mode() -> String { "none".to_string() }
+fn default_approval_mode() -> String {
+    "none".to_string()
+}
 
 /// POST /api/control/tool-policies
 pub async fn create_tool_policy(
@@ -1167,13 +1209,20 @@ pub async fn create_tool_policy(
         enabled: req.enabled,
     };
     match state.policy_store.upsert_tool_exposure_policy(&policy) {
-        Ok(()) => (StatusCode::CREATED, Json(serde_json::json!({
-            "policy_id": policy_id,
-            "scope_id": req.scope_id,
-            "tool_name": req.tool_name,
-            "approval_mode": req.approval_mode,
-            "enabled": req.enabled,
-        }))),
+        Ok(()) => (
+            StatusCode::CREATED,
+            Json(serde_json::json!({
+                "policy_id": policy_id,
+                "scope_id": req.scope_id,
+                "tool_name": req.tool_name,
+                "skill_ref": req.skill_ref,
+                "observation_ref": req.observation_ref,
+                "journey_state_ref": req.journey_state_ref,
+                "guideline_ref": req.guideline_ref,
+                "approval_mode": req.approval_mode,
+                "enabled": req.enabled,
+            })),
+        ),
         Err(e) => internal(e),
     }
 }
@@ -1184,19 +1233,27 @@ pub async fn list_tool_policies(
     Path(scope_id): Path<String>,
 ) -> impl IntoResponse {
     use openparlant_types::control::ScopeId;
-    match state.policy_store.list_tool_exposure_policies(&ScopeId::new(scope_id)) {
+    match state
+        .policy_store
+        .list_tool_exposure_policies(&ScopeId::new(scope_id))
+    {
         Ok(policies) => {
-            let items: Vec<_> = policies.iter().map(|p| serde_json::json!({
-                "policy_id": p.policy_id,
-                "scope_id": p.scope_id.0,
-                "tool_name": p.tool_name,
-                "skill_ref": p.skill_ref,
-                "observation_ref": p.observation_ref,
-                "journey_state_ref": p.journey_state_ref,
-                "guideline_ref": p.guideline_ref,
-                "approval_mode": p.approval_mode.as_str(),
-                "enabled": p.enabled,
-            })).collect();
+            let items: Vec<_> = policies
+                .iter()
+                .map(|p| {
+                    serde_json::json!({
+                        "policy_id": p.policy_id,
+                        "scope_id": p.scope_id.0,
+                        "tool_name": p.tool_name,
+                        "skill_ref": p.skill_ref,
+                        "observation_ref": p.observation_ref,
+                        "journey_state_ref": p.journey_state_ref,
+                        "guideline_ref": p.guideline_ref,
+                        "approval_mode": p.approval_mode.as_str(),
+                        "enabled": p.enabled,
+                    })
+                })
+                .collect();
             (StatusCode::OK, Json(serde_json::json!(items)))
         }
         Err(e) => internal(e),
@@ -1209,17 +1266,20 @@ pub async fn get_tool_policy(
     Path(policy_id): Path<String>,
 ) -> impl IntoResponse {
     match state.policy_store.get_tool_exposure_policy(&policy_id) {
-        Ok(Some(p)) => (StatusCode::OK, Json(serde_json::json!({
-            "policy_id": p.policy_id,
-            "scope_id": p.scope_id.0,
-            "tool_name": p.tool_name,
-            "skill_ref": p.skill_ref,
-            "observation_ref": p.observation_ref,
-            "journey_state_ref": p.journey_state_ref,
-            "guideline_ref": p.guideline_ref,
-            "approval_mode": p.approval_mode.as_str(),
-            "enabled": p.enabled,
-        }))),
+        Ok(Some(p)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "policy_id": p.policy_id,
+                "scope_id": p.scope_id.0,
+                "tool_name": p.tool_name,
+                "skill_ref": p.skill_ref,
+                "observation_ref": p.observation_ref,
+                "journey_state_ref": p.journey_state_ref,
+                "guideline_ref": p.guideline_ref,
+                "approval_mode": p.approval_mode.as_str(),
+                "enabled": p.enabled,
+            })),
+        ),
         Ok(None) => not_found("policy"),
         Err(e) => internal(e),
     }
@@ -1255,12 +1315,15 @@ pub async fn create_session_binding(
         active_journey_instance_id: None,
     };
     match state.control_store.upsert_session_binding(&binding) {
-        Ok(()) => (StatusCode::CREATED, Json(serde_json::json!({
-            "binding_id": binding.binding_id,
-            "scope_id": req.scope_id,
-            "session_id": req.session_id,
-            "manual_mode": false,
-        }))),
+        Ok(()) => (
+            StatusCode::CREATED,
+            Json(serde_json::json!({
+                "binding_id": binding.binding_id,
+                "scope_id": req.scope_id,
+                "session_id": req.session_id,
+                "manual_mode": false,
+            })),
+        ),
         Err(e) => internal(e),
     }
 }
@@ -1271,15 +1334,18 @@ pub async fn get_session_binding(
     Path(session_id): Path<String>,
 ) -> impl IntoResponse {
     match state.control_store.get_session_binding(&session_id) {
-        Ok(Some(b)) => (StatusCode::OK, Json(serde_json::json!({
-            "binding_id": b.binding_id,
-            "scope_id": b.scope_id.0,
-            "channel_type": b.channel_type,
-            "agent_id": b.agent_id,
-            "session_id": b.session_id,
-            "manual_mode": b.manual_mode,
-            "active_journey_instance_id": b.active_journey_instance_id,
-        }))),
+        Ok(Some(b)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "binding_id": b.binding_id,
+                "scope_id": b.scope_id.0,
+                "channel_type": b.channel_type,
+                "agent_id": b.agent_id,
+                "session_id": b.session_id,
+                "manual_mode": b.manual_mode,
+                "active_journey_instance_id": b.active_journey_instance_id,
+            })),
+        ),
         Ok(None) => not_found("session_binding"),
         Err(e) => internal(e),
     }
@@ -1294,11 +1360,14 @@ pub async fn enable_manual_mode(
     Path(session_id): Path<String>,
 ) -> impl IntoResponse {
     match state.control_store.set_manual_mode(&session_id, true) {
-        Ok(true) => (StatusCode::OK, Json(serde_json::json!({
-            "session_id": session_id,
-            "manual_mode": true,
-            "message": "Session switched to manual mode. AI responses suppressed."
-        }))),
+        Ok(true) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "session_id": session_id,
+                "manual_mode": true,
+                "message": "Session switched to manual mode. AI responses suppressed."
+            })),
+        ),
         Ok(false) => not_found("session_binding"),
         Err(e) => internal(e),
     }
@@ -1312,11 +1381,14 @@ pub async fn resume_ai(
     Path(session_id): Path<String>,
 ) -> impl IntoResponse {
     match state.control_store.set_manual_mode(&session_id, false) {
-        Ok(true) => (StatusCode::OK, Json(serde_json::json!({
-            "session_id": session_id,
-            "manual_mode": false,
-            "message": "AI responses resumed."
-        }))),
+        Ok(true) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "session_id": session_id,
+                "manual_mode": false,
+                "message": "AI responses resumed."
+            })),
+        ),
         Ok(false) => not_found("session_binding"),
         Err(e) => internal(e),
     }
@@ -1336,8 +1408,8 @@ pub async fn create_handoff(
     Path(session_id): Path<String>,
     Json(req): Json<HandoffRequest>,
 ) -> impl IntoResponse {
-    use openparlant_types::control::{HandoffRecord, HandoffStatus, ScopeId};
     use chrono::Utc;
+    use openparlant_types::control::{HandoffRecord, HandoffStatus, ScopeId};
 
     let scope_id = state
         .control_store
@@ -1366,14 +1438,17 @@ pub async fn create_handoff(
 
     let _ = state.control_store.set_manual_mode(&session_id, true);
 
-    (StatusCode::CREATED, Json(serde_json::json!({
-        "handoff_id": handoff_id,
-        "session_id": session_id,
-        "reason": req.reason,
-        "summary": req.summary,
-        "status": "pending",
-        "manual_mode": true,
-    })))
+    (
+        StatusCode::CREATED,
+        Json(serde_json::json!({
+            "handoff_id": handoff_id,
+            "session_id": session_id,
+            "reason": req.reason,
+            "summary": req.summary,
+            "status": "pending",
+            "manual_mode": true,
+        })),
+    )
 }
 
 /// GET /api/sessions/:session_id/handoffs
@@ -1381,7 +1456,10 @@ pub async fn list_handoffs(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
 ) -> impl IntoResponse {
-    match state.control_store.list_handoffs_by_session(&session_id, 20) {
+    match state
+        .control_store
+        .list_handoffs_by_session(&session_id, 20)
+    {
         Ok(items) => (StatusCode::OK, Json(serde_json::json!(items))),
         Err(e) => internal(e),
     }
@@ -1411,11 +1489,17 @@ pub async fn update_handoff_status(
             )
         }
     };
-    match state.control_store.update_handoff_status(&handoff_id, &status) {
-        Ok(true) => (StatusCode::OK, Json(serde_json::json!({
-            "handoff_id": handoff_id,
-            "status": req.status,
-        }))),
+    match state
+        .control_store
+        .update_handoff_status(&handoff_id, &status)
+    {
+        Ok(true) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "handoff_id": handoff_id,
+                "status": req.status,
+            })),
+        ),
         Ok(false) => not_found("handoff"),
         Err(e) => internal(e),
     }
@@ -1434,7 +1518,9 @@ pub struct CreateRetrieverRequest {
     #[serde(default = "default_true")]
     pub enabled: bool,
 }
-fn default_retriever_type() -> String { "static".to_string() }
+fn default_retriever_type() -> String {
+    "static".to_string()
+}
 
 /// POST /api/control/retrievers
 pub async fn create_retriever(
@@ -1477,7 +1563,9 @@ pub struct PublishReleaseRequest {
     #[serde(default = "default_system_user")]
     pub published_by: String,
 }
-fn default_system_user() -> String { "system".to_string() }
+fn default_system_user() -> String {
+    "system".to_string()
+}
 
 /// POST /api/control/releases/publish
 pub async fn publish_release(
@@ -1492,13 +1580,16 @@ pub async fn publish_release(
         &req.version,
         &req.published_by,
     ) {
-        Ok(()) => (StatusCode::CREATED, Json(serde_json::json!({
-            "release_id": release_id,
-            "scope_id": req.scope_id,
-            "version": req.version,
-            "status": "published",
-            "published_by": req.published_by,
-        }))),
+        Ok(()) => (
+            StatusCode::CREATED,
+            Json(serde_json::json!({
+                "release_id": release_id,
+                "scope_id": req.scope_id,
+                "version": req.version,
+                "status": "published",
+                "published_by": req.published_by,
+            })),
+        ),
         Err(e) => internal(e),
     }
 }
@@ -1514,15 +1605,24 @@ pub async fn rollback_release(
     Json(req): Json<RollbackReleaseRequest>,
 ) -> impl IntoResponse {
     use openparlant_types::control::ScopeId;
-    match state.control_store.rollback_release(&ScopeId::new(req.scope_id.clone())) {
-        Ok(Some(rid)) => (StatusCode::OK, Json(serde_json::json!({
-            "rolled_back_release_id": rid,
-            "scope_id": req.scope_id,
-        }))),
-        Ok(None) => (StatusCode::NOT_FOUND, Json(serde_json::json!({
-            "error": "No published release found to roll back",
-            "scope_id": req.scope_id,
-        }))),
+    match state
+        .control_store
+        .rollback_release(&ScopeId::new(req.scope_id.clone()))
+    {
+        Ok(Some(rid)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "rolled_back_release_id": rid,
+                "scope_id": req.scope_id,
+            })),
+        ),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": "No published release found to roll back",
+                "scope_id": req.scope_id,
+            })),
+        ),
         Err(e) => internal(e),
     }
 }

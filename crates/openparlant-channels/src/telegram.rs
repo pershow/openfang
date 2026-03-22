@@ -603,7 +603,11 @@ impl ChannelAdapter for TelegramAdapter {
         self.send_content(user, content, None).await
     }
 
-    async fn send_typing(&self, user: &ChannelUser, _reply_to_message_id: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    async fn send_typing(
+        &self,
+        user: &ChannelUser,
+        _reply_to_message_id: Option<&str>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let chat_id: i64 = user
             .platform_id
             .parse()

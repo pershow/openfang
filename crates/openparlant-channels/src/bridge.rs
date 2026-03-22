@@ -975,7 +975,9 @@ async fn dispatch_message(
 
     match result {
         Ok(response) => {
-            let _ = adapter.clear_typing(&message.sender, Some(msg_id.as_str())).await;
+            let _ = adapter
+                .clear_typing(&message.sender, Some(msg_id.as_str()))
+                .await;
             if lifecycle_reactions {
                 send_lifecycle_reaction(adapter, &message.sender, msg_id, AgentPhase::Done).await;
             }
@@ -1009,7 +1011,9 @@ async fn dispatch_message(
                     .await;
                 let retry = handle.send_message(new_id, &text).await;
                 typing_task2.abort();
-                let _ = adapter.clear_typing(&message.sender, Some(msg_id.as_str())).await;
+                let _ = adapter
+                    .clear_typing(&message.sender, Some(msg_id.as_str()))
+                    .await;
                 match retry {
                     Ok(response) => {
                         if lifecycle_reactions {
@@ -1071,7 +1075,9 @@ async fn dispatch_message(
                 return;
             }
 
-            let _ = adapter.clear_typing(&message.sender, Some(msg_id.as_str())).await;
+            let _ = adapter
+                .clear_typing(&message.sender, Some(msg_id.as_str()))
+                .await;
             if lifecycle_reactions {
                 send_lifecycle_reaction(adapter, &message.sender, msg_id, AgentPhase::Error).await;
             }
@@ -1424,7 +1430,9 @@ async fn dispatch_with_blocks(
 
     match result {
         Ok(response) => {
-            let _ = adapter.clear_typing(&message.sender, Some(msg_id.as_str())).await;
+            let _ = adapter
+                .clear_typing(&message.sender, Some(msg_id.as_str()))
+                .await;
             if lifecycle_reactions {
                 send_lifecycle_reaction(adapter, &message.sender, msg_id, AgentPhase::Done).await;
             }
@@ -1458,7 +1466,9 @@ async fn dispatch_with_blocks(
                     .await;
                 let retry = handle.send_message_with_blocks(new_id, blocks).await;
                 typing_task2.abort();
-                let _ = adapter.clear_typing(&message.sender, Some(msg_id.as_str())).await;
+                let _ = adapter
+                    .clear_typing(&message.sender, Some(msg_id.as_str()))
+                    .await;
                 match retry {
                     Ok(response) => {
                         if lifecycle_reactions {
@@ -1520,7 +1530,9 @@ async fn dispatch_with_blocks(
                 return;
             }
 
-            let _ = adapter.clear_typing(&message.sender, Some(msg_id.as_str())).await;
+            let _ = adapter
+                .clear_typing(&message.sender, Some(msg_id.as_str()))
+                .await;
             if lifecycle_reactions {
                 send_lifecycle_reaction(adapter, &message.sender, msg_id, AgentPhase::Error).await;
             }
@@ -1561,8 +1573,9 @@ async fn handle_command(
     match name {
         "start" => {
             let agents = handle.list_agents().await.unwrap_or_default();
-            let mut msg = "Welcome to OpenParlant! I connect you to AI agents.\n\nAvailable agents:\n"
-                .to_string();
+            let mut msg =
+                "Welcome to OpenParlant! I connect you to AI agents.\n\nAvailable agents:\n"
+                    .to_string();
             if agents.is_empty() {
                 msg.push_str("  (none running)\n");
             } else {

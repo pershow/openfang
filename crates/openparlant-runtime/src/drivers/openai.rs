@@ -99,8 +99,7 @@ impl OpenAIDriver {
         if self.azure_mode {
             builder = builder.header("api-key", self.api_key.as_str());
         } else {
-            builder =
-                builder.header("authorization", format!("Bearer {}", self.api_key.as_str()));
+            builder = builder.header("authorization", format!("Bearer {}", self.api_key.as_str()));
         }
         builder
     }
@@ -257,10 +256,65 @@ struct OaiResponseMessage {
     reasoning_content: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 struct OaiUsage {
+    #[serde(default, alias = "input_tokens")]
     prompt_tokens: u64,
+    #[serde(default, alias = "output_tokens")]
     completion_tokens: u64,
+    #[serde(default)]
+    total_tokens: Option<u64>,
+}
+
+impl OaiUsage {
+    fn into_token_usage(self) -> TokenUsage {
+        let output_tokens = if self.completion_tokens > 0 {
+            self.completion_tokens
+        } else {
+            self.total_tokens
+                .map(|total| total.saturating_sub(self.prompt_tokens))
+                .unwrap_or(0)
+        };
+
+        TokenUsage {
+            input_tokens: self.prompt_tokens,
+            output_tokens,
+        }
+    }
+}
+
+fn merge_oai_usage(usage: &mut TokenUsage, raw_usage: &serde_json::Value) {
+    let input_tokens = raw_usage
+        .get("prompt_tokens")
+        .and_then(serde_json::Value::as_u64)
+        .or_else(|| {
+            raw_usage
+                .get("input_tokens")
+                .and_then(serde_json::Value::as_u64)
+        });
+
+    if let Some(input_tokens) = input_tokens {
+        usage.input_tokens = input_tokens;
+    }
+
+    let output_tokens = raw_usage
+        .get("completion_tokens")
+        .and_then(serde_json::Value::as_u64)
+        .or_else(|| {
+            raw_usage
+                .get("output_tokens")
+                .and_then(serde_json::Value::as_u64)
+        })
+        .or_else(|| {
+            raw_usage
+                .get("total_tokens")
+                .and_then(serde_json::Value::as_u64)
+                .map(|total| total.saturating_sub(usage.input_tokens))
+        });
+
+    if let Some(output_tokens) = output_tokens {
+        usage.output_tokens = output_tokens;
+    }
 }
 
 #[async_trait]
@@ -713,10 +767,7 @@ impl LlmDriver for OpenAIDriver {
 
             let mut usage = oai_response
                 .usage
-                .map(|u| TokenUsage {
-                    input_tokens: u.prompt_tokens,
-                    output_tokens: u.completion_tokens,
-                })
+                .map(OaiUsage::into_token_usage)
                 .unwrap_or_default();
 
             // Guard: if the model returned content but usage is missing/zero
@@ -1110,12 +1161,7 @@ impl LlmDriver for OpenAIDriver {
 
                     // Extract usage if present (some providers send it in the last chunk)
                     if let Some(u) = json.get("usage") {
-                        if let Some(pt) = u["prompt_tokens"].as_u64() {
-                            usage.input_tokens = pt;
-                        }
-                        if let Some(ct) = u["completion_tokens"].as_u64() {
-                            usage.output_tokens = ct;
-                        }
+                        merge_oai_usage(&mut usage, u);
                     }
 
                     let choices = match json["choices"].as_array() {
@@ -1773,6 +1819,36 @@ mod tests {
         let msg: OaiResponseMessage = serde_json::from_str(json).unwrap();
         assert!(msg.content.is_none());
         assert!(msg.reasoning_content.is_none());
+    }
+
+    #[test]
+    fn test_oai_usage_missing_completion_tokens_uses_total_tokens_delta() {
+        let json = r#"{"prompt_tokens": 11, "total_tokens": 17}"#;
+        let usage: OaiUsage = serde_json::from_str(json).unwrap();
+        let usage = usage.into_token_usage();
+        assert_eq!(usage.input_tokens, 11);
+        assert_eq!(usage.output_tokens, 6);
+    }
+
+    #[test]
+    fn test_oai_usage_accepts_input_output_aliases() {
+        let json = r#"{"input_tokens": 7, "output_tokens": 3}"#;
+        let usage: OaiUsage = serde_json::from_str(json).unwrap();
+        let usage = usage.into_token_usage();
+        assert_eq!(usage.input_tokens, 7);
+        assert_eq!(usage.output_tokens, 3);
+    }
+
+    #[test]
+    fn test_merge_oai_usage_falls_back_to_total_tokens() {
+        let mut usage = TokenUsage::default();
+        let raw = serde_json::json!({
+            "prompt_tokens": 9,
+            "total_tokens": 14
+        });
+        merge_oai_usage(&mut usage, &raw);
+        assert_eq!(usage.input_tokens, 9);
+        assert_eq!(usage.output_tokens, 5);
     }
 
     // ── Azure OpenAI tests ──────────────────────────────────────────

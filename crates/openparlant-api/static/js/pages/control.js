@@ -35,6 +35,7 @@ function controlPage() {
     // ── Journeys ─────────────────────────────────────────────────────────────
     journeys: [],
     jrLoading: false,
+    journeyView: 'list',
     jrForm: { name: '', trigger_config: '{}', completion_rule: '', enabled: true },
     jrCreating: false,
     expandedJourney: null,
@@ -120,8 +121,9 @@ function controlPage() {
         this.selectedScope = s.scope_id;
         this.newScopeName = '';
         await this.onScopeChange();
+        this.toastSuccess('Scope "' + (s.name || 'new scope') + '" created');
       } catch (e) {
-        alert('Failed to create scope: ' + e.message);
+        this.toastError('Failed to create scope: ' + e.message);
       } finally {
         this.creatingScope = false;
       }
@@ -129,7 +131,16 @@ function controlPage() {
 
     async onScopeChange() {
       if (!this.selectedScope) return;
-      await Promise.all([this.loadObservations(), this.loadGuidelines(), this.loadJourneys()]);
+      window.__openfangControlScope = this.selectedScope || '';
+      window.dispatchEvent(new CustomEvent('control-scope-changed', {
+        detail: { scopeId: this.selectedScope || '' }
+      }));
+      await Promise.all([
+        this.loadObservations(),
+        this.loadGuidelines(),
+        this.loadJourneys(),
+        this.loadToolPolicies()
+      ]);
     },
 
     // ── Compile-turn Debug ───────────────────────────────────────────────────
@@ -163,7 +174,66 @@ function controlPage() {
 
     badgeClass(n) {
       if (n === 0) return 'badge badge-muted';
-      return 'badge badge-ok';
+      return 'badge badge-success';
+    },
+
+    toast(level, message) {
+      if (typeof OpenFangToast !== 'undefined' && OpenFangToast[level]) {
+        OpenFangToast[level](message);
+        return;
+      }
+      if (level === 'error') console.error(message);
+      else console.log(message);
+    },
+
+    toastSuccess(message) {
+      this.toast('success', message);
+    },
+
+    toastError(message) {
+      this.toast('error', message);
+    },
+
+    selectedScopeRecord() {
+      for (var i = 0; i < this.scopes.length; i++) {
+        if (this.scopes[i].scope_id === this.selectedScope) return this.scopes[i];
+      }
+      return null;
+    },
+
+    switchTab(nextTab, journeyView) {
+      this.tab = nextTab;
+      if (nextTab === 'journeys' && journeyView) this.journeyView = journeyView;
+      if (nextTab === 'observations') this.loadObservations();
+      if (nextTab === 'guidelines') this.loadGuidelines();
+      if (nextTab === 'journeys') this.loadJourneys();
+      if (nextTab === 'toolgate') this.loadToolPolicies();
+    },
+
+    openJourneyBuilder() {
+      this.switchTab('journeys', 'builder');
+      window.dispatchEvent(new CustomEvent('control-journey-builder-import', { detail: null }));
+    },
+
+    async inspectJourneyInBuilder(journey) {
+      if (!journey || !journey.journey_id) return;
+      this.switchTab('journeys', 'builder');
+      try {
+        var full = await OpenFangAPI.get('/api/control/journeys/' + journey.journey_id);
+        var states = await OpenFangAPI.get('/api/control/journeys/' + journey.journey_id + '/states');
+        var transitions = await OpenFangAPI.get('/api/control/journeys/' + journey.journey_id + '/transitions');
+        setTimeout(function() {
+          window.dispatchEvent(new CustomEvent('control-journey-builder-import', {
+            detail: {
+              journey: full,
+              states: states || [],
+              transitions: transitions || [],
+            }
+          }));
+        }, 0);
+      } catch (e) {
+        this.toastError('Failed to open journey graph: ' + (e.message || e));
+      }
     },
 
     // ── Observations ─────────────────────────────────────────────────────────
@@ -196,8 +266,9 @@ function controlPage() {
         });
         this.observations.push(obs);
         this.obsForm = { name: '', matcher_type: 'keyword', priority: 0, enabled: true, matcher_config: '{}' };
+        this.toastSuccess('Observation "' + obs.name + '" created');
       } catch (e) {
-        alert('Failed to create observation: ' + e.message);
+        this.toastError('Failed to create observation: ' + e.message);
       } finally {
         this.obsCreating = false;
       }
@@ -232,8 +303,9 @@ function controlPage() {
         });
         this.guidelines.push(g);
         this.glForm = { name: '', condition_ref: '', action_text: '', composition_mode: 'append', priority: 0, enabled: true };
+        this.toastSuccess('Guideline "' + g.name + '" created');
       } catch (e) {
-        alert('Failed to create guideline: ' + e.message);
+        this.toastError('Failed to create guideline: ' + e.message);
       } finally {
         this.glCreating = false;
       }
@@ -268,8 +340,9 @@ function controlPage() {
         });
         this.journeys.push(j);
         this.jrForm = { name: '', trigger_config: '{}', completion_rule: '', enabled: true };
+        this.toastSuccess('Journey "' + j.name + '" created');
       } catch (e) {
-        alert('Failed to create journey: ' + e.message);
+        this.toastError('Failed to create journey: ' + e.message);
       } finally {
         this.jrCreating = false;
       }
@@ -319,8 +392,9 @@ function controlPage() {
         cur.push(s);
         this.journeyStates = Object.assign({}, this.journeyStates, { [jid]: cur });
         this.stateForm = { name: '', description: '', required_fields: '' };
+        this.toastSuccess('Journey state "' + s.name + '" created');
       } catch (e) {
-        alert('Failed to create state: ' + e.message);
+        this.toastError('Failed to create state: ' + e.message);
       } finally {
         this.stateCreating = false;
       }
@@ -342,8 +416,9 @@ function controlPage() {
         cur.push(t);
         this.journeyTransitions = Object.assign({}, this.journeyTransitions, { [jid]: cur });
         this.transitionForm = { from_state_id: '', to_state_id: '', transition_type: 'auto', condition_config: '{}' };
+        this.toastSuccess('Journey transition added');
       } catch (e) {
-        alert('Failed to create transition: ' + e.message);
+        this.toastError('Failed to create transition: ' + e.message);
       } finally {
         this.transitionCreating = false;
       }
@@ -365,9 +440,9 @@ function controlPage() {
           synonyms: syns,
         });
         this.glossaryForm = { name: '', description: '', synonyms: '' };
-        alert('Glossary term created');
+        this.toastSuccess('Glossary term created');
       } catch (e) {
-        alert('Failed: ' + e.message);
+        this.toastError('Failed to create glossary term: ' + e.message);
       } finally {
         this.glossaryCreating = false;
       }
@@ -386,9 +461,9 @@ function controlPage() {
           value_source_config: cfg,
         });
         this.varForm = { name: '', value_source_type: 'static', value_source_config: '{"value":""}' };
-        alert('Context variable created');
+        this.toastSuccess('Context variable created');
       } catch (e) {
-        alert('Failed: ' + e.message);
+        this.toastError('Failed to create context variable: ' + e.message);
       } finally {
         this.varCreating = false;
       }
@@ -405,9 +480,9 @@ function controlPage() {
           priority: Number(this.cannedForm.priority) || 0,
         });
         this.cannedForm = { name: '', template_text: '', priority: 0 };
-        alert('Canned response created');
+        this.toastSuccess('Canned response created');
       } catch (e) {
-        alert('Failed: ' + e.message);
+        this.toastError('Failed to create canned response: ' + e.message);
       } finally {
         this.cannedCreating = false;
       }
@@ -443,15 +518,16 @@ function controlPage() {
         });
         this.toolPolicies.push(p);
         this.tpForm = { tool_name: '', skill_ref: '', observation_ref: '', journey_state_ref: '', guideline_ref: '', approval_mode: 'none', enabled: true };
+        this.toastSuccess('Tool policy for "' + p.tool_name + '" created');
       } catch (e) {
-        alert('Failed: ' + e.message);
+        this.toastError('Failed to create tool policy: ' + e.message);
       } finally {
         this.tpCreating = false;
       }
     },
 
     approvalModeBadge(mode) {
-      var map = { 'none': 'badge-ok', 'conditional': 'badge-warn', 'required': 'badge-err' };
+      var map = { 'none': 'badge-success', 'conditional': 'badge-warn', 'required': 'badge-error' };
       return 'badge ' + (map[mode] || 'badge-muted');
     },
 
@@ -466,8 +542,9 @@ function controlPage() {
           '/api/sessions/' + this.handoffSessionId + '/handoff',
           { reason: this.handoffReason, summary: this.handoffSummary || null }
         );
+        this.toastSuccess('Handoff created');
       } catch (e) {
-        alert('Failed: ' + e.message);
+        this.toastError('Failed to create handoff: ' + e.message);
       } finally {
         this.handoffCreating = false;
       }
@@ -494,8 +571,9 @@ function controlPage() {
         : '/api/sessions/' + this.manualModeSessionId + '/resume-ai';
       try {
         this.manualModeResult = await OpenFangAPI.post(endpoint, {});
+        this.toastSuccess(this.manualModeOp === 'enable' ? 'Manual mode enabled' : 'AI resumed');
       } catch (e) {
-        alert('Failed: ' + e.message);
+        this.toastError('Failed to update manual mode: ' + e.message);
       } finally {
         this.manualModeLoading = false;
       }
@@ -505,8 +583,9 @@ function controlPage() {
       try {
         await OpenFangAPI.patch('/api/control/handoffs/' + handoffId + '/status', { status });
         await this.loadHandoffs();
+        this.toastSuccess('Handoff status updated');
       } catch (e) {
-        alert('Failed: ' + e.message);
+        this.toastError('Failed to update handoff status: ' + e.message);
       }
     },
 
@@ -517,7 +596,7 @@ function controlPage() {
     },
 
     responseModeBadge(mode) {
-      var map = { 'free': 'badge-ok', 'constrained': 'badge-warn', 'canned_only': 'badge-err', 'silent': 'badge-muted' };
+      var map = { 'free': 'badge-success', 'constrained': 'badge-warn', 'canned_only': 'badge-error', 'silent': 'badge-muted' };
       return 'badge ' + (map[mode] || 'badge-muted');
     },
   };

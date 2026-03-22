@@ -4280,6 +4280,7 @@ version = "0.5.1"
 dependencies = [
  "anyhow",
  "async-trait",
+ "futures",
  "openparlant-memory",
  "openparlant-types",
  "regex-lite",
