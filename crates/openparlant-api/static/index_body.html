@@ -1459,7 +1459,7 @@
 
     <!-- Page: Workflows -->
     <template x-if="page === 'workflows'">
-      <div x-data="{ wfTab: localStorage.getItem('openfang-workflows-view') || 'list', setWfTab(tab) { this.wfTab = tab; localStorage.setItem('openfang-workflows-view', tab); } }"
+      <div x-data="{ wfTab: localStorage.getItem('openparlant-workflows-view') || 'list', setWfTab(tab) { this.wfTab = tab; localStorage.setItem('openparlant-workflows-view', tab); } }"
            @wf-switch-tab.window="setWfTab($event.detail || 'builder')">
         <div class="page-header">
           <h2>Workflows</h2>
@@ -5848,6 +5848,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                         <div class="text-xs text-dim" x-text="'Trigger: ' + JSON.stringify(j.trigger_config || {})"></div>
                       </div>
                       <span :class="j.enabled ? 'badge badge-ok' : 'badge badge-muted'" x-text="j.enabled ? 'enabled' : 'disabled'"></span>
+                      <span class="badge badge-info" x-text="journeyEntryStateLabel(j)"></span>
                       <span class="badge badge-dim" x-show="j.completion_rule" x-text="j.completion_rule"></span>
                       <button class="btn btn-primary btn-sm" @click="inspectJourneyInBuilder(j)">Open Graph</button>
                     </div>
@@ -5855,15 +5856,27 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                     <template x-if="expandedJourney === j.journey_id">
                       <div class="px-4 pb-4 flex flex-col gap-4 border-t" style="border-color:var(--border)">
                         <div class="mt-3">
+                          <div class="text-xs text-dim mb-2" x-text="'Entry state: ' + journeyEntryStateLabel(j).replace(/^entry: /, '')"></div>
                           <h4 class="text-sm font-medium mb-2">States <span class="badge badge-muted" x-text="(journeyStates[j.journey_id] || []).length"></span></h4>
                           <table class="table table-sm mb-3" x-show="(journeyStates[j.journey_id] || []).length > 0">
-                            <thead><tr><th>Name</th><th>Description</th><th>State ID</th></tr></thead>
+                            <thead><tr><th>Name</th><th>Description</th><th>Role</th><th>State ID</th><th></th></tr></thead>
                             <tbody>
                               <template x-for="s in (journeyStates[j.journey_id] || [])" :key="s.state_id">
                                 <tr>
                                   <td class="font-medium" x-text="s.name"></td>
                                   <td class="text-xs text-muted" x-text="s.description || '—'"></td>
-                                  <td class="font-mono text-xs" x-text="s.state_id.substring(0,12) + '…'"></td>
+                                  <td>
+                                    <span :class="isJourneyEntryState(j.journey_id, s.state_id) ? 'badge badge-info' : 'badge badge-muted'"
+                                          x-text="isJourneyEntryState(j.journey_id, s.state_id) ? 'entry' : 'state'"></span>
+                                  </td>
+                                  <td class="font-mono text-xs" x-text="shortId(s.state_id)"></td>
+                                  <td style="text-align:right">
+                                    <button class="btn btn-ghost btn-sm"
+                                            x-show="!isJourneyEntryState(j.journey_id, s.state_id)"
+                                            @click="setJourneyEntryState(j.journey_id, s.state_id)">
+                                      Set Entry
+                                    </button>
+                                  </td>
                                 </tr>
                               </template>
                             </tbody>

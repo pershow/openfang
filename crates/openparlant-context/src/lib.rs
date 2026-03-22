@@ -4,12 +4,12 @@ mod store;
 
 use anyhow::Result;
 use async_trait::async_trait;
+use openparlant_memory::db::SharedDb;
 use openparlant_types::control::{
     CannedResponseCandidate, CanonicalMessage, ControlEmbedder, GlossaryEntry, JourneyActivation,
     KnowledgeCompileContext, ResolvedVariable, RetrievedChunk, ScopeId,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
 use std::sync::Arc;
 pub use store::ContextStore;
 
@@ -35,7 +35,7 @@ pub trait KnowledgeCompiler: Send + Sync {
     ) -> Result<KnowledgeBundle>;
 }
 
-// ─── SQLite-backed implementation ────────────────────────────────────────────
+// ─── Shared database-backed implementation ───────────────────────────────────
 
 pub struct SqliteKnowledgeCompiler {
     store: ContextStore,
@@ -44,9 +44,9 @@ pub struct SqliteKnowledgeCompiler {
 }
 
 impl SqliteKnowledgeCompiler {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub fn new(db: impl Into<SharedDb>) -> Self {
         Self {
-            store: ContextStore::new(pool),
+            store: ContextStore::new(db),
             embedder: None,
         }
     }
@@ -106,6 +106,9 @@ impl KnowledgeCompiler for SqliteKnowledgeCompiler {
         })
     }
 }
+
+/// Backend-agnostic alias for the default store-backed knowledge compiler.
+pub type StoreKnowledgeCompiler = SqliteKnowledgeCompiler;
 
 // ─── No-op implementation (used during incremental bring-up) ─────────────────
 

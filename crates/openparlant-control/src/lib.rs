@@ -1,5 +1,8 @@
 //! Orchestrates control-plane compilation around the existing runtime loop.
 
+mod dashboard;
+mod notifications;
+mod plaza;
 mod store;
 
 use anyhow::Result;
@@ -18,7 +21,10 @@ use openparlant_types::control::{
     TurnInput, TurnOutcome,
 };
 use sha2::{Digest, Sha256};
-pub use store::ControlStore;
+pub use store::{
+    ControlStore, DashboardCompanyStats, DashboardTenant, DashboardUser, InvitationCodeRecord,
+    NotificationRecord, PlazaCommentRecord, PlazaPostRecord, SystemSettingRecord,
+};
 use tracing::{debug, warn};
 
 /// Default coordinator wiring together policy, journey, context, and tool-gate compilation.

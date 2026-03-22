@@ -86,9 +86,13 @@ pub async fn auth(
     // POST/PUT/DELETE to any endpoint ALWAYS requires auth to prevent
     // unauthenticated writes (cron job creation, skill install, etc.).
     let is_get = method == axum::http::Method::GET;
+    let is_frontend_route =
+        is_get && !path.starts_with("/api/") && !path.starts_with("/hooks/") && !path.starts_with("/mcp");
+
     let is_public = path == "/"
         || path == "/logo.png"
         || path == "/favicon.ico"
+        || is_frontend_route
         || (path == "/.well-known/agent.json" && is_get)
         || (path.starts_with("/a2a/") && is_get)
         || path == "/api/health"
@@ -125,9 +129,12 @@ pub async fn auth(
         || path == "/api/logs/stream"  // SSE stream, read-only
         || (path.starts_with("/api/cron/") && is_get)
         || path.starts_with("/api/providers/github-copilot/oauth/")
+        || path == "/api/auth/register"
         || path == "/api/auth/login"
         || path == "/api/auth/logout"
-        || (path == "/api/auth/check" && is_get);
+        || (path == "/api/auth/check" && is_get)
+        || (path == "/api/tenants/registration-config" && is_get)
+        || (path.starts_with("/api/enterprise/system-settings/") && path.ends_with("/public") && is_get);
 
     if is_public {
         return next.run(request).await;
@@ -184,6 +191,17 @@ pub async fn auth(
     // Accept if either auth method matches
     if header_auth == Some(true) || query_auth == Some(true) {
         return next.run(request).await;
+    }
+
+    // Also accept dashboard session tokens sent via Authorization: Bearer <session_token>.
+    if auth_state.auth_enabled {
+        if let Some(token) = bearer_token {
+            if crate::session_auth::verify_session_token(token, &auth_state.session_secret)
+                .is_some()
+            {
+                return next.run(request).await;
+            }
+        }
     }
 
     // Check session cookie (dashboard login sessions)

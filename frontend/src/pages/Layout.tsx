@@ -67,6 +67,93 @@ const SidebarIcons = {
             <path d="M6.5 12.5a1.5 1.5 0 003 0" />
         </svg>
     ),
+    overview: (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="2" width="12" height="12" rx="2" />
+            <path d="M5 10V7M8 10V5M11 10V8" />
+        </svg>
+    ),
+    chart: (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2.5 13.5h11" />
+            <path d="M4.5 11V8.5" />
+            <path d="M8 11V5" />
+            <path d="M11.5 11V6.5" />
+        </svg>
+    ),
+    sessions: (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 2.5L2.5 5.5 8 8.5l5.5-3L8 2.5z" />
+            <path d="M2.5 8.5L8 11.5l5.5-3" />
+            <path d="M2.5 11l5.5 3 5.5-3" />
+        </svg>
+    ),
+    approvals: (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4.5 8l2.2 2.2L11.5 5.5" />
+            <rect x="2.5" y="2.5" width="11" height="11" rx="2" />
+        </svg>
+    ),
+    comms: (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12.5 10.5a2 2 0 10-1.6-3.2L9.6 6.6a2 2 0 100 2.8l1.3-.7a2 2 0 001.6 1.8z" />
+            <circle cx="5" cy="8" r="2" />
+            <circle cx="12" cy="4.5" r="2" />
+            <circle cx="12" cy="11.5" r="2" />
+        </svg>
+    ),
+    workflow: (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="4" cy="4" r="1.5" />
+            <circle cx="12" cy="8" r="1.5" />
+            <circle cx="4" cy="12" r="1.5" />
+            <path d="M5.5 4h3M10.5 8H6.2M5.5 12h3" />
+        </svg>
+    ),
+    scheduler: (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="8" cy="8" r="5.5" />
+            <path d="M8 5.2V8l2 1.3" />
+        </svg>
+    ),
+    channels: (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 4.5h10M3 8h10M3 11.5h10" />
+            <path d="M5.5 3l-1 10M10.5 3l-1 10" />
+        </svg>
+    ),
+    skills: (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 4l-4 4 4 4" />
+            <path d="M10 4l4 4-4 4" />
+        </svg>
+    ),
+    hands: (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M11.5 7V4.5a1.2 1.2 0 10-2.4 0V7" />
+            <path d="M9.1 7V3.5a1.2 1.2 0 10-2.4 0v5" />
+            <path d="M6.7 7.2V4.8a1.2 1.2 0 10-2.4 0V10" />
+            <path d="M11.5 5.5a1.2 1.2 0 112.4 0v3.2a4.8 4.8 0 01-4.8 4.8H8c-1.7 0-2.8-.5-3.6-1.5L2.7 9.8a1.1 1.1 0 011.8-1.3L5.5 9" />
+        </svg>
+    ),
+    control: (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 2l4.5 1.7v3.4c0 3-2 5.7-4.5 6.9C5.5 12.8 3.5 10.1 3.5 7.1V3.7L8 2z" />
+            <path d="M6.4 8l1.1 1.1L10 6.6" />
+        </svg>
+    ),
+    runtime: (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="2.5" width="12" height="8.5" rx="1.5" />
+            <path d="M6 13.5h4M8 11v2.5" />
+        </svg>
+    ),
+    logs: (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 5.5h8M4 8h8M4 10.5h5" />
+            <rect x="2.5" y="2.5" width="11" height="11" rx="2" />
+        </svg>
+    ),
 };
 
 const fetchJson = async <T,>(url: string): Promise<T> => {
@@ -305,7 +392,7 @@ export default function Layout() {
                 <div className="sidebar-top">
                     <div className="sidebar-logo">
                         <img src={theme === 'dark' ? '/logo-white.png' : '/logo-black.png'} alt="" style={{ width: 22, height: 22 }} />
-                        <span className="sidebar-logo-text">Clawith</span>
+                        <span className="sidebar-logo-text">OpenFang</span>
                     </div>
 
 
@@ -411,6 +498,65 @@ export default function Layout() {
                                         {isChinese ? '无匹配结果' : 'No matches'}
                                     </div>
                                 )}
+                                <div className="sidebar-section">
+                                    <div className="sidebar-section-title">{t('nav.console', 'Console')}</div>
+                                    <NavLink to="/overview" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
+                                        <span className="sidebar-item-icon" style={{ display: 'flex' }}>{SidebarIcons.overview}</span>
+                                        <span className="sidebar-item-text">{t('nav.overview', 'Overview')}</span>
+                                    </NavLink>
+                                    <NavLink to="/analytics" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
+                                        <span className="sidebar-item-icon" style={{ display: 'flex' }}>{SidebarIcons.chart}</span>
+                                        <span className="sidebar-item-text">{t('nav.analytics', 'Analytics')}</span>
+                                    </NavLink>
+                                    <NavLink to="/sessions" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
+                                        <span className="sidebar-item-icon" style={{ display: 'flex' }}>{SidebarIcons.sessions}</span>
+                                        <span className="sidebar-item-text">{t('nav.sessions', 'Sessions')}</span>
+                                    </NavLink>
+                                    <NavLink to="/approvals" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
+                                        <span className="sidebar-item-icon" style={{ display: 'flex' }}>{SidebarIcons.approvals}</span>
+                                        <span className="sidebar-item-text">{t('nav.approvals', 'Approvals')}</span>
+                                    </NavLink>
+                                    <NavLink to="/comms" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
+                                        <span className="sidebar-item-icon" style={{ display: 'flex' }}>{SidebarIcons.comms}</span>
+                                        <span className="sidebar-item-text">{t('nav.comms', 'Comms')}</span>
+                                    </NavLink>
+                                    <NavLink to="/workflows" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
+                                        <span className="sidebar-item-icon" style={{ display: 'flex' }}>{SidebarIcons.workflow}</span>
+                                        <span className="sidebar-item-text">{t('nav.workflows', 'Workflows')}</span>
+                                    </NavLink>
+                                    <NavLink to="/scheduler" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
+                                        <span className="sidebar-item-icon" style={{ display: 'flex' }}>{SidebarIcons.scheduler}</span>
+                                        <span className="sidebar-item-text">{t('nav.scheduler', 'Scheduler')}</span>
+                                    </NavLink>
+                                    <NavLink to="/channels" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
+                                        <span className="sidebar-item-icon" style={{ display: 'flex' }}>{SidebarIcons.channels}</span>
+                                        <span className="sidebar-item-text">{t('nav.channels', 'Channels')}</span>
+                                    </NavLink>
+                                    <NavLink to="/skills" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
+                                        <span className="sidebar-item-icon" style={{ display: 'flex' }}>{SidebarIcons.skills}</span>
+                                        <span className="sidebar-item-text">{t('nav.skills', 'Skills')}</span>
+                                    </NavLink>
+                                    <NavLink to="/hands" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
+                                        <span className="sidebar-item-icon" style={{ display: 'flex' }}>{SidebarIcons.hands}</span>
+                                        <span className="sidebar-item-text">{t('nav.hands', 'Hands')}</span>
+                                    </NavLink>
+                                    <NavLink to="/control" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
+                                        <span className="sidebar-item-icon" style={{ display: 'flex' }}>{SidebarIcons.control}</span>
+                                        <span className="sidebar-item-text">{t('nav.control', 'Control')}</span>
+                                    </NavLink>
+                                    <NavLink to="/runtime" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
+                                        <span className="sidebar-item-icon" style={{ display: 'flex' }}>{SidebarIcons.runtime}</span>
+                                        <span className="sidebar-item-text">{t('nav.runtime', 'Runtime')}</span>
+                                    </NavLink>
+                                    <NavLink to="/logs" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
+                                        <span className="sidebar-item-icon" style={{ display: 'flex' }}>{SidebarIcons.logs}</span>
+                                        <span className="sidebar-item-text">{t('nav.logs', 'Logs')}</span>
+                                    </NavLink>
+                                    <NavLink to="/settings" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
+                                        <span className="sidebar-item-icon" style={{ display: 'flex' }}>{SidebarIcons.settings}</span>
+                                        <span className="sidebar-item-text">{t('nav.settings', 'Settings')}</span>
+                                    </NavLink>
+                                </div>
                             </>
                         );
                     })()}

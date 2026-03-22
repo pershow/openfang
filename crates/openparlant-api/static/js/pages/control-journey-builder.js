@@ -39,7 +39,7 @@ function controlJourneyBuilder() {
 
     init: function() {
       var self = this;
-      this.scopeId = window.__openfangControlScope || '';
+      this.scopeId = window.__openparlantControlScope || '';
       this.resetDraft();
 
       this._importHandler = function(evt) {
@@ -793,6 +793,13 @@ function controlJourneyBuilder() {
           stateIdByNodeId[node.id] = createdState.state_id;
         }
 
+        var startNodeId = this.inferStartNodeId();
+        if (startNodeId && stateIdByNodeId[startNodeId]) {
+          await OpenFangAPI.post('/api/control/journeys/' + createdJourney.journey_id + '/entry-state', {
+            state_id: stateIdByNodeId[startNodeId]
+          });
+        }
+
         for (var c = 0; c < this.connections.length; c++) {
           var conn = this.connections[c];
           await OpenFangAPI.post('/api/control/journeys/' + createdJourney.journey_id + '/transitions', {
@@ -846,13 +853,17 @@ function controlJourneyBuilder() {
         triggerJsonText: trigger.json
       };
 
-      var inferredStartId = '';
+      var inferredStartId = journey && typeof journey.entry_state_id === 'string'
+        ? journey.entry_state_id
+        : '';
       var inbound = {};
       for (var i = 0; i < transitions.length; i++) inbound[transitions[i].to_state_id] = true;
-      for (var s = 0; s < states.length; s++) {
-        if (!inbound[states[s].state_id]) {
-          inferredStartId = states[s].state_id;
-          break;
+      if (!inferredStartId) {
+        for (var s = 0; s < states.length; s++) {
+          if (!inbound[states[s].state_id]) {
+            inferredStartId = states[s].state_id;
+            break;
+          }
         }
       }
 

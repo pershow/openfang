@@ -10,15 +10,18 @@ openparlant-types = { path = "../openparlant-types" }
 openparlant-policy = { path = "../openparlant-policy" }
 openparlant-journey = { path = "../openparlant-journey" }
 openparlant-context = { path = "../openparlant-context" }
+openparlant-memory = { path = "../openparlant-memory" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
 rusqlite = { workspace = true }
+sqlx = { workspace = true }
 tracing = { workspace = true }
 serde_json = { workspace = true }
+serde = { workspace = true }
+rmp-serde = { workspace = true }
 sha2 = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
-openparlant-memory = { path = "../openparlant-memory" }
 tokio = { workspace = true }

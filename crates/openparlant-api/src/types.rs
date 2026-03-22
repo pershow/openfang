@@ -16,6 +16,34 @@ pub struct SpawnRequest {
     /// When present, the signature is verified before spawning.
     #[serde(default)]
     pub signed_manifest: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub agent_type: Option<String>,
+    #[serde(default)]
+    pub role_description: Option<String>,
+    #[serde(default)]
+    pub personality: Option<String>,
+    #[serde(default)]
+    pub boundaries: Option<String>,
+    #[serde(default)]
+    pub primary_model_id: Option<String>,
+    #[serde(default)]
+    pub fallback_model_id: Option<String>,
+    #[serde(default)]
+    pub template_id: Option<String>,
+    #[serde(default)]
+    pub permission_scope_type: Option<String>,
+    #[serde(default)]
+    pub permission_access_level: Option<String>,
+    #[serde(default)]
+    pub max_tokens_per_day: Option<u64>,
+    #[serde(default)]
+    pub max_tokens_per_month: Option<u64>,
+    #[serde(default)]
+    pub skill_ids: Option<Vec<String>>,
+    #[serde(default)]
+    pub tenant_id: Option<String>,
 }
 
 /// Response after spawning an agent.

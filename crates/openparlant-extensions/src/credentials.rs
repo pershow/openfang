@@ -3,8 +3,9 @@
 //! Resolution order:
 //! 1. Encrypted vault (`~/.openparlant/vault.enc`)
 //! 2. Dotenv file (`~/.openparlant/.env`)
-//! 3. Process environment variable
-//! 4. Interactive prompt (CLI only, when `interactive` is true)
+//! 3. Secrets file (`~/.openparlant/secrets.env`)
+//! 4. Process environment variable
+//! 5. Interactive prompt (CLI only, when `interactive` is true)
 
 use crate::vault::CredentialVault;
 use crate::ExtensionResult;
@@ -19,6 +20,8 @@ pub struct CredentialResolver {
     vault: Option<CredentialVault>,
     /// Dotenv entries (loaded from `~/.openparlant/.env`).
     dotenv: HashMap<String, String>,
+    /// Secret entries (loaded from sibling `secrets.env`, if present).
+    secrets: HashMap<String, String>,
     /// Whether to prompt interactively as a last resort.
     interactive: bool,
 }
@@ -26,14 +29,21 @@ pub struct CredentialResolver {
 impl CredentialResolver {
     /// Create a resolver with optional vault and dotenv path.
     pub fn new(vault: Option<CredentialVault>, dotenv_path: Option<&Path>) -> Self {
-        let dotenv = if let Some(path) = dotenv_path {
-            load_dotenv(path).unwrap_or_default()
-        } else {
-            HashMap::new()
-        };
+        let dotenv = dotenv_path
+            .map(load_dotenv)
+            .transpose()
+            .unwrap_or_default()
+            .unwrap_or_default();
+        let secrets = dotenv_path
+            .and_then(|path| path.parent().map(|parent| parent.join("secrets.env")))
+            .map(|path| load_dotenv(&path))
+            .transpose()
+            .unwrap_or_default()
+            .unwrap_or_default();
         Self {
             vault,
             dotenv,
+            secrets,
             interactive: false,
         }
     }
@@ -62,13 +72,19 @@ impl CredentialResolver {
             return Some(Zeroizing::new(val.clone()));
         }
 
-        // 3. Environment variable
+        // 3. Secrets file
+        if let Some(val) = self.secrets.get(key) {
+            debug!("Credential '{}' resolved from secrets.env", key);
+            return Some(Zeroizing::new(val.clone()));
+        }
+
+        // 4. Environment variable
         if let Ok(val) = std::env::var(key) {
             debug!("Credential '{}' resolved from env var", key);
             return Some(Zeroizing::new(val));
         }
 
-        // 4. Interactive prompt (CLI only)
+        // 5. Interactive prompt (CLI only)
         if self.interactive {
             if let Some(val) = prompt_secret(key) {
                 debug!("Credential '{}' resolved from interactive prompt", key);
@@ -89,6 +105,10 @@ impl CredentialResolver {
         }
         // Check dotenv
         if self.dotenv.contains_key(key) {
+            return true;
+        }
+        // Check secrets.env
+        if self.secrets.contains_key(key) {
             return true;
         }
         // Check env
@@ -129,7 +149,8 @@ impl CredentialResolver {
 
     /// Clear a credential from the in-memory dotenv cache.
     /// Call this when a key is deleted via the dashboard so the resolver
-    /// doesn't return a stale value from the boot-time snapshot.
+    /// doesn't return a stale `.env` value from the boot-time snapshot.
+    /// If the same key exists in `secrets.env`, it will still resolve.
     pub fn clear_dotenv_cache(&mut self, key: &str) {
         self.dotenv.remove(key);
     }
@@ -246,6 +267,33 @@ SINGLE_QUOTED='single'
         assert_eq!(val.as_str(), "from_dotenv"); // dotenv takes priority
 
         std::env::remove_var("TEST_CRED_DOT_456");
+    }
+
+    #[test]
+    fn resolver_secrets_env_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        let env_path = dir.path().join(".env");
+        let secrets_path = dir.path().join("secrets.env");
+        std::fs::write(&env_path, "").unwrap();
+        std::fs::write(&secrets_path, "TEST_CRED_SECRET_456=from_secrets\n").unwrap();
+
+        let resolver = CredentialResolver::new(None, Some(&env_path));
+        let val = resolver.resolve("TEST_CRED_SECRET_456").unwrap();
+        assert_eq!(val.as_str(), "from_secrets");
+        assert!(resolver.has_credential("TEST_CRED_SECRET_456"));
+    }
+
+    #[test]
+    fn resolver_dotenv_overrides_secrets_env() {
+        let dir = tempfile::tempdir().unwrap();
+        let env_path = dir.path().join(".env");
+        let secrets_path = dir.path().join("secrets.env");
+        std::fs::write(&env_path, "TEST_CRED_SHARED_456=from_dotenv\n").unwrap();
+        std::fs::write(&secrets_path, "TEST_CRED_SHARED_456=from_secrets\n").unwrap();
+
+        let resolver = CredentialResolver::new(None, Some(&env_path));
+        let val = resolver.resolve("TEST_CRED_SHARED_456").unwrap();
+        assert_eq!(val.as_str(), "from_dotenv");
     }
 
     #[test]

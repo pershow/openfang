@@ -14,6 +14,7 @@ RestartSec=5
 TimeoutStopSec=30
 
 # Environment
+Environment=OPENFANG_HOME=/var/lib/openparlant
 EnvironmentFile=-/etc/openparlant/env
 WorkingDirectory=/var/lib/openparlant
 

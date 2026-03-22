@@ -993,10 +993,16 @@ function BroadcastSection() {
 }
 
 
-export default function EnterpriseSettings() {
+type EnterpriseSettingsTab = 'llm' | 'org' | 'info' | 'approvals' | 'audit' | 'tools' | 'skills' | 'quotas' | 'users' | 'invites';
+
+export default function EnterpriseSettings({ defaultTab = 'info' }: { defaultTab?: EnterpriseSettingsTab }) {
     const { t } = useTranslation();
     const qc = useQueryClient();
-    const [activeTab, setActiveTab] = useState<'llm' | 'org' | 'info' | 'approvals' | 'audit' | 'tools' | 'skills' | 'quotas' | 'users' | 'invites'>('info');
+    const [activeTab, setActiveTab] = useState<EnterpriseSettingsTab>(defaultTab);
+
+    useEffect(() => {
+        setActiveTab(defaultTab);
+    }, [defaultTab]);
 
     // Track selected tenant as state so page refreshes on company switch
     const [selectedTenantId, setSelectedTenantId] = useState(localStorage.getItem('current_tenant_id') || '');
@@ -1581,7 +1587,7 @@ export default function EnterpriseSettings() {
                                 className="form-input"
                                 value={companyIntro}
                                 onChange={e => setCompanyIntro(e.target.value)}
-                                placeholder={`# Company Name\nClawith\n\n# About\nOpenClaw\uD83E\uDD9E For Teams\nOpen Source \u00B7 Multi-OpenClaw Collaboration\n\nOpenClaw empowers individuals.\nClawith scales it to frontier organizations.`}
+                                placeholder={`# Company Name\nOpenFang\n\n# About\nOpenFang For Teams\nOpen Source \u00B7 Multi-Agent Collaboration\n\nOpenClaw empowers individuals.\nOpenFang scales it to frontier organizations.`}
                                 style={{
                                     minHeight: '200px', resize: 'vertical',
                                     fontFamily: 'var(--font-mono)', fontSize: '13px',

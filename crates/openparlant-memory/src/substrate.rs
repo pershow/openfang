@@ -4,8 +4,9 @@
 //! session store, and consolidation engine behind a single async API.
 
 use crate::consolidation::ConsolidationEngine;
+use crate::db::{block_on, SharedDb};
 use crate::knowledge::KnowledgeStore;
-use crate::migration::run_migrations;
+use crate::migration::{run_migrations, run_postgres_migrations};
 use crate::semantic::SemanticStore;
 use crate::session::{Session, SessionStore};
 use crate::structured::StructuredStore;
@@ -18,15 +19,15 @@ use openparlant_types::memory::{
     ConsolidationReport, Entity, ExportFormat, GraphMatch, GraphPattern, ImportReport, Memory,
     MemoryFilter, MemoryFragment, MemoryId, MemorySource, Relation,
 };
-use rusqlite::Connection;
+use sqlx::Row;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 /// The unified memory substrate. Implements the `Memory` trait by delegating
-/// to specialized stores backed by a shared SQLite connection.
+/// to specialized stores backed by a shared database handle.
 pub struct MemorySubstrate {
-    conn: Arc<Mutex<Connection>>,
+    db: SharedDb,
     structured: StructuredStore,
     semantic: SemanticStore,
     knowledge: KnowledgeStore,
@@ -38,38 +39,48 @@ pub struct MemorySubstrate {
 impl MemorySubstrate {
     /// Open or create a memory substrate at the given database path.
     pub fn open(db_path: &Path, decay_rate: f32) -> OpenFangResult<Self> {
-        let conn = Connection::open(db_path).map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        run_migrations(&conn).map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        let shared = Arc::new(Mutex::new(conn));
+        let db = SharedDb::open_sqlite(db_path)?;
+        if let Some(conn) = db.sqlite() {
+            let conn = conn
+                .lock()
+                .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+            run_migrations(&conn).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        }
+        Self::from_db(db, decay_rate)
+    }
 
-        Ok(Self {
-            conn: Arc::clone(&shared),
-            structured: StructuredStore::new(Arc::clone(&shared)),
-            semantic: SemanticStore::new(Arc::clone(&shared)),
-            knowledge: KnowledgeStore::new(Arc::clone(&shared)),
-            sessions: SessionStore::new(Arc::clone(&shared)),
-            usage: UsageStore::new(Arc::clone(&shared)),
-            consolidation: ConsolidationEngine::new(shared, decay_rate),
-        })
+    /// Open or create a memory substrate backed by PostgreSQL.
+    pub async fn open_postgres(database_url: &str, decay_rate: f32) -> OpenFangResult<Self> {
+        let db = SharedDb::open_postgres(database_url).await?;
+        if let Some(pool) = db.postgres() {
+            run_postgres_migrations(&pool)
+                .await
+                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        }
+        Self::from_db(db, decay_rate)
     }
 
     /// Create an in-memory substrate (for testing).
     pub fn open_in_memory(decay_rate: f32) -> OpenFangResult<Self> {
-        let conn =
-            Connection::open_in_memory().map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        run_migrations(&conn).map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        let shared = Arc::new(Mutex::new(conn));
+        let db = SharedDb::open_sqlite_in_memory()?;
+        if let Some(conn) = db.sqlite() {
+            let conn = conn
+                .lock()
+                .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+            run_migrations(&conn).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        }
+        Self::from_db(db, decay_rate)
+    }
 
+    fn from_db(db: SharedDb, decay_rate: f32) -> OpenFangResult<Self> {
         Ok(Self {
-            conn: Arc::clone(&shared),
-            structured: StructuredStore::new(Arc::clone(&shared)),
-            semantic: SemanticStore::new(Arc::clone(&shared)),
-            knowledge: KnowledgeStore::new(Arc::clone(&shared)),
-            sessions: SessionStore::new(Arc::clone(&shared)),
-            usage: UsageStore::new(Arc::clone(&shared)),
-            consolidation: ConsolidationEngine::new(shared, decay_rate),
+            db: db.clone(),
+            structured: StructuredStore::new(db.clone()),
+            semantic: SemanticStore::new(db.clone()),
+            knowledge: KnowledgeStore::new(db.clone()),
+            sessions: SessionStore::new(db.clone()),
+            usage: UsageStore::new(db.clone()),
+            consolidation: ConsolidationEngine::new(db, decay_rate),
         })
     }
 
@@ -78,9 +89,9 @@ impl MemorySubstrate {
         &self.usage
     }
 
-    /// Get the shared database connection (for constructing stores from outside).
-    pub fn usage_conn(&self) -> Arc<Mutex<Connection>> {
-        Arc::clone(&self.conn)
+    /// Get the shared database handle.
+    pub fn shared_db(&self) -> SharedDb {
+        self.db.clone()
     }
 
     /// Save an agent entry to persistent storage.
@@ -272,30 +283,56 @@ impl MemorySubstrate {
 
     /// Load all paired devices from the database.
     pub fn load_paired_devices(&self) -> OpenFangResult<Vec<serde_json::Value>> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        let mut stmt = conn.prepare(
-            "SELECT device_id, display_name, platform, paired_at, last_seen, push_token FROM paired_devices"
-        ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        let rows = stmt
-            .query_map([], |row| {
-                Ok(serde_json::json!({
-                    "device_id": row.get::<_, String>(0)?,
-                    "display_name": row.get::<_, String>(1)?,
-                    "platform": row.get::<_, String>(2)?,
-                    "paired_at": row.get::<_, String>(3)?,
-                    "last_seen": row.get::<_, String>(4)?,
-                    "push_token": row.get::<_, Option<String>>(5)?,
-                }))
-            })
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        let mut devices = Vec::new();
-        for row in rows {
-            devices.push(row.map_err(|e| OpenFangError::Memory(e.to_string()))?);
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                let mut stmt = conn.prepare(
+                    "SELECT device_id, display_name, platform, paired_at, last_seen, push_token FROM paired_devices"
+                ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                let rows = stmt
+                    .query_map([], |row| {
+                        Ok(serde_json::json!({
+                            "device_id": row.get::<_, String>(0)?,
+                            "display_name": row.get::<_, String>(1)?,
+                            "platform": row.get::<_, String>(2)?,
+                            "paired_at": row.get::<_, String>(3)?,
+                            "last_seen": row.get::<_, String>(4)?,
+                            "push_token": row.get::<_, Option<String>>(5)?,
+                        }))
+                    })
+                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                let mut devices = Vec::new();
+                for row in rows {
+                    devices.push(row.map_err(|e| OpenFangError::Memory(e.to_string()))?);
+                }
+                Ok(devices)
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let rows = block_on(async move {
+                    sqlx::query(
+                        "SELECT device_id, display_name, platform, paired_at, last_seen, push_token FROM paired_devices",
+                    )
+                    .fetch_all(&*pool)
+                    .await
+                })
+                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                let mut devices = Vec::with_capacity(rows.len());
+                for row in rows {
+                    devices.push(serde_json::json!({
+                        "device_id": row.try_get::<String, _>("device_id").map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        "display_name": row.try_get::<String, _>("display_name").map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        "platform": row.try_get::<String, _>("platform").map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        "paired_at": row.try_get::<String, _>("paired_at").map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        "last_seen": row.try_get::<String, _>("last_seen").map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        "push_token": row.try_get::<Option<String>, _>("push_token").map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                    }));
+                }
+                Ok(devices)
+            }
         }
-        Ok(devices)
     }
 
     /// Save a paired device to the database (insert or replace).
@@ -308,28 +345,75 @@ impl MemorySubstrate {
         last_seen: &str,
         push_token: Option<&str>,
     ) -> OpenFangResult<()> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        conn.execute(
-            "INSERT OR REPLACE INTO paired_devices (device_id, display_name, platform, paired_at, last_seen, push_token) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![device_id, display_name, platform, paired_at, last_seen, push_token],
-        ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                conn.execute(
+                    "INSERT OR REPLACE INTO paired_devices (device_id, display_name, platform, paired_at, last_seen, push_token) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    rusqlite::params![device_id, display_name, platform, paired_at, last_seen, push_token],
+                ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let device_id = device_id.to_string();
+                let display_name = display_name.to_string();
+                let platform = platform.to_string();
+                let paired_at = paired_at.to_string();
+                let last_seen = last_seen.to_string();
+                let push_token = push_token.map(|s| s.to_string());
+                block_on(async move {
+                    sqlx::query(
+                        "INSERT INTO paired_devices (device_id, display_name, platform, paired_at, last_seen, push_token)
+                         VALUES ($1, $2, $3, $4, $5, $6)
+                         ON CONFLICT(device_id) DO UPDATE SET
+                            display_name = EXCLUDED.display_name,
+                            platform = EXCLUDED.platform,
+                            paired_at = EXCLUDED.paired_at,
+                            last_seen = EXCLUDED.last_seen,
+                            push_token = EXCLUDED.push_token",
+                    )
+                    .bind(device_id)
+                    .bind(display_name)
+                    .bind(platform)
+                    .bind(paired_at)
+                    .bind(last_seen)
+                    .bind(push_token)
+                    .execute(&*pool)
+                    .await
+                })
+                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            }
+        }
         Ok(())
     }
 
     /// Remove a paired device from the database.
     pub fn remove_paired_device(&self, device_id: &str) -> OpenFangResult<()> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        conn.execute(
-            "DELETE FROM paired_devices WHERE device_id = ?1",
-            rusqlite::params![device_id],
-        )
-        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                conn.execute(
+                    "DELETE FROM paired_devices WHERE device_id = ?1",
+                    rusqlite::params![device_id],
+                )
+                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let device_id = device_id.to_string();
+                block_on(async move {
+                    sqlx::query("DELETE FROM paired_devices WHERE device_id = $1")
+                        .bind(device_id)
+                        .execute(&*pool)
+                        .await
+                })
+                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            }
+        }
         Ok(())
     }
 
@@ -426,146 +510,318 @@ impl MemorySubstrate {
         assigned_to: Option<&str>,
         created_by: Option<&str>,
     ) -> OpenFangResult<String> {
-        let conn = Arc::clone(&self.conn);
         let title = title.to_string();
         let description = description.to_string();
         let assigned_to = assigned_to.unwrap_or("").to_string();
         let created_by = created_by.unwrap_or("").to_string();
-
-        tokio::task::spawn_blocking(move || {
-            let id = uuid::Uuid::new_v4().to_string();
-            let now = chrono::Utc::now().to_rfc3339();
-            let db = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
-            db.execute(
-                "INSERT INTO task_queue (id, agent_id, task_type, payload, status, priority, created_at, title, description, assigned_to, created_by)
-                 VALUES (?1, ?2, ?3, ?4, 'pending', 0, ?5, ?6, ?7, ?8, ?9)",
-                rusqlite::params![id, &created_by, &title, b"", now, title, description, assigned_to, created_by],
-            )
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-            Ok(id)
-        })
-        .await
-        .map_err(|e| OpenFangError::Internal(e.to_string()))?
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = Arc::clone(conn);
+                let inserted_id = id.clone();
+                tokio::task::spawn_blocking(move || {
+                    let db = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    db.execute(
+                        "INSERT INTO task_queue (id, agent_id, task_type, payload, status, priority, created_at, title, description, assigned_to, created_by)
+                         VALUES (?1, ?2, ?3, ?4, 'pending', 0, ?5, ?6, ?7, ?8, ?9)",
+                        rusqlite::params![inserted_id, &created_by, &title, b"", now, title, description, assigned_to, created_by],
+                    )
+                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    Ok::<_, OpenFangError>(id)
+                })
+                .await
+                .map_err(|e| OpenFangError::Internal(e.to_string()))?
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let inserted_id = id.clone();
+                sqlx::query(
+                    "INSERT INTO task_queue (id, agent_id, task_type, payload, status, priority, created_at, title, description, assigned_to, created_by)
+                     VALUES ($1, $2, $3, $4, 'pending', 0, $5, $6, $7, $8, $9)",
+                )
+                .bind(inserted_id)
+                .bind(created_by.clone())
+                .bind(title.clone())
+                .bind(Vec::<u8>::new())
+                .bind(now)
+                .bind(title)
+                .bind(description)
+                .bind(assigned_to)
+                .bind(created_by)
+                .execute(&*pool)
+                .await
+                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                Ok(id)
+            }
+        }
     }
 
     /// Claim the next pending task (optionally for a specific assignee). Returns task JSON or None.
     pub async fn task_claim(&self, agent_id: &str) -> OpenFangResult<Option<serde_json::Value>> {
-        let conn = Arc::clone(&self.conn);
         let agent_id = agent_id.to_string();
-
-        tokio::task::spawn_blocking(move || {
-            let db = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
-            // Find first pending task assigned to this agent, or any unassigned pending task
-            let mut stmt = db.prepare(
-                "SELECT id, title, description, assigned_to, created_by, created_at
-                 FROM task_queue
-                 WHERE status = 'pending' AND (assigned_to = ?1 OR assigned_to = '')
-                 ORDER BY priority DESC, created_at ASC
-                 LIMIT 1"
-            ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
-
-            let result = stmt.query_row(rusqlite::params![agent_id], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, String>(4)?,
-                    row.get::<_, String>(5)?,
-                ))
-            });
-
-            match result {
-                Ok((id, title, description, assigned, created_by, created_at)) => {
-                    // Update status to in_progress
-                    db.execute(
-                        "UPDATE task_queue SET status = 'in_progress', assigned_to = ?2 WHERE id = ?1",
-                        rusqlite::params![id, agent_id],
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = Arc::clone(conn);
+                tokio::task::spawn_blocking(move || {
+                    let db = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    let mut stmt = db.prepare(
+                        "SELECT id, title, description, assigned_to, created_by, created_at
+                         FROM task_queue
+                         WHERE status = 'pending' AND (assigned_to = ?1 OR assigned_to = '')
+                         ORDER BY priority DESC, created_at ASC
+                         LIMIT 1"
                     ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
-
-                    Ok(Some(serde_json::json!({
-                        "id": id,
-                        "title": title,
-                        "description": description,
-                        "status": "in_progress",
-                        "assigned_to": if assigned.is_empty() { &agent_id } else { &assigned },
-                        "created_by": created_by,
-                        "created_at": created_at,
-                    })))
-                }
-                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                Err(e) => Err(OpenFangError::Memory(e.to_string())),
+                    let result = stmt.query_row(rusqlite::params![agent_id], |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4)?,
+                            row.get::<_, String>(5)?,
+                        ))
+                    });
+                    match result {
+                        Ok((id, title, description, assigned, created_by, created_at)) => {
+                            db.execute(
+                                "UPDATE task_queue SET status = 'in_progress', assigned_to = ?2 WHERE id = ?1",
+                                rusqlite::params![id, agent_id],
+                            ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                            Ok(Some(task_json(id, title, description, assigned, created_by, created_at, "in_progress", None)))
+                        }
+                        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                        Err(e) => Err(OpenFangError::Memory(e.to_string())),
+                    }
+                })
+                .await
+                .map_err(|e| OpenFangError::Internal(e.to_string()))?
             }
-        })
-        .await
-        .map_err(|e| OpenFangError::Internal(e.to_string()))?
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let row = sqlx::query(
+                    "SELECT id, title, description, assigned_to, created_by, created_at
+                     FROM task_queue
+                     WHERE status = 'pending' AND (assigned_to = $1 OR assigned_to = '')
+                     ORDER BY priority DESC, created_at ASC
+                     LIMIT 1",
+                )
+                .bind(&agent_id)
+                .fetch_optional(&*pool)
+                .await
+                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                match row {
+                    Some(row) => {
+                        let id: String = row
+                            .try_get("id")
+                            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        let title: String = row
+                            .try_get("title")
+                            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        let description: String = row
+                            .try_get("description")
+                            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        let assigned: String = row.try_get("assigned_to").unwrap_or_default();
+                        let created_by: String = row.try_get("created_by").unwrap_or_default();
+                        let created_at: String = row.try_get("created_at").unwrap_or_default();
+                        sqlx::query(
+                            "UPDATE task_queue SET status = 'in_progress', assigned_to = $2 WHERE id = $1",
+                        )
+                        .bind(&id)
+                        .bind(&agent_id)
+                        .execute(&*pool)
+                        .await
+                        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        Ok(Some(task_json(
+                            id,
+                            title,
+                            description,
+                            assigned,
+                            created_by,
+                            created_at,
+                            "in_progress",
+                            Some(agent_id),
+                        )))
+                    }
+                    None => Ok(None),
+                }
+            }
+        }
     }
 
     /// Mark a task as completed with a result string.
     pub async fn task_complete(&self, task_id: &str, result: &str) -> OpenFangResult<()> {
-        let conn = Arc::clone(&self.conn);
         let task_id = task_id.to_string();
         let result = result.to_string();
-
-        tokio::task::spawn_blocking(move || {
-            let now = chrono::Utc::now().to_rfc3339();
-            let db = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
-            let rows = db.execute(
-                "UPDATE task_queue SET status = 'completed', result = ?2, completed_at = ?3 WHERE id = ?1",
-                rusqlite::params![task_id, result, now],
-            ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
-            if rows == 0 {
-                return Err(OpenFangError::Internal(format!("Task not found: {task_id}")));
+        let now = chrono::Utc::now().to_rfc3339();
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = Arc::clone(conn);
+                tokio::task::spawn_blocking(move || {
+                    let db = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    let rows = db.execute(
+                        "UPDATE task_queue SET status = 'completed', result = ?2, completed_at = ?3 WHERE id = ?1",
+                        rusqlite::params![task_id, result, now],
+                    ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    if rows == 0 {
+                        return Err(OpenFangError::Internal(format!("Task not found: {task_id}")));
+                    }
+                    Ok(())
+                })
+                .await
+                .map_err(|e| OpenFangError::Internal(e.to_string()))?
             }
-            Ok(())
-        })
-        .await
-        .map_err(|e| OpenFangError::Internal(e.to_string()))?
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let rows = sqlx::query(
+                    "UPDATE task_queue SET status = 'completed', result = $2, completed_at = $3 WHERE id = $1",
+                )
+                .bind(&task_id)
+                .bind(&result)
+                .bind(&now)
+                .execute(&*pool)
+                .await
+                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                if rows.rows_affected() == 0 {
+                    Err(OpenFangError::Internal(format!(
+                        "Task not found: {task_id}"
+                    )))
+                } else {
+                    Ok(())
+                }
+            }
+        }
     }
 
     /// List tasks, optionally filtered by status.
     pub async fn task_list(&self, status: Option<&str>) -> OpenFangResult<Vec<serde_json::Value>> {
-        let conn = Arc::clone(&self.conn);
         let status = status.map(|s| s.to_string());
-
-        tokio::task::spawn_blocking(move || {
-            let db = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
-            let (sql, params): (&str, Vec<Box<dyn rusqlite::types::ToSql>>) = match &status {
-                Some(s) => (
-                    "SELECT id, title, description, status, assigned_to, created_by, created_at, completed_at, result FROM task_queue WHERE status = ?1 ORDER BY created_at DESC",
-                    vec![Box::new(s.clone())],
-                ),
-                None => (
-                    "SELECT id, title, description, status, assigned_to, created_by, created_at, completed_at, result FROM task_queue ORDER BY created_at DESC",
-                    vec![],
-                ),
-            };
-
-            let mut stmt = db.prepare(sql).map_err(|e| OpenFangError::Memory(e.to_string()))?;
-            let params_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-            let rows = stmt.query_map(params_refs.as_slice(), |row| {
-                Ok(serde_json::json!({
-                    "id": row.get::<_, String>(0)?,
-                    "title": row.get::<_, String>(1).unwrap_or_default(),
-                    "description": row.get::<_, String>(2).unwrap_or_default(),
-                    "status": row.get::<_, String>(3)?,
-                    "assigned_to": row.get::<_, String>(4).unwrap_or_default(),
-                    "created_by": row.get::<_, String>(5).unwrap_or_default(),
-                    "created_at": row.get::<_, String>(6).unwrap_or_default(),
-                    "completed_at": row.get::<_, Option<String>>(7).unwrap_or(None),
-                    "result": row.get::<_, Option<String>>(8).unwrap_or(None),
-                }))
-            }).map_err(|e| OpenFangError::Memory(e.to_string()))?;
-
-            let mut tasks = Vec::new();
-            for row in rows {
-                tasks.push(row.map_err(|e| OpenFangError::Memory(e.to_string()))?);
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = Arc::clone(conn);
+                tokio::task::spawn_blocking(move || {
+                    let db = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    let (sql, params): (&str, Vec<Box<dyn rusqlite::types::ToSql>>) = match &status {
+                        Some(s) => (
+                            "SELECT id, title, description, status, assigned_to, created_by, created_at, completed_at, result FROM task_queue WHERE status = ?1 ORDER BY created_at DESC",
+                            vec![Box::new(s.clone())],
+                        ),
+                        None => (
+                            "SELECT id, title, description, status, assigned_to, created_by, created_at, completed_at, result FROM task_queue ORDER BY created_at DESC",
+                            vec![],
+                        ),
+                    };
+                    let mut stmt = db.prepare(sql).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    let params_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+                    let rows = stmt.query_map(params_refs.as_slice(), |row| {
+                        Ok(task_list_json(
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1).unwrap_or_default(),
+                            row.get::<_, String>(2).unwrap_or_default(),
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4).unwrap_or_default(),
+                            row.get::<_, String>(5).unwrap_or_default(),
+                            row.get::<_, String>(6).unwrap_or_default(),
+                            row.get::<_, Option<String>>(7).unwrap_or(None),
+                            row.get::<_, Option<String>>(8).unwrap_or(None),
+                        ))
+                    }).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    let mut tasks = Vec::new();
+                    for row in rows {
+                        tasks.push(row.map_err(|e| OpenFangError::Memory(e.to_string()))?);
+                    }
+                    Ok(tasks)
+                })
+                .await
+                .map_err(|e| OpenFangError::Internal(e.to_string()))?
             }
-            Ok(tasks)
-        })
-        .await
-        .map_err(|e| OpenFangError::Internal(e.to_string()))?
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let rows = match status {
+                    Some(status) => sqlx::query(
+                        "SELECT id, title, description, status, assigned_to, created_by, created_at, completed_at, result FROM task_queue WHERE status = $1 ORDER BY created_at DESC",
+                    )
+                    .bind(status)
+                    .fetch_all(&*pool)
+                    .await
+                    .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                    None => sqlx::query(
+                        "SELECT id, title, description, status, assigned_to, created_by, created_at, completed_at, result FROM task_queue ORDER BY created_at DESC",
+                    )
+                    .fetch_all(&*pool)
+                    .await
+                    .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                };
+                let mut tasks = Vec::with_capacity(rows.len());
+                for row in rows {
+                    tasks.push(task_list_json(
+                        row.try_get(0)
+                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        row.try_get(1).unwrap_or_default(),
+                        row.try_get(2).unwrap_or_default(),
+                        row.try_get(3)
+                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        row.try_get(4).unwrap_or_default(),
+                        row.try_get(5).unwrap_or_default(),
+                        row.try_get(6).unwrap_or_default(),
+                        row.try_get(7).unwrap_or(None),
+                        row.try_get(8).unwrap_or(None),
+                    ));
+                }
+                Ok(tasks)
+            }
+        }
     }
+}
+
+fn task_json(
+    id: String,
+    title: String,
+    description: String,
+    assigned: String,
+    created_by: String,
+    created_at: String,
+    status: &str,
+    assigned_override: Option<String>,
+) -> serde_json::Value {
+    let assigned_to = if assigned.is_empty() {
+        assigned_override.unwrap_or_default()
+    } else {
+        assigned
+    };
+    serde_json::json!({
+        "id": id,
+        "title": title,
+        "description": description,
+        "status": status,
+        "assigned_to": assigned_to,
+        "created_by": created_by,
+        "created_at": created_at,
+    })
+}
+
+fn task_list_json(
+    id: String,
+    title: String,
+    description: String,
+    status: String,
+    assigned_to: String,
+    created_by: String,
+    created_at: String,
+    completed_at: Option<String>,
+    result: Option<String>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "id": id,
+        "title": title,
+        "description": description,
+        "status": status,
+        "assigned_to": assigned_to,
+        "created_by": created_by,
+        "created_at": created_at,
+        "completed_at": completed_at,
+        "result": result,
+    })
 }
 
 #[async_trait]

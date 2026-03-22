@@ -16,8 +16,8 @@ const __dirname = path.dirname(__filename);
 // Config from environment
 // ---------------------------------------------------------------------------
 const PORT = parseInt(process.env.WHATSAPP_GATEWAY_PORT || '3009', 10);
-const OPENFANG_URL = (process.env.OPENFANG_URL || 'http://127.0.0.1:4200').replace(/\/+$/, '');
-const DEFAULT_AGENT = process.env.OPENFANG_DEFAULT_AGENT || 'assistant';
+const OPENFANG_URL = (process.env.openparlant_URL || 'http://127.0.0.1:4200').replace(/\/+$/, '');
+const DEFAULT_AGENT = process.env.openparlant_DEFAULT_AGENT || 'assistant';
 
 // ---------------------------------------------------------------------------
 // State

@@ -1,11 +1,12 @@
 //! Usage tracking store — records LLM usage events for cost monitoring.
 
-use chrono::Utc;
+use crate::db::{block_on, SharedDb};
+use chrono::{Datelike, Utc};
 use openparlant_types::agent::AgentId;
 use openparlant_types::error::{OpenFangError, OpenFangResult};
-use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
+use sqlx::Row;
+use std::sync::Arc;
 
 /// A single usage event recording an LLM call.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,287 +68,461 @@ pub struct DailyBreakdown {
     pub calls: u64,
 }
 
-/// Usage store backed by SQLite.
+/// Usage store backed by the shared SQL database.
 #[derive(Clone)]
 pub struct UsageStore {
-    conn: Arc<Mutex<Connection>>,
+    db: SharedDb,
 }
 
 impl UsageStore {
     /// Create a new usage store wrapping the given connection.
-    pub fn new(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
+    pub fn new(db: impl Into<SharedDb>) -> Self {
+        Self { db: db.into() }
     }
 
     /// Record a usage event.
     pub fn record(&self, record: &UsageRecord) -> OpenFangResult<()> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
         let id = uuid::Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
-        conn.execute(
-            "INSERT INTO usage_events (id, agent_id, timestamp, model, input_tokens, output_tokens, cost_usd, tool_calls)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            rusqlite::params![
-                id,
-                record.agent_id.0.to_string(),
-                now,
-                record.model,
-                record.input_tokens as i64,
-                record.output_tokens as i64,
-                record.cost_usd,
-                record.tool_calls as i64,
-            ],
-        )
-        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                conn.execute(
+                    "INSERT INTO usage_events (id, agent_id, timestamp, model, input_tokens, output_tokens, cost_usd, tool_calls)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    rusqlite::params![
+                        id,
+                        record.agent_id.0.to_string(),
+                        now,
+                        record.model,
+                        record.input_tokens as i64,
+                        record.output_tokens as i64,
+                        record.cost_usd,
+                        record.tool_calls as i64,
+                    ],
+                )
+                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let record = record.clone();
+                block_on(async move {
+                    sqlx::query(
+                        "INSERT INTO usage_events (id, agent_id, timestamp, model, input_tokens, output_tokens, cost_usd, tool_calls)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                    )
+                    .bind(id)
+                    .bind(record.agent_id.0.to_string())
+                    .bind(now)
+                    .bind(record.model)
+                    .bind(record.input_tokens as i64)
+                    .bind(record.output_tokens as i64)
+                    .bind(record.cost_usd)
+                    .bind(record.tool_calls as i64)
+                    .execute(&*pool)
+                    .await
+                })
+                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            }
+        }
         Ok(())
     }
 
     /// Query total cost in the last hour for an agent.
     pub fn query_hourly(&self, agent_id: AgentId) -> OpenFangResult<f64> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
-        let cost: f64 = conn
-            .query_row(
-                "SELECT COALESCE(SUM(cost_usd), 0.0) FROM usage_events
-                 WHERE agent_id = ?1 AND timestamp > datetime('now', '-1 hour')",
-                rusqlite::params![agent_id.0.to_string()],
-                |row| row.get(0),
-            )
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        Ok(cost)
+        let cutoff = (Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+        self.query_cost_since(Some(agent_id), &cutoff)
     }
 
     /// Query total cost today for an agent.
     pub fn query_daily(&self, agent_id: AgentId) -> OpenFangResult<f64> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
-        let cost: f64 = conn
-            .query_row(
-                "SELECT COALESCE(SUM(cost_usd), 0.0) FROM usage_events
-                 WHERE agent_id = ?1 AND timestamp > datetime('now', 'start of day')",
-                rusqlite::params![agent_id.0.to_string()],
-                |row| row.get(0),
-            )
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        Ok(cost)
+        let cutoff = Utc::now()
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .expect("midnight")
+            .and_utc()
+            .to_rfc3339();
+        self.query_cost_since(Some(agent_id), &cutoff)
     }
 
     /// Query total cost in the current calendar month for an agent.
     pub fn query_monthly(&self, agent_id: AgentId) -> OpenFangResult<f64> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
-        let cost: f64 = conn
-            .query_row(
-                "SELECT COALESCE(SUM(cost_usd), 0.0) FROM usage_events
-                 WHERE agent_id = ?1 AND timestamp > datetime('now', 'start of month')",
-                rusqlite::params![agent_id.0.to_string()],
-                |row| row.get(0),
-            )
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        Ok(cost)
+        let now = Utc::now();
+        let cutoff = now
+            .date_naive()
+            .with_day(1)
+            .expect("first day")
+            .and_hms_opt(0, 0, 0)
+            .expect("midnight")
+            .and_utc()
+            .to_rfc3339();
+        self.query_cost_since(Some(agent_id), &cutoff)
     }
 
     /// Query total cost across all agents for the current hour.
     pub fn query_global_hourly(&self) -> OpenFangResult<f64> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
-        let cost: f64 = conn
-            .query_row(
-                "SELECT COALESCE(SUM(cost_usd), 0.0) FROM usage_events
-                 WHERE timestamp > datetime('now', '-1 hour')",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        Ok(cost)
+        let cutoff = (Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+        self.query_cost_since(None, &cutoff)
     }
 
     /// Query total cost across all agents for the current calendar month.
     pub fn query_global_monthly(&self) -> OpenFangResult<f64> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
-        let cost: f64 = conn
-            .query_row(
-                "SELECT COALESCE(SUM(cost_usd), 0.0) FROM usage_events
-                 WHERE timestamp > datetime('now', 'start of month')",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        Ok(cost)
+        let now = Utc::now();
+        let cutoff = now
+            .date_naive()
+            .with_day(1)
+            .expect("first day")
+            .and_hms_opt(0, 0, 0)
+            .expect("midnight")
+            .and_utc()
+            .to_rfc3339();
+        self.query_cost_since(None, &cutoff)
     }
 
     /// Query usage summary, optionally filtered by agent.
     pub fn query_summary(&self, agent_id: Option<AgentId>) -> OpenFangResult<UsageSummary> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
 
-        let (sql, params): (&str, Vec<Box<dyn rusqlite::types::ToSql>>) = match agent_id {
-            Some(aid) => (
-                "SELECT COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
-                        COALESCE(SUM(cost_usd), 0.0), COUNT(*), COALESCE(SUM(tool_calls), 0)
-                 FROM usage_events WHERE agent_id = ?1",
-                vec![Box::new(aid.0.to_string())],
-            ),
-            None => (
-                "SELECT COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
-                        COALESCE(SUM(cost_usd), 0.0), COUNT(*), COALESCE(SUM(tool_calls), 0)
-                 FROM usage_events",
-                vec![],
-            ),
-        };
+                let (sql, params): (&str, Vec<Box<dyn rusqlite::types::ToSql>>) = match agent_id {
+                    Some(aid) => (
+                        "SELECT COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
+                                COALESCE(SUM(cost_usd), 0.0), COUNT(*), COALESCE(SUM(tool_calls), 0)
+                         FROM usage_events WHERE agent_id = ?1",
+                        vec![Box::new(aid.0.to_string())],
+                    ),
+                    None => (
+                        "SELECT COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
+                                COALESCE(SUM(cost_usd), 0.0), COUNT(*), COALESCE(SUM(tool_calls), 0)
+                         FROM usage_events",
+                        vec![],
+                    ),
+                };
 
-        let params_refs: Vec<&dyn rusqlite::types::ToSql> =
-            params.iter().map(|p| p.as_ref()).collect();
+                let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+                    params.iter().map(|p| p.as_ref()).collect();
 
-        let summary = conn
-            .query_row(sql, params_refs.as_slice(), |row| {
-                Ok(UsageSummary {
-                    total_input_tokens: row.get::<_, i64>(0)? as u64,
-                    total_output_tokens: row.get::<_, i64>(1)? as u64,
-                    total_cost_usd: row.get(2)?,
-                    call_count: row.get::<_, i64>(3)? as u64,
-                    total_tool_calls: row.get::<_, i64>(4)? as u64,
+                conn.query_row(sql, params_refs.as_slice(), |row| {
+                    Ok(UsageSummary {
+                        total_input_tokens: row.get::<_, i64>(0)? as u64,
+                        total_output_tokens: row.get::<_, i64>(1)? as u64,
+                        total_cost_usd: row.get(2)?,
+                        call_count: row.get::<_, i64>(3)? as u64,
+                        total_tool_calls: row.get::<_, i64>(4)? as u64,
+                    })
                 })
-            })
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-
-        Ok(summary)
+                .map_err(|e| OpenFangError::Memory(e.to_string()))
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                block_on(async move {
+                    let row = if let Some(agent_id) = agent_id {
+                        sqlx::query(
+                            "SELECT COALESCE(SUM(input_tokens), 0) AS total_input_tokens,
+                                    COALESCE(SUM(output_tokens), 0) AS total_output_tokens,
+                                    COALESCE(SUM(cost_usd), 0.0) AS total_cost_usd,
+                                    COUNT(*) AS call_count,
+                                    COALESCE(SUM(tool_calls), 0) AS total_tool_calls
+                             FROM usage_events WHERE agent_id = $1",
+                        )
+                        .bind(agent_id.0.to_string())
+                        .fetch_one(&*pool)
+                        .await?
+                    } else {
+                        sqlx::query(
+                            "SELECT COALESCE(SUM(input_tokens), 0) AS total_input_tokens,
+                                    COALESCE(SUM(output_tokens), 0) AS total_output_tokens,
+                                    COALESCE(SUM(cost_usd), 0.0) AS total_cost_usd,
+                                    COUNT(*) AS call_count,
+                                    COALESCE(SUM(tool_calls), 0) AS total_tool_calls
+                             FROM usage_events",
+                        )
+                        .fetch_one(&*pool)
+                        .await?
+                    };
+                    Ok::<UsageSummary, sqlx::Error>(UsageSummary {
+                        total_input_tokens: row.try_get::<i64, _>("total_input_tokens")? as u64,
+                        total_output_tokens: row.try_get::<i64, _>("total_output_tokens")? as u64,
+                        total_cost_usd: row.try_get("total_cost_usd")?,
+                        call_count: row.try_get::<i64, _>("call_count")? as u64,
+                        total_tool_calls: row.try_get::<i64, _>("total_tool_calls")? as u64,
+                    })
+                })
+                .map_err(|e| OpenFangError::Memory(e.to_string()))
+            }
+        }
     }
 
     /// Query usage grouped by model.
     pub fn query_by_model(&self) -> OpenFangResult<Vec<ModelUsage>> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
 
-        let mut stmt = conn
-            .prepare(
-                "SELECT model, COALESCE(SUM(cost_usd), 0.0), COALESCE(SUM(input_tokens), 0),
-                        COALESCE(SUM(output_tokens), 0), COUNT(*)
-                 FROM usage_events GROUP BY model ORDER BY SUM(cost_usd) DESC",
-            )
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT model, COALESCE(SUM(cost_usd), 0.0), COALESCE(SUM(input_tokens), 0),
+                                COALESCE(SUM(output_tokens), 0), COUNT(*)
+                         FROM usage_events GROUP BY model ORDER BY SUM(cost_usd) DESC",
+                    )
+                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
 
-        let rows = stmt
-            .query_map([], |row| {
-                Ok(ModelUsage {
-                    model: row.get(0)?,
-                    total_cost_usd: row.get(1)?,
-                    total_input_tokens: row.get::<_, i64>(2)? as u64,
-                    total_output_tokens: row.get::<_, i64>(3)? as u64,
-                    call_count: row.get::<_, i64>(4)? as u64,
+                let rows = stmt
+                    .query_map([], |row| {
+                        Ok(ModelUsage {
+                            model: row.get(0)?,
+                            total_cost_usd: row.get(1)?,
+                            total_input_tokens: row.get::<_, i64>(2)? as u64,
+                            total_output_tokens: row.get::<_, i64>(3)? as u64,
+                            call_count: row.get::<_, i64>(4)? as u64,
+                        })
+                    })
+                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+
+                let mut results = Vec::new();
+                for row in rows {
+                    results.push(row.map_err(|e| OpenFangError::Memory(e.to_string()))?);
+                }
+                Ok(results)
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                block_on(async move {
+                    let rows = sqlx::query(
+                        "SELECT model,
+                                COALESCE(SUM(cost_usd), 0.0) AS total_cost_usd,
+                                COALESCE(SUM(input_tokens), 0) AS total_input_tokens,
+                                COALESCE(SUM(output_tokens), 0) AS total_output_tokens,
+                                COUNT(*) AS call_count
+                         FROM usage_events
+                         GROUP BY model
+                         ORDER BY total_cost_usd DESC",
+                    )
+                    .fetch_all(&*pool)
+                    .await?;
+                    Ok::<Vec<ModelUsage>, sqlx::Error>(
+                        rows.into_iter()
+                            .map(|row| ModelUsage {
+                                model: row.try_get("model").unwrap_or_default(),
+                                total_cost_usd: row.try_get("total_cost_usd").unwrap_or(0.0),
+                                total_input_tokens: row
+                                    .try_get::<i64, _>("total_input_tokens")
+                                    .unwrap_or_default()
+                                    as u64,
+                                total_output_tokens: row
+                                    .try_get::<i64, _>("total_output_tokens")
+                                    .unwrap_or_default()
+                                    as u64,
+                                call_count: row.try_get::<i64, _>("call_count").unwrap_or_default()
+                                    as u64,
+                            })
+                            .collect(),
+                    )
                 })
-            })
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-
-        let mut results = Vec::new();
-        for row in rows {
-            results.push(row.map_err(|e| OpenFangError::Memory(e.to_string()))?);
+                .map_err(|e| OpenFangError::Memory(e.to_string()))
+            }
         }
-        Ok(results)
     }
 
     /// Query daily usage breakdown for the last N days.
     pub fn query_daily_breakdown(&self, days: u32) -> OpenFangResult<Vec<DailyBreakdown>> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let cutoff = (Utc::now() - chrono::Duration::days(days as i64)).to_rfc3339();
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
 
-        let mut stmt = conn
-            .prepare(&format!(
-                "SELECT date(timestamp) as day,
-                            COALESCE(SUM(cost_usd), 0.0),
-                            COALESCE(SUM(input_tokens) + SUM(output_tokens), 0),
-                            COUNT(*)
-                     FROM usage_events
-                     WHERE timestamp > datetime('now', '-{days} days')
-                     GROUP BY day
-                     ORDER BY day ASC"
-            ))
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT date(timestamp) as day,
+                                    COALESCE(SUM(cost_usd), 0.0),
+                                    COALESCE(SUM(input_tokens) + SUM(output_tokens), 0),
+                                    COUNT(*)
+                             FROM usage_events
+                             WHERE timestamp > ?1
+                             GROUP BY day
+                             ORDER BY day ASC",
+                    )
+                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
 
-        let rows = stmt
-            .query_map([], |row| {
-                Ok(DailyBreakdown {
-                    date: row.get(0)?,
-                    cost_usd: row.get(1)?,
-                    tokens: row.get::<_, i64>(2)? as u64,
-                    calls: row.get::<_, i64>(3)? as u64,
+                let rows = stmt
+                    .query_map(rusqlite::params![cutoff], |row| {
+                        Ok(DailyBreakdown {
+                            date: row.get(0)?,
+                            cost_usd: row.get(1)?,
+                            tokens: row.get::<_, i64>(2)? as u64,
+                            calls: row.get::<_, i64>(3)? as u64,
+                        })
+                    })
+                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+
+                let mut results = Vec::new();
+                for row in rows {
+                    results.push(row.map_err(|e| OpenFangError::Memory(e.to_string()))?);
+                }
+                Ok(results)
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                block_on(async move {
+                    let rows = sqlx::query(
+                        "SELECT LEFT(timestamp, 10) AS day,
+                                COALESCE(SUM(cost_usd), 0.0) AS cost_usd,
+                                COALESCE(SUM(input_tokens) + SUM(output_tokens), 0) AS tokens,
+                                COUNT(*) AS calls
+                         FROM usage_events
+                         WHERE timestamp > $1
+                         GROUP BY day
+                         ORDER BY day ASC",
+                    )
+                    .bind(cutoff)
+                    .fetch_all(&*pool)
+                    .await?;
+                    Ok::<Vec<DailyBreakdown>, sqlx::Error>(
+                        rows.into_iter()
+                            .map(|row| DailyBreakdown {
+                                date: row.try_get("day").unwrap_or_default(),
+                                cost_usd: row.try_get("cost_usd").unwrap_or(0.0),
+                                tokens: row.try_get::<i64, _>("tokens").unwrap_or_default() as u64,
+                                calls: row.try_get::<i64, _>("calls").unwrap_or_default() as u64,
+                            })
+                            .collect(),
+                    )
                 })
-            })
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-
-        let mut results = Vec::new();
-        for row in rows {
-            results.push(row.map_err(|e| OpenFangError::Memory(e.to_string()))?);
+                .map_err(|e| OpenFangError::Memory(e.to_string()))
+            }
         }
-        Ok(results)
     }
 
     /// Query the timestamp of the earliest usage event.
     pub fn query_first_event_date(&self) -> OpenFangResult<Option<String>> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
-        let result: Option<String> = conn
-            .query_row("SELECT MIN(timestamp) FROM usage_events", [], |row| {
-                row.get(0)
-            })
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        Ok(result)
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                conn.query_row("SELECT MIN(timestamp) FROM usage_events", [], |row| {
+                    row.get(0)
+                })
+                .map_err(|e| OpenFangError::Memory(e.to_string()))
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                block_on(async move {
+                    let row =
+                        sqlx::query("SELECT MIN(timestamp) AS first_timestamp FROM usage_events")
+                            .fetch_one(&*pool)
+                            .await?;
+                    Ok::<Option<String>, sqlx::Error>(row.try_get("first_timestamp")?)
+                })
+                .map_err(|e| OpenFangError::Memory(e.to_string()))
+            }
+        }
     }
 
     /// Query today's total cost across all agents.
     pub fn query_today_cost(&self) -> OpenFangResult<f64> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
-        let cost: f64 = conn
-            .query_row(
-                "SELECT COALESCE(SUM(cost_usd), 0.0) FROM usage_events
-                 WHERE timestamp > datetime('now', 'start of day')",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        Ok(cost)
+        let cutoff = Utc::now()
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .expect("midnight")
+            .and_utc()
+            .to_rfc3339();
+        self.query_cost_since(None, &cutoff)
     }
 
     /// Delete usage events older than the given number of days.
     pub fn cleanup_old(&self, days: u32) -> OpenFangResult<usize> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
-        let deleted = conn
-            .execute(
-                &format!(
-                    "DELETE FROM usage_events WHERE timestamp < datetime('now', '-{days} days')"
-                ),
-                [],
-            )
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-        Ok(deleted)
+        let cutoff = (Utc::now() - chrono::Duration::days(days as i64)).to_rfc3339();
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                let deleted = conn
+                    .execute(
+                        "DELETE FROM usage_events WHERE timestamp < ?1",
+                        rusqlite::params![cutoff],
+                    )
+                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                Ok(deleted)
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                block_on(async move {
+                    let result = sqlx::query("DELETE FROM usage_events WHERE timestamp < $1")
+                        .bind(cutoff)
+                        .execute(&*pool)
+                        .await?;
+                    Ok::<usize, sqlx::Error>(result.rows_affected() as usize)
+                })
+                .map_err(|e| OpenFangError::Memory(e.to_string()))
+            }
+        }
+    }
+
+    fn query_cost_since(&self, agent_id: Option<AgentId>, cutoff: &str) -> OpenFangResult<f64> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                match agent_id {
+                    Some(agent_id) => conn
+                        .query_row(
+                            "SELECT COALESCE(SUM(cost_usd), 0.0) FROM usage_events
+                             WHERE agent_id = ?1 AND timestamp > ?2",
+                            rusqlite::params![agent_id.0.to_string(), cutoff],
+                            |row| row.get(0),
+                        )
+                        .map_err(|e| OpenFangError::Memory(e.to_string())),
+                    None => conn
+                        .query_row(
+                            "SELECT COALESCE(SUM(cost_usd), 0.0) FROM usage_events
+                             WHERE timestamp > ?1",
+                            rusqlite::params![cutoff],
+                            |row| row.get(0),
+                        )
+                        .map_err(|e| OpenFangError::Memory(e.to_string())),
+                }
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let cutoff = cutoff.to_string();
+                block_on(async move {
+                    let row = if let Some(agent_id) = agent_id {
+                        sqlx::query(
+                            "SELECT COALESCE(SUM(cost_usd), 0.0) AS cost
+                             FROM usage_events
+                             WHERE agent_id = $1 AND timestamp > $2",
+                        )
+                        .bind(agent_id.0.to_string())
+                        .bind(cutoff)
+                        .fetch_one(&*pool)
+                        .await?
+                    } else {
+                        sqlx::query(
+                            "SELECT COALESCE(SUM(cost_usd), 0.0) AS cost
+                             FROM usage_events
+                             WHERE timestamp > $1",
+                        )
+                        .bind(cutoff)
+                        .fetch_one(&*pool)
+                        .await?
+                    };
+                    row.try_get("cost")
+                })
+                .map_err(|e| OpenFangError::Memory(e.to_string()))
+            }
+        }
     }
 }
 
@@ -355,6 +530,8 @@ impl UsageStore {
 mod tests {
     use super::*;
     use crate::migration::run_migrations;
+    use rusqlite::Connection;
+    use std::sync::{Arc, Mutex};
 
     fn setup() -> UsageStore {
         let conn = Connection::open_in_memory().unwrap();

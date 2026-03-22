@@ -5,7 +5,7 @@
 //!
 //! **No-op** (informational only): log_level, language, mode.
 //!
-//! **Restart required**: api_listen, api_key, network, memory.
+//! **Restart required**: api_listen, api_key, network, memory, database.
 
 use openparlant_types::config::{KernelConfig, ReloadMode};
 use tracing::{info, warn};
@@ -161,6 +161,12 @@ pub fn build_reload_plan(old: &KernelConfig, new: &KernelConfig) -> ReloadPlan {
         plan.restart_required = true;
         plan.restart_reasons
             .push("memory config changed".to_string());
+    }
+
+    if field_changed(&old.database, &new.database) {
+        plan.restart_required = true;
+        plan.restart_reasons
+            .push("database config changed".to_string());
     }
 
     // Default model — hot-reloadable (just swap config fields, new agents pick it up)
@@ -408,6 +414,20 @@ mod tests {
             .restart_reasons
             .iter()
             .any(|r| r.contains("memory config")));
+    }
+
+    #[test]
+    fn test_database_config_requires_restart() {
+        let a = default_cfg();
+        let mut b = default_cfg();
+        b.database.host = Some("db.example.com".to_string());
+        b.database.dbname = Some("app".to_string());
+        let plan = build_reload_plan(&a, &b);
+        assert!(plan.restart_required);
+        assert!(plan
+            .restart_reasons
+            .iter()
+            .any(|r| r.contains("database config")));
     }
 
     #[test]

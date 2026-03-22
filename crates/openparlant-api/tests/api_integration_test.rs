@@ -12,10 +12,10 @@ use openparlant_api::middleware;
 use openparlant_api::routes::{self, AppState};
 use openparlant_api::ws;
 use openparlant_control::{ControlStore, DefaultTurnControlCoordinator};
-use openparlant_journey::{JourneyStore, SqliteJourneyRuntime};
+use openparlant_journey::{JourneyStore, StoreJourneyRuntime};
 use openparlant_kernel::OpenFangKernel;
 use openparlant_memory::migration::run_migrations;
-use openparlant_policy::{PolicyStore, SqliteObservationMatcher, SqlitePolicyResolver};
+use openparlant_policy::{PolicyStore, StoreObservationMatcher, StorePolicyResolver};
 use openparlant_types::config::{DefaultModelConfig, KernelConfig};
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
@@ -83,19 +83,14 @@ async fn start_test_server_with_provider(
         shutdown_notify: Arc::new(tokio::sync::Notify::new()),
         clawhub_cache: dashmap::DashMap::new(),
         provider_probe_cache: openparlant_runtime::provider_health::ProbeCache::new(),
-        db_conn: {
-            let c = Connection::open_in_memory().expect("test in-memory db");
-            run_migrations(&c).ok();
-            Arc::new(Mutex::new(c))
-        },
         control_coordinator: {
             let c2 = Connection::open_in_memory().expect("test coordinator db");
             run_migrations(&c2).ok();
             let c2 = Arc::new(Mutex::new(c2));
             Arc::new(DefaultTurnControlCoordinator::new(
-                SqliteObservationMatcher::new(c2.clone()),
-                SqlitePolicyResolver::new(c2.clone()),
-                SqliteJourneyRuntime::new(c2.clone()),
+                StoreObservationMatcher::new(c2.clone()),
+                StorePolicyResolver::new(c2.clone()),
+                StoreJourneyRuntime::new(c2.clone()),
                 openparlant_context::NoopKnowledgeCompiler,
             ))
         },
@@ -743,19 +738,14 @@ async fn start_test_server_with_auth(api_key: &str) -> TestServer {
         shutdown_notify: Arc::new(tokio::sync::Notify::new()),
         clawhub_cache: dashmap::DashMap::new(),
         provider_probe_cache: openparlant_runtime::provider_health::ProbeCache::new(),
-        db_conn: {
-            let c = Connection::open_in_memory().expect("test in-memory db");
-            run_migrations(&c).ok();
-            Arc::new(Mutex::new(c))
-        },
         control_coordinator: {
             let c2 = Connection::open_in_memory().expect("test coordinator db");
             run_migrations(&c2).ok();
             let c2 = Arc::new(Mutex::new(c2));
             Arc::new(DefaultTurnControlCoordinator::new(
-                SqliteObservationMatcher::new(c2.clone()),
-                SqlitePolicyResolver::new(c2.clone()),
-                SqliteJourneyRuntime::new(c2.clone()),
+                StoreObservationMatcher::new(c2.clone()),
+                StorePolicyResolver::new(c2.clone()),
+                StoreJourneyRuntime::new(c2.clone()),
                 openparlant_context::NoopKnowledgeCompiler,
             ))
         },

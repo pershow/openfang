@@ -8,10 +8,15 @@
 //! the `audit_entries` table (schema V8) so the trail survives daemon restarts.
 
 use chrono::Utc;
+use openparlant_memory::db::{block_on, SharedDb};
+#[cfg(test)]
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::sync::{Arc, Mutex};
+use sqlx::Row;
+#[cfg(test)]
+use std::sync::Arc;
+use std::sync::Mutex;
 
 /// Categories of auditable actions within the agent runtime.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,6 +38,24 @@ pub enum AuditAction {
 impl std::fmt::Display for AuditAction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
+    }
+}
+
+fn parse_audit_action(action: &str) -> AuditAction {
+    match action {
+        "ToolInvoke" => AuditAction::ToolInvoke,
+        "CapabilityCheck" => AuditAction::CapabilityCheck,
+        "AgentSpawn" => AuditAction::AgentSpawn,
+        "AgentKill" => AuditAction::AgentKill,
+        "AgentMessage" => AuditAction::AgentMessage,
+        "MemoryAccess" => AuditAction::MemoryAccess,
+        "FileAccess" => AuditAction::FileAccess,
+        "NetworkAccess" => AuditAction::NetworkAccess,
+        "ShellExec" => AuditAction::ShellExec,
+        "AuthAttempt" => AuditAction::AuthAttempt,
+        "WireConnect" => AuditAction::WireConnect,
+        "ConfigChange" => AuditAction::ConfigChange,
+        _ => AuditAction::ToolInvoke,
     }
 }
 
@@ -86,7 +109,7 @@ pub struct AuditLog {
     entries: Mutex<Vec<AuditEntry>>,
     tip: Mutex<String>,
     /// Optional database connection for persistent storage.
-    db: Option<Arc<Mutex<Connection>>>,
+    db: Option<SharedDb>,
 }
 
 impl AuditLog {
@@ -106,46 +129,64 @@ impl AuditLog {
     /// On construction, loads all existing entries from the `audit_entries`
     /// table and verifies the Merkle chain integrity. New entries are written
     /// to both the in-memory chain and the database.
-    pub fn with_db(conn: Arc<Mutex<Connection>>) -> Self {
+    pub fn with_db(db: impl Into<SharedDb>) -> Self {
+        let db = db.into();
         let mut entries = Vec::new();
         let mut tip = "0".repeat(64);
 
-        // Load existing entries from database
-        if let Ok(db) = conn.lock() {
-            let result = db.prepare(
-                "SELECT seq, timestamp, agent_id, action, detail, outcome, prev_hash, hash FROM audit_entries ORDER BY seq ASC",
-            );
-            if let Ok(mut stmt) = result {
-                let rows = stmt.query_map([], |row| {
-                    let action_str: String = row.get(3)?;
-                    let action = match action_str.as_str() {
-                        "ToolInvoke" => AuditAction::ToolInvoke,
-                        "CapabilityCheck" => AuditAction::CapabilityCheck,
-                        "AgentSpawn" => AuditAction::AgentSpawn,
-                        "AgentKill" => AuditAction::AgentKill,
-                        "AgentMessage" => AuditAction::AgentMessage,
-                        "MemoryAccess" => AuditAction::MemoryAccess,
-                        "FileAccess" => AuditAction::FileAccess,
-                        "NetworkAccess" => AuditAction::NetworkAccess,
-                        "ShellExec" => AuditAction::ShellExec,
-                        "AuthAttempt" => AuditAction::AuthAttempt,
-                        "WireConnect" => AuditAction::WireConnect,
-                        "ConfigChange" => AuditAction::ConfigChange,
-                        _ => AuditAction::ToolInvoke, // fallback
-                    };
-                    Ok(AuditEntry {
-                        seq: row.get(0)?,
-                        timestamp: row.get(1)?,
-                        agent_id: row.get(2)?,
-                        action,
-                        detail: row.get(4)?,
-                        outcome: row.get(5)?,
-                        prev_hash: row.get(6)?,
-                        hash: row.get(7)?,
-                    })
-                });
-                if let Ok(rows) = rows {
-                    for entry in rows.flatten() {
+        match &db {
+            SharedDb::Sqlite(conn) => {
+                if let Ok(db) = conn.lock() {
+                    let result = db.prepare(
+                        "SELECT seq, timestamp, agent_id, action, detail, outcome, prev_hash, hash FROM audit_entries ORDER BY seq ASC",
+                    );
+                    if let Ok(mut stmt) = result {
+                        let rows = stmt.query_map([], |row| {
+                            Ok(AuditEntry {
+                                seq: row.get::<_, i64>(0)? as u64,
+                                timestamp: row.get(1)?,
+                                agent_id: row.get(2)?,
+                                action: parse_audit_action(&row.get::<_, String>(3)?),
+                                detail: row.get(4)?,
+                                outcome: row.get(5)?,
+                                prev_hash: row.get(6)?,
+                                hash: row.get(7)?,
+                            })
+                        });
+                        if let Ok(rows) = rows {
+                            for entry in rows.flatten() {
+                                tip = entry.hash.clone();
+                                entries.push(entry);
+                            }
+                        }
+                    }
+                }
+            }
+            SharedDb::Postgres(pool) => {
+                if let Ok(rows) = block_on({
+                    let pool = pool.clone();
+                    async move {
+                        sqlx::query(
+                            "SELECT seq, timestamp, agent_id, action, detail, outcome, prev_hash, hash
+                             FROM audit_entries ORDER BY seq ASC",
+                        )
+                        .fetch_all(&*pool)
+                        .await
+                    }
+                }) {
+                    for row in rows {
+                        let entry = AuditEntry {
+                            seq: row.try_get::<i64, _>("seq").unwrap_or_default() as u64,
+                            timestamp: row.try_get("timestamp").unwrap_or_default(),
+                            agent_id: row.try_get("agent_id").unwrap_or_default(),
+                            action: parse_audit_action(
+                                &row.try_get::<String, _>("action").unwrap_or_default(),
+                            ),
+                            detail: row.try_get("detail").unwrap_or_default(),
+                            outcome: row.try_get("outcome").unwrap_or_default(),
+                            prev_hash: row.try_get("prev_hash").unwrap_or_default(),
+                            hash: row.try_get("hash").unwrap_or_default(),
+                        };
                         tip = entry.hash.clone();
                         entries.push(entry);
                     }
@@ -157,7 +198,7 @@ impl AuditLog {
         let log = Self {
             entries: Mutex::new(entries),
             tip: Mutex::new(tip),
-            db: Some(conn),
+            db: Some(db),
         };
 
         // Verify chain integrity on load
@@ -212,20 +253,44 @@ impl AuditLog {
 
         // Persist to database if available
         if let Some(ref db) = self.db {
-            if let Ok(conn) = db.lock() {
-                let _ = conn.execute(
-                    "INSERT INTO audit_entries (seq, timestamp, agent_id, action, detail, outcome, prev_hash, hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                    rusqlite::params![
-                        entry.seq as i64,
-                        &entry.timestamp,
-                        &entry.agent_id,
-                        entry.action.to_string(),
-                        &entry.detail,
-                        &entry.outcome,
-                        &entry.prev_hash,
-                        &entry.hash,
-                    ],
-                );
+            match db {
+                SharedDb::Sqlite(conn) => {
+                    if let Ok(conn) = conn.lock() {
+                        let _ = conn.execute(
+                            "INSERT INTO audit_entries (seq, timestamp, agent_id, action, detail, outcome, prev_hash, hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                            rusqlite::params![
+                                entry.seq as i64,
+                                &entry.timestamp,
+                                &entry.agent_id,
+                                entry.action.to_string(),
+                                &entry.detail,
+                                &entry.outcome,
+                                &entry.prev_hash,
+                                &entry.hash,
+                            ],
+                        );
+                    }
+                }
+                SharedDb::Postgres(pool) => {
+                    let pool = pool.clone();
+                    let persisted = entry.clone();
+                    let _ = block_on(async move {
+                        sqlx::query(
+                            "INSERT INTO audit_entries (seq, timestamp, agent_id, action, detail, outcome, prev_hash, hash)
+                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                        )
+                        .bind(persisted.seq as i64)
+                        .bind(persisted.timestamp)
+                        .bind(persisted.agent_id)
+                        .bind(persisted.action.to_string())
+                        .bind(persisted.detail)
+                        .bind(persisted.outcome)
+                        .bind(persisted.prev_hash)
+                        .bind(persisted.hash)
+                        .execute(&*pool)
+                        .await
+                    });
+                }
             }
         }
 

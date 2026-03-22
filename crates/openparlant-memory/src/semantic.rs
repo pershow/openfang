@@ -7,25 +7,28 @@
 //! When a query embedding is provided, recall uses cosine similarity ranking.
 //! When no embeddings are available, falls back to LIKE matching.
 
+use crate::db::{block_on, SharedDb};
 use chrono::Utc;
 use openparlant_types::agent::AgentId;
 use openparlant_types::error::{OpenFangError, OpenFangResult};
 use openparlant_types::memory::{MemoryFilter, MemoryFragment, MemoryId, MemorySource};
+#[cfg(test)]
 use rusqlite::Connection;
+use sqlx::{Postgres, QueryBuilder, Row};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tracing::debug;
 
-/// Semantic store backed by SQLite with optional vector search.
+/// Semantic store backed by the shared SQL database with optional vector search.
 #[derive(Clone)]
 pub struct SemanticStore {
-    conn: Arc<Mutex<Connection>>,
+    db: SharedDb,
 }
 
 impl SemanticStore {
     /// Create a new semantic store wrapping the given connection.
-    pub fn new(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
+    pub fn new(db: impl Into<SharedDb>) -> Self {
+        Self { db: db.into() }
     }
 
     /// Store a new memory fragment (without embedding).
@@ -50,10 +53,6 @@ impl SemanticStore {
         metadata: HashMap<String, serde_json::Value>,
         embedding: Option<&[f32]>,
     ) -> OpenFangResult<MemoryId> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
         let id = MemoryId::new();
         let now = Utc::now().to_rfc3339();
         let source_str = serde_json::to_string(&source)
@@ -61,22 +60,50 @@ impl SemanticStore {
         let meta_str = serde_json::to_string(&metadata)
             .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
         let embedding_bytes: Option<Vec<u8>> = embedding.map(embedding_to_bytes);
-
-        conn.execute(
-            "INSERT INTO memories (id, agent_id, content, source, scope, confidence, metadata, created_at, accessed_at, access_count, deleted, embedding)
-             VALUES (?1, ?2, ?3, ?4, ?5, 1.0, ?6, ?7, ?7, 0, 0, ?8)",
-            rusqlite::params![
-                id.0.to_string(),
-                agent_id.0.to_string(),
-                content,
-                source_str,
-                scope,
-                meta_str,
-                now,
-                embedding_bytes,
-            ],
-        )
-        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                conn.execute(
+                    "INSERT INTO memories (id, agent_id, content, source, scope, confidence, metadata, created_at, accessed_at, access_count, deleted, embedding)
+                     VALUES (?1, ?2, ?3, ?4, ?5, 1.0, ?6, ?7, ?7, 0, 0, ?8)",
+                    rusqlite::params![
+                        id.0.to_string(),
+                        agent_id.0.to_string(),
+                        content,
+                        source_str,
+                        scope,
+                        meta_str,
+                        now,
+                        embedding_bytes,
+                    ],
+                )
+                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let content = content.to_string();
+                let scope = scope.to_string();
+                block_on(async move {
+                    sqlx::query(
+                        "INSERT INTO memories (id, agent_id, content, source, scope, confidence, metadata, created_at, accessed_at, access_count, deleted, embedding)
+                         VALUES ($1, $2, $3, $4, $5, 1.0, $6, $7, $7, 0, FALSE, $8)",
+                    )
+                    .bind(id.0.to_string())
+                    .bind(agent_id.0.to_string())
+                    .bind(content)
+                    .bind(source_str)
+                    .bind(scope)
+                    .bind(meta_str)
+                    .bind(now)
+                    .bind(embedding_bytes)
+                    .execute(&*pool)
+                    .await
+                })
+                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            }
+        }
         Ok(id)
     }
 
@@ -99,146 +126,166 @@ impl SemanticStore {
         filter: Option<MemoryFilter>,
         query_embedding: Option<&[f32]>,
     ) -> OpenFangResult<Vec<MemoryFragment>> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
-
-        // Build SQL: fetch candidates (broader than limit for vector re-ranking)
         let fetch_limit = if query_embedding.is_some() {
-            // Fetch more candidates for vector search re-ranking
             (limit * 10).max(100)
         } else {
             limit
         };
-
-        let mut sql = String::from(
-            "SELECT id, agent_id, content, source, scope, confidence, metadata, created_at, accessed_at, access_count, embedding
-             FROM memories WHERE deleted = 0",
-        );
-        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-        let mut param_idx = 1;
-
-        // Text search filter (only when no embeddings — vector search handles relevance)
-        if query_embedding.is_none() && !query.is_empty() {
-            sql.push_str(&format!(" AND content LIKE ?{param_idx}"));
-            params.push(Box::new(format!("%{query}%")));
-            param_idx += 1;
-        }
-
-        // Apply filters
-        if let Some(ref f) = filter {
-            if let Some(agent_id) = f.agent_id {
-                sql.push_str(&format!(" AND agent_id = ?{param_idx}"));
-                params.push(Box::new(agent_id.0.to_string()));
-                param_idx += 1;
+        let mut fragments = match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                let mut sql = String::from(
+                    "SELECT id, agent_id, content, source, scope, confidence, metadata, created_at, accessed_at, access_count, embedding
+                     FROM memories WHERE deleted = 0",
+                );
+                let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+                let mut param_idx = 1;
+                if query_embedding.is_none() && !query.is_empty() {
+                    sql.push_str(&format!(" AND content LIKE ?{param_idx}"));
+                    params.push(Box::new(format!("%{query}%")));
+                    param_idx += 1;
+                }
+                if let Some(ref f) = filter {
+                    if let Some(agent_id) = f.agent_id {
+                        sql.push_str(&format!(" AND agent_id = ?{param_idx}"));
+                        params.push(Box::new(agent_id.0.to_string()));
+                        param_idx += 1;
+                    }
+                    if let Some(ref scope) = f.scope {
+                        sql.push_str(&format!(" AND scope = ?{param_idx}"));
+                        params.push(Box::new(scope.clone()));
+                        param_idx += 1;
+                    }
+                    if let Some(min_conf) = f.min_confidence {
+                        sql.push_str(&format!(" AND confidence >= ?{param_idx}"));
+                        params.push(Box::new(min_conf as f64));
+                        param_idx += 1;
+                    }
+                    if let Some(ref source) = f.source {
+                        let source_str = serde_json::to_string(source)
+                            .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+                        sql.push_str(&format!(" AND source = ?{param_idx}"));
+                        params.push(Box::new(source_str));
+                    }
+                }
+                sql.push_str(" ORDER BY accessed_at DESC, access_count DESC");
+                sql.push_str(&format!(" LIMIT {fetch_limit}"));
+                let mut stmt = conn
+                    .prepare(&sql)
+                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+                    params.iter().map(|p| p.as_ref()).collect();
+                let rows = stmt
+                    .query_map(param_refs.as_slice(), |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4)?,
+                            row.get::<_, f64>(5)?,
+                            row.get::<_, String>(6)?,
+                            row.get::<_, String>(7)?,
+                            row.get::<_, String>(8)?,
+                            row.get::<_, i64>(9)?,
+                            row.get::<_, Option<Vec<u8>>>(10)?,
+                        ))
+                    })
+                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                let mut out = Vec::new();
+                for row in rows {
+                    out.push(decode_fragment(
+                        row.map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                    )?);
+                }
+                for frag in &out {
+                    let _ = conn.execute(
+                        "UPDATE memories SET access_count = access_count + 1, accessed_at = ?1 WHERE id = ?2",
+                        rusqlite::params![Utc::now().to_rfc3339(), frag.id.0.to_string()],
+                    );
+                }
+                out
             }
-            if let Some(ref scope) = f.scope {
-                sql.push_str(&format!(" AND scope = ?{param_idx}"));
-                params.push(Box::new(scope.clone()));
-                param_idx += 1;
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let mut qb: QueryBuilder<'_, Postgres> = QueryBuilder::new(
+                    "SELECT id, agent_id, content, source, scope, confidence, metadata, created_at, accessed_at, access_count, embedding
+                     FROM memories WHERE deleted = FALSE",
+                );
+                if query_embedding.is_none() && !query.is_empty() {
+                    qb.push(" AND content ILIKE ");
+                    qb.push_bind(format!("%{query}%"));
+                }
+                if let Some(ref f) = filter {
+                    if let Some(agent_id) = f.agent_id {
+                        qb.push(" AND agent_id = ");
+                        qb.push_bind(agent_id.0.to_string());
+                    }
+                    if let Some(ref scope) = f.scope {
+                        qb.push(" AND scope = ");
+                        qb.push_bind(scope);
+                    }
+                    if let Some(min_conf) = f.min_confidence {
+                        qb.push(" AND confidence >= ");
+                        qb.push_bind(min_conf as f64);
+                    }
+                    if let Some(ref source) = f.source {
+                        let source_str = serde_json::to_string(source)
+                            .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+                        qb.push(" AND source = ");
+                        qb.push_bind(source_str);
+                    }
+                }
+                qb.push(" ORDER BY accessed_at DESC, access_count DESC LIMIT ");
+                qb.push_bind(fetch_limit as i64);
+                let query_pool = Arc::clone(&pool);
+                let rows = block_on(async move { qb.build().fetch_all(&*query_pool).await })
+                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                let mut out = Vec::with_capacity(rows.len());
+                for row in rows {
+                    out.push(decode_fragment((
+                        row.try_get(0)
+                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        row.try_get(1)
+                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        row.try_get(2)
+                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        row.try_get(3)
+                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        row.try_get(4)
+                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        row.try_get(5)
+                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        row.try_get(6)
+                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        row.try_get(7)
+                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        row.try_get(8)
+                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        row.try_get(9)
+                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        row.try_get(10)
+                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                    ))?);
+                }
+                for frag in &out {
+                    let memory_id = frag.id.0.to_string();
+                    let pool = Arc::clone(&pool);
+                    let _ = block_on(async move {
+                        sqlx::query(
+                            "UPDATE memories SET access_count = access_count + 1, accessed_at = $1 WHERE id = $2",
+                        )
+                        .bind(Utc::now().to_rfc3339())
+                        .bind(memory_id)
+                        .execute(&*pool)
+                        .await
+                    });
+                }
+                out
             }
-            if let Some(min_conf) = f.min_confidence {
-                sql.push_str(&format!(" AND confidence >= ?{param_idx}"));
-                params.push(Box::new(min_conf as f64));
-                param_idx += 1;
-            }
-            if let Some(ref source) = f.source {
-                let source_str = serde_json::to_string(source)
-                    .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
-                sql.push_str(&format!(" AND source = ?{param_idx}"));
-                params.push(Box::new(source_str));
-                let _ = param_idx;
-            }
-        }
-
-        sql.push_str(" ORDER BY accessed_at DESC, access_count DESC");
-        sql.push_str(&format!(" LIMIT {fetch_limit}"));
-
-        let mut stmt = conn
-            .prepare(&sql)
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-            params.iter().map(|p| p.as_ref()).collect();
-        let rows = stmt
-            .query_map(param_refs.as_slice(), |row| {
-                let id_str: String = row.get(0)?;
-                let agent_str: String = row.get(1)?;
-                let content: String = row.get(2)?;
-                let source_str: String = row.get(3)?;
-                let scope: String = row.get(4)?;
-                let confidence: f64 = row.get(5)?;
-                let meta_str: String = row.get(6)?;
-                let created_str: String = row.get(7)?;
-                let accessed_str: String = row.get(8)?;
-                let access_count: i64 = row.get(9)?;
-                let embedding_bytes: Option<Vec<u8>> = row.get(10)?;
-                Ok((
-                    id_str,
-                    agent_str,
-                    content,
-                    source_str,
-                    scope,
-                    confidence,
-                    meta_str,
-                    created_str,
-                    accessed_str,
-                    access_count,
-                    embedding_bytes,
-                ))
-            })
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-
-        let mut fragments = Vec::new();
-        for row_result in rows {
-            let (
-                id_str,
-                agent_str,
-                content,
-                source_str,
-                scope,
-                confidence,
-                meta_str,
-                created_str,
-                accessed_str,
-                access_count,
-                embedding_bytes,
-            ) = row_result.map_err(|e| OpenFangError::Memory(e.to_string()))?;
-
-            let id = uuid::Uuid::parse_str(&id_str)
-                .map(MemoryId)
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-            let agent_id = uuid::Uuid::parse_str(&agent_str)
-                .map(openparlant_types::agent::AgentId)
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-            let source: MemorySource =
-                serde_json::from_str(&source_str).unwrap_or(MemorySource::System);
-            let metadata: HashMap<String, serde_json::Value> =
-                serde_json::from_str(&meta_str).unwrap_or_default();
-            let created_at = chrono::DateTime::parse_from_rfc3339(&created_str)
-                .map(|dt| dt.with_timezone(&Utc))
-                .unwrap_or_else(|_| Utc::now());
-            let accessed_at = chrono::DateTime::parse_from_rfc3339(&accessed_str)
-                .map(|dt| dt.with_timezone(&Utc))
-                .unwrap_or_else(|_| Utc::now());
-
-            let embedding = embedding_bytes.as_deref().map(embedding_from_bytes);
-
-            fragments.push(MemoryFragment {
-                id,
-                agent_id,
-                content,
-                embedding,
-                metadata,
-                source,
-                confidence: confidence as f32,
-                created_at,
-                accessed_at,
-                access_count: access_count as u64,
-                scope,
-            });
-        }
+        };
 
         // If we have a query embedding, re-rank by cosine similarity
         if let Some(qe) = query_embedding {
@@ -264,46 +311,109 @@ impl SemanticStore {
                 fetch_limit
             );
         }
-
-        // Update access counts for returned memories
-        for frag in &fragments {
-            let _ = conn.execute(
-                "UPDATE memories SET access_count = access_count + 1, accessed_at = ?1 WHERE id = ?2",
-                rusqlite::params![Utc::now().to_rfc3339(), frag.id.0.to_string()],
-            );
-        }
-
         Ok(fragments)
     }
 
     /// Soft-delete a memory fragment.
     pub fn forget(&self, id: MemoryId) -> OpenFangResult<()> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
-        conn.execute(
-            "UPDATE memories SET deleted = 1 WHERE id = ?1",
-            rusqlite::params![id.0.to_string()],
-        )
-        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                conn.execute(
+                    "UPDATE memories SET deleted = 1 WHERE id = ?1",
+                    rusqlite::params![id.0.to_string()],
+                )
+                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                block_on(async move {
+                    sqlx::query("UPDATE memories SET deleted = TRUE WHERE id = $1")
+                        .bind(id.0.to_string())
+                        .execute(&*pool)
+                        .await
+                })
+                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            }
+        }
         Ok(())
     }
 
     /// Update the embedding for an existing memory.
     pub fn update_embedding(&self, id: MemoryId, embedding: &[f32]) -> OpenFangResult<()> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
         let bytes = embedding_to_bytes(embedding);
-        conn.execute(
-            "UPDATE memories SET embedding = ?1 WHERE id = ?2",
-            rusqlite::params![bytes, id.0.to_string()],
-        )
-        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                conn.execute(
+                    "UPDATE memories SET embedding = ?1 WHERE id = ?2",
+                    rusqlite::params![bytes, id.0.to_string()],
+                )
+                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                block_on(async move {
+                    sqlx::query("UPDATE memories SET embedding = $1 WHERE id = $2")
+                        .bind(bytes)
+                        .bind(id.0.to_string())
+                        .execute(&*pool)
+                        .await
+                })
+                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            }
+        }
         Ok(())
     }
+}
+
+fn decode_fragment(
+    row: (
+        String,
+        String,
+        String,
+        String,
+        String,
+        f64,
+        String,
+        String,
+        String,
+        i64,
+        Option<Vec<u8>>,
+    ),
+) -> OpenFangResult<MemoryFragment> {
+    let id = uuid::Uuid::parse_str(&row.0)
+        .map(MemoryId)
+        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+    let agent_id = uuid::Uuid::parse_str(&row.1)
+        .map(openparlant_types::agent::AgentId)
+        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+    let source: MemorySource = serde_json::from_str(&row.3).unwrap_or(MemorySource::System);
+    let metadata: HashMap<String, serde_json::Value> =
+        serde_json::from_str(&row.6).unwrap_or_default();
+    let created_at = chrono::DateTime::parse_from_rfc3339(&row.7)
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(|_| Utc::now());
+    let accessed_at = chrono::DateTime::parse_from_rfc3339(&row.8)
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(|_| Utc::now());
+    Ok(MemoryFragment {
+        id,
+        agent_id,
+        content: row.2,
+        embedding: row.10.as_deref().map(embedding_from_bytes),
+        metadata,
+        source,
+        confidence: row.5 as f32,
+        created_at,
+        accessed_at,
+        access_count: row.9 as u64,
+        scope: row.4,
+    })
 }
 
 /// Compute cosine similarity between two vectors.
@@ -348,6 +458,7 @@ fn embedding_from_bytes(bytes: &[u8]) -> Vec<f32> {
 mod tests {
     use super::*;
     use crate::migration::run_migrations;
+    use std::sync::{Arc, Mutex};
 
     fn setup() -> SemanticStore {
         let conn = Connection::open_in_memory().unwrap();

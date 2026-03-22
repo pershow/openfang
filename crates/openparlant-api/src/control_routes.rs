@@ -355,6 +355,7 @@ pub async fn create_journey(
         name: req.name,
         trigger_config: req.trigger_config,
         completion_rule: req.completion_rule,
+        entry_state_id: None,
         enabled: req.enabled,
     };
     match state.journey_store.upsert_journey(&j) {
@@ -421,41 +422,21 @@ pub async fn create_glossary_term(
     let term_id = uuid::Uuid::new_v4().to_string();
     let scope_id_clone = req.scope_id.clone();
     let name_clone = req.name.clone();
-    let conn = state.db_conn.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let c = conn.lock().map_err(|e| e.to_string())?;
-        c.execute(
-            "INSERT INTO glossary_terms (term_id, scope_id, name, description, synonyms_json, enabled, always_include)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             ON CONFLICT(term_id) DO UPDATE SET
-                name = excluded.name,
-                description = excluded.description,
-                synonyms_json = excluded.synonyms_json,
-                enabled = excluded.enabled,
-                always_include = excluded.always_include",
-            rusqlite::params![
-                term_id,
-                req.scope_id,
-                req.name,
-                req.description,
-                synonyms_json,
-                req.enabled as i64,
-                req.always_include as i64
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-        Ok::<_, String>(term_id)
-    })
-    .await;
-
-    match result {
-        Ok(Ok(id)) => (
+    match state.control_store.upsert_glossary_term(
+        &term_id,
+        &req.scope_id,
+        &req.name,
+        &req.description,
+        &synonyms_json,
+        req.enabled,
+        req.always_include,
+    ) {
+        Ok(()) => (
             StatusCode::CREATED,
             Json(
-                serde_json::json!({"term_id": id, "scope_id": scope_id_clone, "name": name_clone}),
+                serde_json::json!({"term_id": term_id, "scope_id": scope_id_clone, "name": name_clone}),
             ),
         ),
-        Ok(Err(e)) => internal(e),
         Err(e) => internal(e),
     }
 }
@@ -489,41 +470,21 @@ pub async fn create_context_variable(
     let var_id = uuid::Uuid::new_v4().to_string();
     let scope_id_clone = req.scope_id.clone();
     let name_clone = req.name.clone();
-    let conn = state.db_conn.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let c = conn.lock().map_err(|e| e.to_string())?;
-        c.execute(
-            "INSERT INTO context_variables (variable_id, scope_id, name, value_source_type, value_source_config, visibility_rule, enabled)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             ON CONFLICT(variable_id) DO UPDATE SET
-                name = excluded.name,
-                value_source_type = excluded.value_source_type,
-                value_source_config = excluded.value_source_config,
-                visibility_rule = excluded.visibility_rule,
-                enabled = excluded.enabled",
-            rusqlite::params![
-                var_id,
-                req.scope_id,
-                req.name,
-                req.value_source_type,
-                config_json,
-                req.visibility_rule,
-                req.enabled as i64
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-        Ok::<_, String>(var_id)
-    })
-    .await;
-
-    match result {
-        Ok(Ok(id)) => (
+    match state.control_store.upsert_context_variable(
+        &var_id,
+        &req.scope_id,
+        &req.name,
+        &req.value_source_type,
+        &config_json,
+        req.visibility_rule.as_deref(),
+        req.enabled,
+    ) {
+        Ok(()) => (
             StatusCode::CREATED,
             Json(
-                serde_json::json!({"variable_id": id, "scope_id": scope_id_clone, "name": name_clone}),
+                serde_json::json!({"variable_id": var_id, "scope_id": scope_id_clone, "name": name_clone}),
             ),
         ),
-        Ok(Err(e)) => internal(e),
         Err(e) => internal(e),
     }
 }
@@ -550,41 +511,21 @@ pub async fn create_canned_response(
     let resp_id = uuid::Uuid::new_v4().to_string();
     let scope_id_clone = req.scope_id.clone();
     let name_clone = req.name.clone();
-    let conn = state.db_conn.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let c = conn.lock().map_err(|e| e.to_string())?;
-        c.execute(
-            "INSERT INTO canned_responses (response_id, scope_id, name, template_text, trigger_rule, priority, enabled)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             ON CONFLICT(response_id) DO UPDATE SET
-                name = excluded.name,
-                template_text = excluded.template_text,
-                trigger_rule = excluded.trigger_rule,
-                priority = excluded.priority,
-                enabled = excluded.enabled",
-            rusqlite::params![
-                resp_id,
-                req.scope_id,
-                req.name,
-                req.template_text,
-                req.trigger_rule,
-                req.priority,
-                req.enabled as i64
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-        Ok::<_, String>(resp_id)
-    })
-    .await;
-
-    match result {
-        Ok(Ok(id)) => (
+    match state.control_store.upsert_canned_response(
+        &resp_id,
+        &req.scope_id,
+        &req.name,
+        &req.template_text,
+        req.trigger_rule.as_deref(),
+        req.priority,
+        req.enabled,
+    ) {
+        Ok(()) => (
             StatusCode::CREATED,
             Json(
-                serde_json::json!({"response_id": id, "scope_id": scope_id_clone, "name": name_clone}),
+                serde_json::json!({"response_id": resp_id, "scope_id": scope_id_clone, "name": name_clone}),
             ),
         ),
-        Ok(Err(e)) => internal(e),
         Err(e) => internal(e),
     }
 }
@@ -596,36 +537,8 @@ pub async fn list_glossary_terms(
     State(state): State<Arc<AppState>>,
     Path(scope_id): Path<String>,
 ) -> impl IntoResponse {
-    let conn = state.db_conn.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let c = conn.lock().map_err(|e| e.to_string())?;
-        let mut stmt = c
-            .prepare(
-                "SELECT term_id, scope_id, name, description, synonyms_json, enabled, COALESCE(always_include, 0) AS always_include
-                 FROM glossary_terms WHERE scope_id = ?1 ORDER BY name",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(rusqlite::params![scope_id], |row| {
-                Ok(serde_json::json!({
-                    "term_id": row.get::<_, String>(0)?,
-                    "scope_id": row.get::<_, String>(1)?,
-                    "name": row.get::<_, String>(2)?,
-                    "description": row.get::<_, String>(3)?,
-                    "synonyms_json": row.get::<_, String>(4)?,
-                    "enabled": row.get::<_, bool>(5)?,
-                    "always_include": row.get::<_, i64>(6)? != 0,
-                }))
-            })
-            .map_err(|e| e.to_string())?
-            .filter_map(|r| r.ok())
-            .collect::<Vec<_>>();
-        Ok::<_, String>(rows)
-    })
-    .await;
-    match result {
-        Ok(Ok(items)) => (StatusCode::OK, Json(serde_json::json!(items))),
-        Ok(Err(e)) => internal(e),
+    match state.control_store.list_glossary_terms(&scope_id) {
+        Ok(items) => (StatusCode::OK, Json(serde_json::json!(items))),
         Err(e) => internal(e),
     }
 }
@@ -635,37 +548,8 @@ pub async fn list_context_variables(
     State(state): State<Arc<AppState>>,
     Path(scope_id): Path<String>,
 ) -> impl IntoResponse {
-    let conn = state.db_conn.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let c = conn.lock().map_err(|e| e.to_string())?;
-        let mut stmt = c
-            .prepare(
-                "SELECT variable_id, scope_id, name, value_source_type, value_source_config, enabled
-                 , visibility_rule
-                 FROM context_variables WHERE scope_id = ?1 ORDER BY name",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(rusqlite::params![scope_id], |row| {
-                Ok(serde_json::json!({
-                    "variable_id": row.get::<_, String>(0)?,
-                    "scope_id": row.get::<_, String>(1)?,
-                    "name": row.get::<_, String>(2)?,
-                    "value_source_type": row.get::<_, String>(3)?,
-                    "value_source_config": row.get::<_, String>(4)?,
-                    "enabled": row.get::<_, bool>(5)?,
-                    "visibility_rule": row.get::<_, Option<String>>(6)?,
-                }))
-            })
-            .map_err(|e| e.to_string())?
-            .filter_map(|r| r.ok())
-            .collect::<Vec<_>>();
-        Ok::<_, String>(rows)
-    })
-    .await;
-    match result {
-        Ok(Ok(items)) => (StatusCode::OK, Json(serde_json::json!(items))),
-        Ok(Err(e)) => internal(e),
+    match state.control_store.list_context_variables(&scope_id) {
+        Ok(items) => (StatusCode::OK, Json(serde_json::json!(items))),
         Err(e) => internal(e),
     }
 }
@@ -675,37 +559,8 @@ pub async fn list_canned_responses(
     State(state): State<Arc<AppState>>,
     Path(scope_id): Path<String>,
 ) -> impl IntoResponse {
-    let conn = state.db_conn.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let c = conn.lock().map_err(|e| e.to_string())?;
-        let mut stmt = c
-            .prepare(
-                "SELECT response_id, scope_id, name, template_text, priority, enabled
-                 , trigger_rule
-                 FROM canned_responses WHERE scope_id = ?1 ORDER BY priority DESC, name",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(rusqlite::params![scope_id], |row| {
-                Ok(serde_json::json!({
-                    "response_id": row.get::<_, String>(0)?,
-                    "scope_id": row.get::<_, String>(1)?,
-                    "name": row.get::<_, String>(2)?,
-                    "template_text": row.get::<_, String>(3)?,
-                    "priority": row.get::<_, i32>(4)?,
-                    "enabled": row.get::<_, bool>(5)?,
-                    "trigger_rule": row.get::<_, Option<String>>(6)?,
-                }))
-            })
-            .map_err(|e| e.to_string())?
-            .filter_map(|r| r.ok())
-            .collect::<Vec<_>>();
-        Ok::<_, String>(rows)
-    })
-    .await;
-    match result {
-        Ok(Ok(items)) => (StatusCode::OK, Json(serde_json::json!(items))),
-        Ok(Err(e)) => internal(e),
+    match state.control_store.list_canned_responses(&scope_id) {
+        Ok(items) => (StatusCode::OK, Json(serde_json::json!(items))),
         Err(e) => internal(e),
     }
 }
@@ -789,22 +644,14 @@ pub async fn session_control_trace(
         }
     };
 
-    // Load raw traces from control_store (uses rusqlite / Mutex).
+    // Load raw traces from the control store.
     let traces = match state.control_store.list_turn_traces_by_session(sid, 50) {
         Ok(t) => t,
         Err(e) => return internal(e),
     };
 
-    let conn = state.db_conn.clone();
-    let enriched = tokio::task::spawn_blocking(move || {
-        let c = conn.lock().map_err(|e| e.to_string())?;
-        Ok::<_, String>(enrich_turn_traces_json(&c, traces))
-    })
-    .await;
-
-    match enriched {
-        Ok(Ok(items)) => (StatusCode::OK, Json(serde_json::json!(items))),
-        Ok(Err(e)) => internal(e),
+    match state.control_store.enrich_turn_traces_json(traces) {
+        Ok(items) => (StatusCode::OK, Json(serde_json::json!(items))),
         Err(e) => internal(e),
     }
 }
@@ -840,37 +687,23 @@ pub async fn create_guideline_relationship(
         );
     };
     let rel_id = uuid::Uuid::new_v4().to_string();
-    let conn = state.db_conn.clone();
-    let scope_id_r = req.scope_id.clone();
-    let from_r = req.from_guideline_id.clone();
-    let to_r = req.to_guideline_id.clone();
-    let rel_type_r = canonical_relation_type.to_string();
-    let result = tokio::task::spawn_blocking(move || {
-        let c = conn.lock().map_err(|e| e.to_string())?;
-        c.execute(
-            "INSERT INTO guideline_relationships
-                (relationship_id, scope_id, from_guideline_id, to_guideline_id, relation_type)
-             VALUES (?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT(scope_id, from_guideline_id, to_guideline_id, relation_type) DO NOTHING",
-            rusqlite::params![rel_id, scope_id_r, from_r, to_r, rel_type_r],
-        )
-        .map_err(|e| e.to_string())?;
-        Ok::<_, String>(rel_id)
-    })
-    .await;
-
-    match result {
-        Ok(Ok(id)) => (
+    match state.control_store.create_guideline_relationship(
+        &rel_id,
+        &req.scope_id,
+        &req.from_guideline_id,
+        &req.to_guideline_id,
+        canonical_relation_type,
+    ) {
+        Ok(()) => (
             StatusCode::CREATED,
             Json(serde_json::json!({
-                "relationship_id": id,
+                "relationship_id": rel_id,
                 "scope_id": req.scope_id,
                 "from_guideline_id": req.from_guideline_id,
                 "to_guideline_id": req.to_guideline_id,
                 "relation_type": canonical_relation_type,
             })),
         ),
-        Ok(Err(e)) => internal(e),
         Err(e) => internal(e),
     }
 }
@@ -880,35 +713,8 @@ pub async fn list_guideline_relationships(
     State(state): State<Arc<AppState>>,
     Path(scope_id): Path<String>,
 ) -> impl IntoResponse {
-    let conn = state.db_conn.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let c = conn.lock().map_err(|e| e.to_string())?;
-        let mut stmt = c
-            .prepare(
-                "SELECT relationship_id, scope_id, from_guideline_id, to_guideline_id, relation_type
-                 FROM guideline_relationships WHERE scope_id = ?1
-                 ORDER BY relation_type, from_guideline_id",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(rusqlite::params![scope_id], |row| {
-                Ok(serde_json::json!({
-                    "relationship_id": row.get::<_, String>(0)?,
-                    "scope_id": row.get::<_, String>(1)?,
-                    "from_guideline_id": row.get::<_, String>(2)?,
-                    "to_guideline_id": row.get::<_, String>(3)?,
-                    "relation_type": row.get::<_, String>(4)?,
-                }))
-            })
-            .map_err(|e| e.to_string())?;
-        let items: Vec<_> = rows.filter_map(|r| r.ok()).collect();
-        Ok::<_, String>(items)
-    })
-    .await;
-
-    match result {
-        Ok(Ok(items)) => (StatusCode::OK, Json(serde_json::json!(items))),
-        Ok(Err(e)) => internal(e),
+    match state.control_store.list_guideline_relationships(&scope_id) {
+        Ok(items) => (StatusCode::OK, Json(serde_json::json!(items))),
         Err(e) => internal(e),
     }
 }
@@ -938,37 +744,40 @@ pub async fn create_journey_state(
         serde_json::to_string(&req.required_fields).unwrap_or_else(|_| "[]".into());
     let guideline_actions_json =
         serde_json::to_string(&req.guideline_actions).unwrap_or_else(|_| "[]".into());
-    let conn = state.db_conn.clone();
     let name_clone = req.name.clone();
-    let jid_clone = journey_id.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let c = conn.lock().map_err(|e| e.to_string())?;
-        c.execute(
-            "INSERT INTO journey_states (state_id, journey_id, name, description, required_fields, guideline_actions_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-             ON CONFLICT(journey_id, name) DO UPDATE SET
-                description = excluded.description,
-                required_fields = excluded.required_fields,
-                guideline_actions_json = excluded.guideline_actions_json",
-            rusqlite::params![state_id, jid_clone, req.name, req.description, req_fields_json, guideline_actions_json],
-        )
-        .map_err(|e| e.to_string())?;
-        Ok::<_, String>(state_id)
-    })
-    .await;
-
-    match result {
-        Ok(Ok(id)) => (
-            StatusCode::CREATED,
-            Json(serde_json::json!({
-                "state_id": id,
-                "journey_id": journey_id,
-                "name": name_clone,
-            })),
-        ),
-        Ok(Err(e)) => internal(e),
-        Err(e) => internal(e),
+    if let Err(e) = state.control_store.upsert_journey_state(
+        &state_id,
+        &journey_id,
+        &req.name,
+        req.description.as_deref(),
+        &req_fields_json,
+        &guideline_actions_json,
+    ) {
+        return internal(e);
     }
+
+    if let Ok(journey_uuid) = uuid::Uuid::parse_str(&journey_id) {
+        let journey_id_obj = JourneyId(journey_uuid);
+        if let Ok(Some(journey)) = state.journey_store.get_journey_sync(&journey_id_obj) {
+            if journey.entry_state_id.is_none() {
+                if let Err(e) = state
+                    .journey_store
+                    .set_entry_state(&journey_id_obj, Some(&state_id))
+                {
+                    return internal(e);
+                }
+            }
+        }
+    }
+
+    (
+        StatusCode::CREATED,
+        Json(serde_json::json!({
+            "state_id": state_id,
+            "journey_id": journey_id,
+            "name": name_clone,
+        })),
+    )
 }
 
 /// GET /api/control/journeys/:journey_id/states
@@ -976,43 +785,55 @@ pub async fn list_journey_states(
     State(state): State<Arc<AppState>>,
     Path(journey_id): Path<String>,
 ) -> impl IntoResponse {
-    let conn = state.db_conn.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let c = conn.lock().map_err(|e| e.to_string())?;
-        let mut stmt = c
-            .prepare(
-                "SELECT state_id, journey_id, name, description, required_fields,
-                        COALESCE(guideline_actions_json, '[]')
-                 FROM journey_states WHERE journey_id = ?1 ORDER BY name ASC",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(rusqlite::params![journey_id], |row| {
-                let rf_json: String = row.get(4).unwrap_or_else(|_| "[]".into());
-                let required_fields: Vec<String> =
-                    serde_json::from_str(&rf_json).unwrap_or_default();
-                let actions_json: String = row.get(5).unwrap_or_else(|_| "[]".into());
-                let guideline_actions: Vec<String> =
-                    serde_json::from_str(&actions_json).unwrap_or_default();
-                Ok(serde_json::json!({
-                    "state_id": row.get::<_, String>(0)?,
-                    "journey_id": row.get::<_, String>(1)?,
-                    "name": row.get::<_, String>(2)?,
-                    "description": row.get::<_, Option<String>>(3)?,
-                    "required_fields": required_fields,
-                    "guideline_actions": guideline_actions,
-                }))
-            })
-            .map_err(|e| e.to_string())?;
-        let items: Vec<_> = rows.filter_map(|r| r.ok()).collect();
-        Ok::<_, String>(items)
-    })
-    .await;
-
-    match result {
-        Ok(Ok(items)) => (StatusCode::OK, Json(serde_json::json!(items))),
-        Ok(Err(e)) => internal(e),
+    match state.control_store.list_journey_states(&journey_id) {
+        Ok(items) => (StatusCode::OK, Json(serde_json::json!(items))),
         Err(e) => internal(e),
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JourneyEntryStateRequest {
+    pub state_id: String,
+}
+
+/// POST /api/control/journeys/:journey_id/entry-state
+pub async fn set_journey_entry_state(
+    State(state): State<Arc<AppState>>,
+    Path(journey_id): Path<String>,
+    Json(req): Json<JourneyEntryStateRequest>,
+) -> impl IntoResponse {
+    let journey_id = match uuid::Uuid::parse_str(&journey_id) {
+        Ok(id) => JourneyId(id),
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid journey ID"})),
+            );
+        }
+    };
+
+    match state
+        .journey_store
+        .set_entry_state(&journey_id, Some(&req.state_id))
+    {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "journey_id": journey_id,
+                "entry_state_id": req.state_id,
+            })),
+        ),
+        Err(e) => {
+            let message = e.to_string();
+            if message.contains("entry state") && message.contains("journey") {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": message })),
+                )
+            } else {
+                internal(message)
+            }
+        }
     }
 }
 
@@ -1040,38 +861,24 @@ pub async fn create_journey_transition(
 ) -> impl IntoResponse {
     let trans_id = uuid::Uuid::new_v4().to_string();
     let cond_json = serde_json::to_string(&req.condition_config).unwrap_or_else(|_| "{}".into());
-    let conn = state.db_conn.clone();
-    let jid_clone = journey_id.clone();
-    let from_clone = req.from_state_id.clone();
-    let to_clone = req.to_state_id.clone();
-    let type_clone = req.transition_type.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let c = conn.lock().map_err(|e| e.to_string())?;
-        c.execute(
-            "INSERT INTO journey_transitions
-                (transition_id, journey_id, from_state_id, to_state_id, condition_config, transition_type)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-             ON CONFLICT(journey_id, from_state_id, to_state_id, transition_type) DO UPDATE SET
-                condition_config = excluded.condition_config",
-            rusqlite::params![trans_id, jid_clone, from_clone, to_clone, cond_json, type_clone],
-        )
-        .map_err(|e| e.to_string())?;
-        Ok::<_, String>(trans_id)
-    })
-    .await;
-
-    match result {
-        Ok(Ok(id)) => (
+    match state.control_store.upsert_journey_transition(
+        &trans_id,
+        &journey_id,
+        &req.from_state_id,
+        &req.to_state_id,
+        &cond_json,
+        &req.transition_type,
+    ) {
+        Ok(()) => (
             StatusCode::CREATED,
             Json(serde_json::json!({
-                "transition_id": id,
+                "transition_id": trans_id,
                 "journey_id": journey_id,
                 "from_state_id": req.from_state_id,
                 "to_state_id": req.to_state_id,
                 "transition_type": req.transition_type,
             })),
         ),
-        Ok(Err(e)) => internal(e),
         Err(e) => internal(e),
     }
 }
@@ -1081,40 +888,8 @@ pub async fn list_journey_transitions(
     State(state): State<Arc<AppState>>,
     Path(journey_id): Path<String>,
 ) -> impl IntoResponse {
-    let conn = state.db_conn.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let c = conn.lock().map_err(|e| e.to_string())?;
-        let mut stmt = c
-            .prepare(
-                "SELECT transition_id, journey_id, from_state_id, to_state_id,
-                        condition_config, transition_type
-                 FROM journey_transitions WHERE journey_id = ?1
-                 ORDER BY from_state_id, transition_type",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(rusqlite::params![journey_id], |row| {
-                let cond_str: String = row.get(4).unwrap_or_else(|_| "{}".into());
-                let condition_config: serde_json::Value =
-                    serde_json::from_str(&cond_str).unwrap_or_default();
-                Ok(serde_json::json!({
-                    "transition_id": row.get::<_, String>(0)?,
-                    "journey_id": row.get::<_, String>(1)?,
-                    "from_state_id": row.get::<_, String>(2)?,
-                    "to_state_id": row.get::<_, String>(3)?,
-                    "condition_config": condition_config,
-                    "transition_type": row.get::<_, String>(5)?,
-                }))
-            })
-            .map_err(|e| e.to_string())?;
-        let items: Vec<_> = rows.filter_map(|r| r.ok()).collect();
-        Ok::<_, String>(items)
-    })
-    .await;
-
-    match result {
-        Ok(Ok(items)) => (StatusCode::OK, Json(serde_json::json!(items))),
-        Ok(Err(e)) => internal(e),
+    match state.control_store.list_journey_transitions(&journey_id) {
+        Ok(items) => (StatusCode::OK, Json(serde_json::json!(items))),
         Err(e) => internal(e),
     }
 }
@@ -1129,55 +904,18 @@ pub async fn session_journey_state(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
 ) -> impl IntoResponse {
-    let conn = state.db_conn.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let c = conn.lock().map_err(|e| e.to_string())?;
-
-        // Find the active journey instance for this session
-        let row = c.query_row(
-            "SELECT ji.journey_instance_id, ji.journey_id, ji.current_state_id,
-                    ji.status, ji.state_payload, ji.updated_at,
-                    j.name as journey_name,
-                    js.name as state_name, js.description as state_description
-             FROM journey_instances ji
-             LEFT JOIN journeys j ON j.journey_id = ji.journey_id
-             LEFT JOIN journey_states js ON js.state_id = ji.current_state_id
-             WHERE ji.session_id = ?1 AND ji.status = 'active'
-             ORDER BY ji.updated_at DESC LIMIT 1",
-            rusqlite::params![session_id],
-            |row| {
-                Ok(serde_json::json!({
-                    "journey_instance_id": row.get::<_, String>(0)?,
-                    "journey_id": row.get::<_, String>(1)?,
-                    "current_state_id": row.get::<_, String>(2)?,
-                    "status": row.get::<_, String>(3)?,
-                    "state_payload": row.get::<_, String>(4).unwrap_or_default(),
-                    "updated_at": row.get::<_, String>(5).unwrap_or_default(),
-                    "journey_name": row.get::<_, Option<String>>(6)?,
-                    "state_name": row.get::<_, Option<String>>(7)?,
-                    "state_description": row.get::<_, Option<String>>(8)?,
-                }))
-            },
-        );
-
-        match row {
-            Ok(v) => Ok::<_, String>(Some(v)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(e.to_string()),
-        }
-    })
-    .await;
-
-    match result {
-        Ok(Ok(Some(data))) => (
+    match state
+        .control_store
+        .get_active_journey_for_session(&session_id)
+    {
+        Ok(Some(data)) => (
             StatusCode::OK,
             Json(serde_json::json!({"active": true, "journey": data})),
         ),
-        Ok(Ok(None)) => (
+        Ok(None) => (
             StatusCode::OK,
             Json(serde_json::json!({"active": false, "journey": null})),
         ),
-        Ok(Err(e)) => internal(e),
         Err(e) => internal(e),
     }
 }

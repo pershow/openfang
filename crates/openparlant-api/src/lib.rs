@@ -5,7 +5,9 @@
 
 pub mod channel_bridge;
 pub mod control_routes;
+pub mod dashboard_routes;
 pub mod middleware;
+pub mod notification_routes;
 pub mod openai_compat;
 pub mod rate_limiter;
 pub mod routes;

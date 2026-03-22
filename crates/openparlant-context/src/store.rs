@@ -1,11 +1,13 @@
 use anyhow::Result;
+use openparlant_memory::db::SharedDb;
 use openparlant_types::agent::AgentId;
 use openparlant_types::control::{
     CannedResponseCandidate, ControlEmbedder, GlossaryEntry, ResolvedVariable, RetrievedChunk,
     ScopeId,
 };
+use rusqlite::params;
 use serde::{Deserialize, Serialize};
-use sqlx::{Pool, Row, Sqlite};
+use sqlx::Row;
 use std::collections::{HashMap, HashSet};
 
 // ─── Retriever config types ───────────────────────────────────────────────────
@@ -33,43 +35,70 @@ pub struct RetrieverBinding {
 
 // ─── ContextStore ─────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ContextStore {
-    pool: Pool<Sqlite>,
+    db: SharedDb,
 }
 
 impl ContextStore {
-    pub fn new(pool: Pool<Sqlite>) -> Self {
-        Self { pool }
+    pub fn new(db: impl Into<SharedDb>) -> Self {
+        Self { db: db.into() }
     }
 
     // ── Retrievers ────────────────────────────────────────────────────────────
 
     /// Load all enabled retrievers for a scope.
     pub async fn list_retrievers(&self, scope_id: &ScopeId) -> Result<Vec<RetrieverDefinition>> {
-        let rows = sqlx::query(
-            "SELECT retriever_id, scope_id, name, retriever_type, config_json
-             FROM retrievers
-             WHERE scope_id = ? AND enabled = 1
-             ORDER BY name ASC",
-        )
-        .bind(&scope_id.0)
-        .fetch_all(&self.pool)
-        .await?;
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn.lock().map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                let mut stmt = conn.prepare(
+                    "SELECT retriever_id, scope_id, name, retriever_type, config_json
+                     FROM retrievers
+                     WHERE scope_id = ?1 AND enabled = 1
+                     ORDER BY name ASC",
+                )?;
+                let rows = stmt.query_map(params![scope_id.0.as_str()], |row| {
+                    Ok(RetrieverDefinition {
+                        retriever_id: row.get(0)?,
+                        scope_id: row.get(1)?,
+                        name: row.get(2)?,
+                        retriever_type: row.get(3)?,
+                        config_json: serde_json::from_str(
+                            &row.get::<_, String>(4).unwrap_or_else(|_| "{}".into()),
+                        )
+                        .unwrap_or_default(),
+                        enabled: true,
+                    })
+                })?;
+                Ok(rows.filter_map(|r| r.ok()).collect())
+            }
+            SharedDb::Postgres(pool) => {
+                let rows = sqlx::query(
+                    "SELECT retriever_id, scope_id, name, retriever_type, config_json
+                     FROM retrievers
+                     WHERE scope_id = $1 AND enabled = TRUE
+                     ORDER BY name ASC",
+                )
+                .bind(&scope_id.0)
+                .fetch_all(&**pool)
+                .await?;
 
-        let mut out = Vec::with_capacity(rows.len());
-        for row in rows {
-            let config_str: String = row.try_get("config_json")?;
-            out.push(RetrieverDefinition {
-                retriever_id: row.try_get("retriever_id")?,
-                scope_id: row.try_get("scope_id")?,
-                name: row.try_get("name")?,
-                retriever_type: row.try_get("retriever_type")?,
-                config_json: serde_json::from_str(&config_str).unwrap_or_default(),
-                enabled: true,
-            });
+                let mut out = Vec::with_capacity(rows.len());
+                for row in rows {
+                    let config_str: String = row.try_get("config_json")?;
+                    out.push(RetrieverDefinition {
+                        retriever_id: row.try_get("retriever_id")?,
+                        scope_id: row.try_get("scope_id")?,
+                        name: row.try_get("name")?,
+                        retriever_type: row.try_get("retriever_type")?,
+                        config_json: serde_json::from_str(&config_str).unwrap_or_default(),
+                        enabled: true,
+                    });
+                }
+                Ok(out)
+            }
         }
-        Ok(out)
     }
 
     /// Load retriever bindings for a scope + bind_type (e.g. "guideline" or "journey_state").
@@ -78,27 +107,49 @@ impl ContextStore {
         scope_id: &ScopeId,
         bind_type: &str,
     ) -> Result<Vec<RetrieverBinding>> {
-        let rows = sqlx::query(
-            "SELECT binding_id, scope_id, retriever_id, bind_type, bind_ref
-             FROM retriever_bindings
-             WHERE scope_id = ? AND bind_type = ?",
-        )
-        .bind(&scope_id.0)
-        .bind(bind_type)
-        .fetch_all(&self.pool)
-        .await?;
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn.lock().map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                let mut stmt = conn.prepare(
+                    "SELECT binding_id, scope_id, retriever_id, bind_type, bind_ref
+                     FROM retriever_bindings
+                     WHERE scope_id = ?1 AND bind_type = ?2",
+                )?;
+                let rows = stmt.query_map(params![scope_id.0.as_str(), bind_type], |row| {
+                    Ok(RetrieverBinding {
+                        binding_id: row.get(0)?,
+                        scope_id: row.get(1)?,
+                        retriever_id: row.get(2)?,
+                        bind_type: row.get(3)?,
+                        bind_ref: row.get(4)?,
+                    })
+                })?;
+                Ok(rows.filter_map(|r| r.ok()).collect())
+            }
+            SharedDb::Postgres(pool) => {
+                let rows = sqlx::query(
+                    "SELECT binding_id, scope_id, retriever_id, bind_type, bind_ref
+                     FROM retriever_bindings
+                     WHERE scope_id = $1 AND bind_type = $2",
+                )
+                .bind(&scope_id.0)
+                .bind(bind_type)
+                .fetch_all(&**pool)
+                .await?;
 
-        let mut out = Vec::with_capacity(rows.len());
-        for row in rows {
-            out.push(RetrieverBinding {
-                binding_id: row.try_get("binding_id")?,
-                scope_id: row.try_get("scope_id")?,
-                retriever_id: row.try_get("retriever_id")?,
-                bind_type: row.try_get("bind_type")?,
-                bind_ref: row.try_get("bind_ref")?,
-            });
+                let mut out = Vec::with_capacity(rows.len());
+                for row in rows {
+                    out.push(RetrieverBinding {
+                        binding_id: row.try_get("binding_id")?,
+                        scope_id: row.try_get("scope_id")?,
+                        retriever_id: row.try_get("retriever_id")?,
+                        bind_type: row.try_get("bind_type")?,
+                        bind_ref: row.try_get("bind_ref")?,
+                    });
+                }
+                Ok(out)
+            }
         }
-        Ok(out)
     }
 
     /// Placeholder: actually invoke retrievers and return chunks.
@@ -118,24 +169,49 @@ impl ContextStore {
         embedder: Option<&dyn ControlEmbedder>,
     ) -> Result<Vec<RetrievedChunk>> {
         let retrievers = self.list_retrievers(scope_id).await?;
-        let all_bindings = sqlx::query(
-            "SELECT retriever_id, bind_type, bind_ref
-             FROM retriever_bindings
-             WHERE scope_id = ?",
-        )
-        .bind(&scope_id.0)
-        .fetch_all(&self.pool)
-        .await
-        .unwrap_or_default();
         let mut bindings_by_retriever: HashMap<String, Vec<(String, String)>> = HashMap::new();
-        for row in all_bindings {
-            let retriever_id: String = row.try_get("retriever_id")?;
-            let bind_type: String = row.try_get("bind_type")?;
-            let bind_ref: String = row.try_get("bind_ref")?;
-            bindings_by_retriever
-                .entry(retriever_id)
-                .or_default()
-                .push((bind_type, bind_ref));
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn.lock().map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                let mut stmt = conn.prepare(
+                    "SELECT retriever_id, bind_type, bind_ref
+                     FROM retriever_bindings
+                     WHERE scope_id = ?1",
+                )?;
+                let rows = stmt.query_map(params![scope_id.0.as_str()], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                })?;
+                for row in rows.flatten() {
+                    bindings_by_retriever
+                        .entry(row.0)
+                        .or_default()
+                        .push((row.1, row.2));
+                }
+            }
+            SharedDb::Postgres(pool) => {
+                let all_bindings = sqlx::query(
+                    "SELECT retriever_id, bind_type, bind_ref
+                     FROM retriever_bindings
+                     WHERE scope_id = $1",
+                )
+                .bind(&scope_id.0)
+                .fetch_all(&**pool)
+                .await
+                .unwrap_or_default();
+                for row in all_bindings {
+                    let retriever_id: String = row.try_get("retriever_id")?;
+                    let bind_type: String = row.try_get("bind_type")?;
+                    let bind_ref: String = row.try_get("bind_ref")?;
+                    bindings_by_retriever
+                        .entry(retriever_id)
+                        .or_default()
+                        .push((bind_type, bind_ref));
+                }
+            }
         }
         let active_guidelines: HashSet<&str> =
             active_guideline_names.iter().map(String::as_str).collect();
@@ -196,44 +272,54 @@ impl ContextStore {
                         }
                     }
                 }
-                "faq_sqlite" => {
-                    // Search glossary_terms for keyword matches (reuse the same DB table).
-                    let rows = sqlx::query(
-                        "SELECT name, description, synonyms_json
-                         FROM glossary_terms
-                         WHERE scope_id = ? AND enabled = 1",
-                    )
-                    .bind(&scope_id.0)
-                    .fetch_all(&self.pool)
-                    .await
-                    .unwrap_or_default();
-
-                    for row in rows {
-                        let name: String = row.try_get("name").unwrap_or_default();
-                        let description: String = row.try_get("description").unwrap_or_default();
-                        let synonyms_json: String =
-                            row.try_get("synonyms_json").unwrap_or_default();
-                        let synonyms: Vec<String> =
-                            serde_json::from_str(&synonyms_json).unwrap_or_default();
-
-                        let hit = name.to_lowercase().contains(&query_lower)
-                            || description.to_lowercase().contains(&query_lower)
-                            || synonyms
-                                .iter()
-                                .any(|s| s.to_lowercase().contains(&query_lower));
-
-                        if hit {
-                            chunks.push(RetrievedChunk {
-                                source: format!("faq_sqlite:{}", retriever.name),
-                                content: format!("{name}: {description}"),
-                                score: Some(0.9),
-                                metadata: Some(
-                                    serde_json::json!({ "retriever_id": retriever.retriever_id }),
-                                ),
-                            });
+                "faq_sqlite" => match &self.db {
+                    SharedDb::Sqlite(conn) => {
+                        let conn = conn.lock().map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                        let mut stmt = conn.prepare(
+                            "SELECT name, description, synonyms_json
+                                 FROM glossary_terms
+                                 WHERE scope_id = ?1 AND enabled = 1",
+                        )?;
+                        let rows = stmt.query_map(params![scope_id.0.as_str()], |row| {
+                            Ok((
+                                row.get::<_, String>(0).unwrap_or_default(),
+                                row.get::<_, String>(1).unwrap_or_default(),
+                                row.get::<_, String>(2).unwrap_or_default(),
+                            ))
+                        })?;
+                        for row in rows.flatten() {
+                            append_faq_chunk(
+                                &mut chunks,
+                                retriever,
+                                &query_lower,
+                                row.0,
+                                row.1,
+                                row.2,
+                            );
                         }
                     }
-                }
+                    SharedDb::Postgres(pool) => {
+                        let rows = sqlx::query(
+                            "SELECT name, description, synonyms_json
+                                 FROM glossary_terms
+                                 WHERE scope_id = $1 AND enabled = TRUE",
+                        )
+                        .bind(&scope_id.0)
+                        .fetch_all(&**pool)
+                        .await
+                        .unwrap_or_default();
+                        for row in rows {
+                            append_faq_chunk(
+                                &mut chunks,
+                                retriever,
+                                &query_lower,
+                                row.try_get("name").unwrap_or_default(),
+                                row.try_get("description").unwrap_or_default(),
+                                row.try_get("synonyms_json").unwrap_or_default(),
+                            );
+                        }
+                    }
+                },
                 "embedding" => {
                     let Some(emb) = embedder else {
                         tracing::debug!(
@@ -318,38 +404,59 @@ impl ContextStore {
         message_text: &str,
     ) -> Result<Vec<GlossaryEntry>> {
         const MAX_TERMS: usize = 48;
-        let rows = sqlx::query(
-            "SELECT name, description, synonyms_json, COALESCE(always_include, 0) as always_include
-             FROM glossary_terms
-             WHERE scope_id = ? AND enabled = 1
-             ORDER BY name ASC",
-        )
-        .bind(&scope_id.0)
-        .fetch_all(&self.pool)
-        .await?;
-
         let message_lc = message_text.to_lowercase();
         let mut pinned: Vec<GlossaryEntry> = Vec::new();
         let mut scored: Vec<(i32, GlossaryEntry)> = Vec::new();
-
-        for row in rows {
-            let name: String = row.try_get("name")?;
-            let description: String = row.try_get("description")?;
-            let synonyms_json: String = row.try_get("synonyms_json")?;
-            let always_include: i64 = row.try_get("always_include")?;
-            let synonyms: Vec<String> = serde_json::from_str(&synonyms_json).unwrap_or_default();
-            let entry = GlossaryEntry {
-                name: name.clone(),
-                description,
-                synonyms,
-            };
-            if always_include != 0 {
-                pinned.push(entry);
-                continue;
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn.lock().map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                let mut stmt = conn.prepare(
+                    "SELECT name, description, synonyms_json, COALESCE(always_include, 0) as always_include
+                     FROM glossary_terms
+                     WHERE scope_id = ?1 AND enabled = 1
+                     ORDER BY name ASC",
+                )?;
+                let rows = stmt.query_map(params![scope_id.0.as_str()], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, i64>(3)?,
+                    ))
+                })?;
+                for row in rows.flatten() {
+                    push_glossary_entry(
+                        &message_lc,
+                        &mut pinned,
+                        &mut scored,
+                        row.0,
+                        row.1,
+                        row.2,
+                        row.3 != 0,
+                    );
+                }
             }
-            let score = glossary_relevance_score(&message_lc, &name, &entry.description, &entry.synonyms);
-            if score > 0 {
-                scored.push((score, entry));
+            SharedDb::Postgres(pool) => {
+                let rows = sqlx::query(
+                    "SELECT name, description, synonyms_json, COALESCE(always_include, FALSE) as always_include
+                     FROM glossary_terms
+                     WHERE scope_id = $1 AND enabled = TRUE
+                     ORDER BY name ASC",
+                )
+                .bind(&scope_id.0)
+                .fetch_all(&**pool)
+                .await?;
+                for row in rows {
+                    push_glossary_entry(
+                        &message_lc,
+                        &mut pinned,
+                        &mut scored,
+                        row.try_get("name")?,
+                        row.try_get("description")?,
+                        row.try_get("synonyms_json")?,
+                        row.try_get::<bool, _>("always_include")?,
+                    );
+                }
             }
         }
 
@@ -373,7 +480,7 @@ impl ContextStore {
     ///
     /// Supported `value_source_type` values:
     /// - `static` / `literal` — `value_source_config` JSON `{"value":"..."}`.
-    /// - `agent_kv` — `{"key":"..."}` reads `kv_store` for this agent (same SQLite DB).
+    /// - `agent_kv` — `{"key":"..."}` reads `kv_store` for this agent (same backing store).
     /// - `disabled` / `noop` — skipped (soft-delete / off-switch without deleting the row).
     /// - Other types — placeholder until wired (`<unresolved:...>`).
     pub async fn load_context_variables(
@@ -383,86 +490,69 @@ impl ContextStore {
         active_journey_state: Option<&str>,
         agent_id: &AgentId,
     ) -> Result<Vec<ResolvedVariable>> {
-        let rows = sqlx::query(
-            "SELECT name, value_source_type, value_source_config, visibility_rule
-             FROM context_variables
-             WHERE scope_id = ? AND enabled = 1",
-        )
-        .bind(&scope_id.0)
-        .fetch_all(&self.pool)
-        .await?;
-
-        let mut variables = Vec::with_capacity(rows.len());
-        for row in rows {
-            let name: String = row.try_get("name")?;
-            let source_type: String = row.try_get("value_source_type")?;
-            let config_json: String = row.try_get("value_source_config")?;
-            let visibility_rule: Option<String> = row.try_get("visibility_rule").ok();
-
-            if !matches_text_rule(
-                visibility_rule.as_deref(),
-                message_text,
-                active_journey_state,
-            ) {
-                continue;
-            }
-
-            let st = source_type.as_str();
-            if matches!(st, "disabled" | "noop") {
-                continue;
-            }
-
-            let value = match st {
-                "static" | "literal" => match serde_json::from_str::<serde_json::Value>(&config_json) {
-                    Ok(config) => config
-                        .get("value")
-                        .map(|v| {
-                            v.as_str()
-                                .map(|s| s.to_string())
-                                .unwrap_or_else(|| v.to_string())
-                        })
-                        .unwrap_or_default(),
-                    Err(_) => config_json.clone(),
-                },
-                "agent_kv" => {
-                    let key = serde_json::from_str::<serde_json::Value>(&config_json)
-                        .ok()
-                        .and_then(|c| c.get("key").and_then(|v| v.as_str()).map(|s| s.to_string()))
-                        .unwrap_or_default();
-                    if key.is_empty() {
-                        "<agent_kv: missing key in config>".to_string()
-                    } else {
-                        let aid = agent_id.0.to_string();
-                        match sqlx::query("SELECT value FROM kv_store WHERE agent_id = ? AND key = ?")
-                            .bind(&aid)
-                            .bind(&key)
-                            .fetch_optional(&self.pool)
-                            .await
-                        {
-                            Ok(Some(r)) => {
-                                let blob: Vec<u8> = r.try_get("value").unwrap_or_default();
-                                serde_json::from_slice::<serde_json::Value>(&blob)
-                                    .map(|v| match v {
-                                        serde_json::Value::String(s) => s,
-                                        _ => v.to_string(),
-                                    })
-                                    .unwrap_or_else(|_| {
-                                        String::from_utf8_lossy(&blob).into_owned()
-                                    })
-                            }
-                            Ok(None) => format!("<kv_store:{key}: not set>"),
-                            Err(e) => format!("<kv_store read error: {e}>"),
-                        }
+        let mut variables = Vec::new();
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let rows: Vec<_> = {
+                    let conn = conn.lock().map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                    let mut stmt = conn.prepare(
+                        "SELECT name, value_source_type, value_source_config, visibility_rule
+                         FROM context_variables
+                         WHERE scope_id = ?1 AND enabled = 1",
+                    )?;
+                    let rows = stmt.query_map(params![scope_id.0.as_str()], |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, Option<String>>(3)?,
+                        ))
+                    })?;
+                    rows.filter_map(|r| r.ok()).collect()
+                };
+                for row in rows {
+                    if let Some(variable) = resolve_variable_from_parts(
+                        &self.db,
+                        agent_id,
+                        message_text,
+                        active_journey_state,
+                        row.0,
+                        row.1,
+                        row.2,
+                        row.3,
+                    )
+                    .await?
+                    {
+                        variables.push(variable);
                     }
                 }
-                other => format!("<unresolved:{other}>"),
-            };
-
-            variables.push(ResolvedVariable {
-                name,
-                value,
-                source: source_type,
-            });
+            }
+            SharedDb::Postgres(pool) => {
+                let rows = sqlx::query(
+                    "SELECT name, value_source_type, value_source_config, visibility_rule
+                     FROM context_variables
+                     WHERE scope_id = $1 AND enabled = TRUE",
+                )
+                .bind(&scope_id.0)
+                .fetch_all(&**pool)
+                .await?;
+                for row in rows {
+                    if let Some(variable) = resolve_variable_from_parts(
+                        &self.db,
+                        agent_id,
+                        message_text,
+                        active_journey_state,
+                        row.try_get("name")?,
+                        row.try_get("value_source_type")?,
+                        row.try_get("value_source_config")?,
+                        row.try_get("visibility_rule").ok(),
+                    )
+                    .await?
+                    {
+                        variables.push(variable);
+                    }
+                }
+            }
         }
         Ok(variables)
     }
@@ -476,29 +566,205 @@ impl ContextStore {
         message_text: &str,
         active_journey_state: Option<&str>,
     ) -> Result<Vec<CannedResponseCandidate>> {
-        let rows = sqlx::query(
-            "SELECT name, template_text, trigger_rule, COALESCE(priority, 0) AS priority
-             FROM canned_responses
-             WHERE scope_id = ? AND enabled = 1",
-        )
-        .bind(&scope_id.0)
-        .fetch_all(&self.pool)
-        .await?;
-
-        let mut candidates = Vec::with_capacity(rows.len());
-        for row in rows {
-            let trigger_rule: Option<String> = row.try_get("trigger_rule").ok();
-            if !matches_text_rule(trigger_rule.as_deref(), message_text, active_journey_state) {
-                continue;
+        let mut candidates = Vec::new();
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn.lock().map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                let mut stmt = conn.prepare(
+                    "SELECT name, template_text, trigger_rule, COALESCE(priority, 0) AS priority
+                     FROM canned_responses
+                     WHERE scope_id = ?1 AND enabled = 1",
+                )?;
+                let rows = stmt.query_map(params![scope_id.0.as_str()], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, i32>(3).unwrap_or(0),
+                    ))
+                })?;
+                for row in rows.flatten() {
+                    if !matches_text_rule(row.2.as_deref(), message_text, active_journey_state) {
+                        continue;
+                    }
+                    candidates.push(CannedResponseCandidate {
+                        name: row.0,
+                        template_text: row.1,
+                        priority: row.3,
+                    });
+                }
             }
-            candidates.push(CannedResponseCandidate {
-                name: row.try_get("name")?,
-                template_text: row.try_get("template_text")?,
-                priority: row.try_get("priority").unwrap_or(0),
-            });
+            SharedDb::Postgres(pool) => {
+                let rows = sqlx::query(
+                    "SELECT name, template_text, trigger_rule, COALESCE(priority, 0) AS priority
+                     FROM canned_responses
+                     WHERE scope_id = $1 AND enabled = TRUE",
+                )
+                .bind(&scope_id.0)
+                .fetch_all(&**pool)
+                .await?;
+                for row in rows {
+                    let trigger_rule: Option<String> = row.try_get("trigger_rule").ok();
+                    if !matches_text_rule(
+                        trigger_rule.as_deref(),
+                        message_text,
+                        active_journey_state,
+                    ) {
+                        continue;
+                    }
+                    candidates.push(CannedResponseCandidate {
+                        name: row.try_get("name")?,
+                        template_text: row.try_get("template_text")?,
+                        priority: row.try_get("priority").unwrap_or(0),
+                    });
+                }
+            }
         }
         Ok(candidates)
     }
+}
+
+fn append_faq_chunk(
+    chunks: &mut Vec<RetrievedChunk>,
+    retriever: &RetrieverDefinition,
+    query_lower: &str,
+    name: String,
+    description: String,
+    synonyms_json: String,
+) {
+    let synonyms: Vec<String> = serde_json::from_str(&synonyms_json).unwrap_or_default();
+    let hit = name.to_lowercase().contains(query_lower)
+        || description.to_lowercase().contains(query_lower)
+        || synonyms
+            .iter()
+            .any(|s| s.to_lowercase().contains(query_lower));
+    if hit {
+        chunks.push(RetrievedChunk {
+            source: format!("faq_sqlite:{}", retriever.name),
+            content: format!("{name}: {description}"),
+            score: Some(0.9),
+            metadata: Some(serde_json::json!({ "retriever_id": retriever.retriever_id })),
+        });
+    }
+}
+
+fn push_glossary_entry(
+    message_lc: &str,
+    pinned: &mut Vec<GlossaryEntry>,
+    scored: &mut Vec<(i32, GlossaryEntry)>,
+    name: String,
+    description: String,
+    synonyms_json: String,
+    always_include: bool,
+) {
+    let synonyms: Vec<String> = serde_json::from_str(&synonyms_json).unwrap_or_default();
+    let entry = GlossaryEntry {
+        name: name.clone(),
+        description,
+        synonyms,
+    };
+    if always_include {
+        pinned.push(entry);
+        return;
+    }
+    let score = glossary_relevance_score(message_lc, &name, &entry.description, &entry.synonyms);
+    if score > 0 {
+        scored.push((score, entry));
+    }
+}
+
+async fn resolve_variable_from_parts(
+    db: &SharedDb,
+    agent_id: &AgentId,
+    message_text: &str,
+    active_journey_state: Option<&str>,
+    name: String,
+    source_type: String,
+    config_json: String,
+    visibility_rule: Option<String>,
+) -> Result<Option<ResolvedVariable>> {
+    if !matches_text_rule(
+        visibility_rule.as_deref(),
+        message_text,
+        active_journey_state,
+    ) {
+        return Ok(None);
+    }
+
+    let st = source_type.as_str();
+    if matches!(st, "disabled" | "noop") {
+        return Ok(None);
+    }
+
+    let value = match st {
+        "static" | "literal" => match serde_json::from_str::<serde_json::Value>(&config_json) {
+            Ok(config) => config
+                .get("value")
+                .map(|v| {
+                    v.as_str()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| v.to_string())
+                })
+                .unwrap_or_default(),
+            Err(_) => config_json.clone(),
+        },
+        "agent_kv" => {
+            let key = serde_json::from_str::<serde_json::Value>(&config_json)
+                .ok()
+                .and_then(|c| c.get("key").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                .unwrap_or_default();
+            if key.is_empty() {
+                "<agent_kv: missing key in config>".to_string()
+            } else {
+                match db {
+                    SharedDb::Sqlite(conn) => {
+                        let conn = conn.lock().map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                        match conn.query_row(
+                            "SELECT value FROM kv_store WHERE agent_id = ?1 AND key = ?2",
+                            params![agent_id.0.to_string(), key.as_str()],
+                            |row| row.get::<_, Vec<u8>>(0),
+                        ) {
+                            Ok(blob) => decode_kv_blob(blob),
+                            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                                format!("<kv_store:{key}: not set>")
+                            }
+                            Err(e) => format!("<kv_store read error: {e}>"),
+                        }
+                    }
+                    SharedDb::Postgres(pool) => {
+                        match sqlx::query(
+                            "SELECT value FROM kv_store WHERE agent_id = $1 AND key = $2",
+                        )
+                        .bind(agent_id.0.to_string())
+                        .bind(&key)
+                        .fetch_optional(&**pool)
+                        .await
+                        {
+                            Ok(Some(r)) => decode_kv_blob(r.try_get("value").unwrap_or_default()),
+                            Ok(None) => format!("<kv_store:{key}: not set>"),
+                            Err(e) => format!("<kv_store read error: {e}>"),
+                        }
+                    }
+                }
+            }
+        }
+        other => format!("<unresolved:{other}>"),
+    };
+
+    Ok(Some(ResolvedVariable {
+        name,
+        value,
+        source: source_type,
+    }))
+}
+
+fn decode_kv_blob(blob: Vec<u8>) -> String {
+    serde_json::from_slice::<serde_json::Value>(&blob)
+        .map(|v| match v {
+            serde_json::Value::String(s) => s,
+            _ => v.to_string(),
+        })
+        .unwrap_or_else(|_| String::from_utf8_lossy(&blob).into_owned())
 }
 
 fn glossary_relevance_score(
@@ -512,7 +778,10 @@ fn glossary_relevance_score(
     if !name_lc.is_empty() && message_lc.contains(&name_lc) {
         s += 100;
     }
-    for part in name_lc.split(|c: char| !c.is_alphanumeric()).filter(|p| p.len() > 1) {
+    for part in name_lc
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|p| p.len() > 1)
+    {
         if message_lc.contains(part) {
             s += 40;
         }

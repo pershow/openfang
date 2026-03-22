@@ -6,11 +6,13 @@ license.workspace = true
 description = "Context compilation traits for the OpenParlant control plane"
 
 [dependencies]
+openparlant-memory = { path = "../openparlant-memory" }
 openparlant-types = { path = "../openparlant-types" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+rusqlite = { workspace = true }
 sqlx = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }

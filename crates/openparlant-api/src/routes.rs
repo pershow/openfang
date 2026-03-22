@@ -2,6 +2,7 @@
 
 use crate::types::*;
 use axum::extract::{Path, Query, State};
+use axum::http::HeaderMap;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
@@ -41,8 +42,6 @@ pub struct AppState {
     /// unreachable local services. 60-second TTL.
     pub provider_probe_cache: openparlant_runtime::provider_health::ProbeCache,
     // ── Control plane ─────────────────────────────────────────────────────────
-    /// Shared raw SQLite connection used by control-plane rusqlite stores.
-    pub db_conn: Arc<std::sync::Mutex<rusqlite::Connection>>,
     /// TurnControlCoordinator — compiles control context before the LLM loop.
     pub control_coordinator: Arc<dyn openparlant_types::control::TurnControlCoordinator>,
     /// ControlStore for turn traces and explainability records.
@@ -53,14 +52,185 @@ pub struct AppState {
     pub journey_store: openparlant_journey::JourneyStore,
 }
 
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct AgentListQuery {
+    pub tenant_id: Option<String>,
+}
+
+fn tenant_model_env_var(model_id: &str) -> String {
+    let normalized = model_id
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    format!("OPENPARLANT_TENANT_MODEL_{normalized}_API_KEY")
+}
+
+fn load_tenant_model_configs(state: &AppState, tenant_id: &str) -> Result<Vec<serde_json::Value>, String> {
+    let key = format!("tenant_llm_models_{tenant_id}");
+    match state.control_store.get_setting(&key) {
+        Ok(Some(setting)) => Ok(
+            serde_json::from_str::<Vec<serde_json::Value>>(&setting.value_json).unwrap_or_default(),
+        ),
+        Ok(None) => Ok(Vec::new()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn apply_tenant_model_to_manifest(
+    state: &AppState,
+    manifest: &mut AgentManifest,
+    tenant_id: Option<&str>,
+    primary_model_id: Option<&str>,
+    fallback_model_id: Option<&str>,
+) -> Result<(), String> {
+    let Some(tenant_id) = tenant_id else {
+        return Ok(());
+    };
+    let models = load_tenant_model_configs(state, tenant_id)?;
+
+    if let Some(primary_model_id) = primary_model_id {
+        if let Some(model) = models
+            .iter()
+            .find(|model| model.get("id").and_then(|v| v.as_str()) == Some(primary_model_id))
+        {
+            let provider = model
+                .get("provider")
+                .and_then(|v| v.as_str())
+                .unwrap_or("custom")
+                .to_string();
+            let model_name = model
+                .get("model")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let base_url = model
+                .get("base_url")
+                .and_then(|v| v.as_str())
+                .filter(|v| !v.is_empty())
+                .map(|v| v.to_string());
+            let api_key_env = model
+                .get("api_key")
+                .and_then(|v| v.as_str())
+                .filter(|v| !v.is_empty())
+                .map(|api_key| {
+                    let env_var = tenant_model_env_var(primary_model_id);
+                    std::env::set_var(&env_var, api_key);
+                    env_var
+                });
+            manifest.model.provider = provider;
+            manifest.model.model = model_name;
+            manifest.model.base_url = base_url;
+            manifest.model.api_key_env = api_key_env.clone();
+            manifest
+                .metadata
+                .insert("primary_model_id".to_string(), serde_json::json!(primary_model_id));
+        }
+    }
+
+    if let Some(fallback_model_id) = fallback_model_id {
+        if let Some(model) = models
+            .iter()
+            .find(|model| model.get("id").and_then(|v| v.as_str()) == Some(fallback_model_id))
+        {
+            let provider = model
+                .get("provider")
+                .and_then(|v| v.as_str())
+                .unwrap_or("custom")
+                .to_string();
+            let model_name = model
+                .get("model")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let base_url = model
+                .get("base_url")
+                .and_then(|v| v.as_str())
+                .filter(|v| !v.is_empty())
+                .map(|v| v.to_string());
+            let api_key_env = model
+                .get("api_key")
+                .and_then(|v| v.as_str())
+                .filter(|v| !v.is_empty())
+                .map(|api_key| {
+                    let env_var = tenant_model_env_var(fallback_model_id);
+                    std::env::set_var(&env_var, api_key);
+                    env_var
+                });
+            manifest.fallback_models = vec![openparlant_types::agent::FallbackModel {
+                provider,
+                model: model_name,
+                api_key_env,
+                base_url,
+            }];
+            manifest
+                .metadata
+                .insert("fallback_model_id".to_string(), serde_json::json!(fallback_model_id));
+        }
+    }
+
+    Ok(())
+}
+
+fn dashboard_auth_secret(state: &AppState) -> String {
+    let api_key = state.kernel.config.api_key.trim().to_string();
+    if !api_key.is_empty() {
+        api_key
+    } else {
+        state.kernel.config.auth.password_hash.clone()
+    }
+}
+
+fn dashboard_user_from_headers(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Option<openparlant_control::DashboardUser> {
+    let bearer = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(|v| v.to_string());
+    let cookie_token = headers
+        .get("cookie")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|cookie| {
+                cookie
+                    .trim()
+                    .strip_prefix("openparlant_session=")
+                    .map(|v| v.to_string())
+            })
+        });
+    let token = bearer.or(cookie_token)?;
+    let username = if !state.kernel.config.api_key.trim().is_empty()
+        && token == state.kernel.config.api_key.trim()
+    {
+        state.kernel.config.auth.username.clone()
+    } else {
+        crate::session_auth::verify_session_token(&token, &dashboard_auth_secret(state))?
+    };
+    state
+        .control_store
+        .get_user_by_username(&username)
+        .ok()
+        .flatten()
+}
+
 /// POST /api/agents — Spawn a new agent.
 pub async fn spawn_agent(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(req): Json<SpawnRequest>,
 ) -> impl IntoResponse {
     // Resolve template name → manifest_toml if template is provided and manifest_toml is empty
     let manifest_toml = if req.manifest_toml.trim().is_empty() {
-        if let Some(ref tmpl_name) = req.template {
+        let requested_template = req.template.clone().or(req.template_id.clone());
+        if let Some(ref tmpl_name) = requested_template {
             // Sanitize template name to prevent path traversal
             let safe_name = tmpl_name
                 .chars()
@@ -90,11 +260,84 @@ pub async fn spawn_agent(
                     );
                 }
             }
+        } else if let Some(name) = req.name.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty()) {
+            let mut manifest = AgentManifest::default();
+            manifest.name = name.to_string();
+            manifest.description = req.role_description.clone().unwrap_or_default();
+            manifest.model.system_prompt = [
+                req.role_description.as_deref().unwrap_or(""),
+                req.personality.as_deref().unwrap_or(""),
+                req.boundaries.as_deref().unwrap_or(""),
+            ]
+            .iter()
+            .filter(|segment| !segment.trim().is_empty())
+            .map(|segment| segment.trim())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+            if manifest.model.system_prompt.trim().is_empty() {
+                manifest.model.system_prompt = "You are a helpful enterprise AI agent.".to_string();
+            }
+            manifest.skills = req.skill_ids.clone().unwrap_or_default();
+            if let Some(agent_type) = req.agent_type.as_ref().filter(|value| !value.trim().is_empty()) {
+                manifest
+                    .metadata
+                    .insert("agent_type".to_string(), serde_json::json!(agent_type));
+            }
+            if let Some(scope_type) = req
+                .permission_scope_type
+                .as_ref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                manifest
+                    .metadata
+                    .insert("permission_scope_type".to_string(), serde_json::json!(scope_type));
+            }
+            if let Some(access_level) = req
+                .permission_access_level
+                .as_ref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                manifest
+                    .metadata
+                    .insert("permission_access_level".to_string(), serde_json::json!(access_level));
+            }
+            if let Some(limit) = req.max_tokens_per_day {
+                manifest
+                    .metadata
+                    .insert("max_tokens_per_day".to_string(), serde_json::json!(limit));
+            }
+            if let Some(limit) = req.max_tokens_per_month {
+                manifest
+                    .metadata
+                    .insert("max_tokens_per_month".to_string(), serde_json::json!(limit));
+            }
+            let tenant_id = req.tenant_id.as_deref();
+            if let Err(error) = apply_tenant_model_to_manifest(
+                &state,
+                &mut manifest,
+                tenant_id,
+                req.primary_model_id.as_deref(),
+                req.fallback_model_id.as_deref(),
+            ) {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": error })),
+                );
+            }
+            match toml::to_string(&manifest) {
+                Ok(toml) => toml,
+                Err(_) => {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({"error": "Failed to assemble agent manifest"})),
+                    );
+                }
+            }
         } else {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(
-                    serde_json::json!({"error": "Either 'manifest_toml' or 'template' is required"}),
+                    serde_json::json!({"error": "Either 'manifest_toml', 'template', or structured agent fields are required"}),
                 ),
             );
         }
@@ -142,7 +385,7 @@ pub async fn spawn_agent(
         }
     }
 
-    let manifest: AgentManifest = match toml::from_str(&manifest_toml) {
+    let mut manifest: AgentManifest = match toml::from_str(&manifest_toml) {
         Ok(m) => m,
         Err(e) => {
             tracing::warn!("Invalid manifest TOML: {e}");
@@ -152,6 +395,48 @@ pub async fn spawn_agent(
             );
         }
     };
+
+    if let Some(user) = dashboard_user_from_headers(&state, &headers) {
+        manifest
+            .metadata
+            .entry("creator_user_id".to_string())
+            .or_insert_with(|| serde_json::json!(user.user_id));
+        if let Some(tenant_id) = user.tenant_id {
+            manifest
+                .metadata
+                .entry("tenant_id".to_string())
+                .or_insert_with(|| serde_json::json!(tenant_id.clone()));
+            manifest
+                .metadata
+                .entry("control_scope_id".to_string())
+                .or_insert_with(|| serde_json::json!(tenant_id));
+        }
+    }
+
+    let selected_tenant_scope = manifest
+        .metadata
+        .get("tenant_id")
+        .and_then(|value| value.as_str())
+        .map(|value| value.to_string())
+        .or_else(|| {
+            manifest
+                .metadata
+                .get("control_scope_id")
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string())
+        });
+    if let Err(error) = apply_tenant_model_to_manifest(
+        &state,
+        &mut manifest,
+        selected_tenant_scope.as_deref(),
+        req.primary_model_id.as_deref(),
+        req.fallback_model_id.as_deref(),
+    ) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error })),
+        );
+    }
 
     let name = manifest.name.clone();
     match state.kernel.spawn_agent(manifest) {
@@ -179,7 +464,10 @@ pub async fn spawn_agent(
 }
 
 /// GET /api/agents — List all agents.
-pub async fn list_agents(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+pub async fn list_agents(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AgentListQuery>,
+) -> impl IntoResponse {
     // Snapshot catalog once for enrichment
     let catalog = state.kernel.model_catalog.read().ok();
     let dm = &state.kernel.config.default_model;
@@ -189,6 +477,19 @@ pub async fn list_agents(State(state): State<Arc<AppState>>) -> impl IntoRespons
         .registry
         .list()
         .into_iter()
+        .filter(|entry| {
+            query.tenant_id.as_ref().map_or(true, |tenant_id| {
+                let tenant_ref = entry
+                    .manifest
+                    .metadata
+                    .get("tenant_id")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| {
+                        entry.manifest.metadata.get("control_scope_id").and_then(|v| v.as_str())
+                    });
+                tenant_ref == Some(tenant_id.as_str())
+            })
+        })
         .map(|e| {
             // Resolve "default" provider/model to actual kernel defaults
             let provider =
@@ -236,6 +537,11 @@ pub async fn list_agents(State(state): State<Arc<AppState>>) -> impl IntoRespons
                 "auth_status": auth_status,
                 "ready": ready,
                 "profile": e.manifest.profile,
+                "tenant_id": e.manifest.metadata.get("tenant_id").and_then(|v| v.as_str()).map(|s| s.to_string())
+                    .or_else(|| e.manifest.metadata.get("control_scope_id").and_then(|v| v.as_str()).map(|s| s.to_string())),
+                "creator_user_id": e.manifest.metadata.get("creator_user_id").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                "primary_model_id": e.manifest.metadata.get("primary_model_id").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                "fallback_model_id": e.manifest.metadata.get("fallback_model_id").and_then(|v| v.as_str()).map(|s| s.to_string()),
                 "identity": {
                     "emoji": e.identity.emoji,
                     "avatar_url": e.identity.avatar_url,
@@ -654,21 +960,10 @@ pub async fn get_session_replay(
                     vec![]
                 }
             };
-            let conn = state.db_conn.clone();
-            let enriched = tokio::task::spawn_blocking(move || {
-                let c = conn.lock().map_err(|e| e.to_string())?;
-                Ok::<_, String>(crate::control_routes::enrich_turn_traces_json(&c, traces))
-            })
-            .await;
-
-            let control_traces = match enriched {
-                Ok(Ok(v)) => v,
-                Ok(Err(e)) => {
-                    tracing::warn!(error = %e, "replay trace enrich failed");
-                    vec![]
-                }
+            let control_traces = match state.control_store.enrich_turn_traces_json(traces) {
+                Ok(v) => v,
                 Err(e) => {
-                    tracing::warn!(error = %e, "replay trace enrich join failed");
+                    tracing::warn!(error = %e, "replay trace enrich failed");
                     vec![]
                 }
             };
@@ -1463,6 +1758,11 @@ pub async fn get_agent(
             "mcp_servers": entry.manifest.mcp_servers,
             "mcp_servers_mode": if entry.manifest.mcp_servers.is_empty() { "all" } else { "allowlist" },
             "fallback_models": entry.manifest.fallback_models,
+            "tenant_id": entry.manifest.metadata.get("tenant_id").and_then(|v| v.as_str()).map(|s| s.to_string())
+                .or_else(|| entry.manifest.metadata.get("control_scope_id").and_then(|v| v.as_str()).map(|s| s.to_string())),
+            "creator_user_id": entry.manifest.metadata.get("creator_user_id").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            "primary_model_id": entry.manifest.metadata.get("primary_model_id").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            "fallback_model_id": entry.manifest.metadata.get("fallback_model_id").and_then(|v| v.as_str()).map(|s| s.to_string()),
             "control_scope_id": entry.manifest.metadata.get("control_scope_id").and_then(|v| v.as_str()).map(|s| s.to_string()),
         })),
     )
@@ -3415,6 +3715,11 @@ pub async fn health_detail(State(state): State<Arc<AppState>>) -> impl IntoRespo
         "restart_count": health.restart_count,
         "agent_count": state.kernel.registry.count(),
         "database": if db_ok { "connected" } else { "error" },
+        "database_backend": if state.kernel.config.resolved_postgres_url().is_some() {
+            "postgres"
+        } else {
+            "sqlite"
+        },
         "config_warnings": config_warnings,
     }))
 }
@@ -5421,7 +5726,7 @@ pub async fn agent_budget_status(
     };
 
     let quota = &entry.manifest.resources;
-    let usage_store = openparlant_memory::usage::UsageStore::new(state.kernel.memory.usage_conn());
+    let usage_store = state.kernel.memory.usage().clone();
     let hourly = usage_store.query_hourly(agent_id).unwrap_or(0.0);
     let daily = usage_store.query_daily(agent_id).unwrap_or(0.0);
     let monthly = usage_store.query_monthly(agent_id).unwrap_or(0.0);
@@ -5461,7 +5766,7 @@ pub async fn agent_budget_status(
 
 /// GET /api/budget/agents — Per-agent cost ranking (top spenders).
 pub async fn agent_budget_ranking(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let usage_store = openparlant_memory::usage::UsageStore::new(state.kernel.memory.usage_conn());
+    let usage_store = state.kernel.memory.usage().clone();
     let agents: Vec<serde_json::Value> = state
         .kernel
         .registry
@@ -5829,7 +6134,113 @@ pub async fn patch_agent(
         }
     }
 
-    // Persist updated entry to SQLite
+    let primary_model_update = body.get("primary_model_id");
+    let fallback_model_update = body.get("fallback_model_id");
+    if primary_model_update.is_some() || fallback_model_update.is_some() {
+        let Some(entry) = state.kernel.registry.get(agent_id) else {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "Agent not found"})),
+            );
+        };
+        let mut manifest = entry.manifest.clone();
+        let tenant_scope = body
+            .get("tenant_id")
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string())
+            .or_else(|| {
+                manifest
+                    .metadata
+                    .get("tenant_id")
+                    .and_then(|v| v.as_str())
+                    .map(|v| v.to_string())
+            })
+            .or_else(|| {
+                manifest
+                    .metadata
+                    .get("control_scope_id")
+                    .and_then(|v| v.as_str())
+                    .map(|v| v.to_string())
+            });
+
+        let primary_model_id = primary_model_update.and_then(|value| value.as_str());
+        let fallback_model_id = fallback_model_update.and_then(|value| value.as_str());
+
+        if let Err(error) = apply_tenant_model_to_manifest(
+            &state,
+            &mut manifest,
+            tenant_scope.as_deref(),
+            primary_model_id,
+            fallback_model_id,
+        ) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": error})),
+            );
+        }
+
+        if primary_model_update.is_some() {
+            if primary_model_id.is_some() {
+                let api_key_env = manifest.model.api_key_env.clone();
+                let base_url = manifest.model.base_url.clone();
+                if let Err(e) = state.kernel.registry.update_model_provider_config(
+                    agent_id,
+                    manifest.model.model.clone(),
+                    manifest.model.provider.clone(),
+                    api_key_env,
+                    base_url,
+                ) {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({"error": format!("{e}")})),
+                    );
+                }
+                let _ = state.kernel.registry.upsert_metadata_string(
+                    agent_id,
+                    "primary_model_id",
+                    primary_model_id.map(|value| value.to_string()),
+                );
+            } else {
+                let _ = state
+                    .kernel
+                    .registry
+                    .upsert_metadata_string(agent_id, "primary_model_id", None);
+            }
+        }
+
+        if fallback_model_update.is_some() {
+            if fallback_model_id.is_some() {
+                if let Err(e) = state
+                    .kernel
+                    .registry
+                    .update_fallback_models(agent_id, manifest.fallback_models.clone())
+                {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({"error": format!("{e}")})),
+                    );
+                }
+                let _ = state.kernel.registry.upsert_metadata_string(
+                    agent_id,
+                    "fallback_model_id",
+                    fallback_model_id.map(|value| value.to_string()),
+                );
+            } else {
+                if let Err(e) = state.kernel.registry.update_fallback_models(agent_id, Vec::new()) {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({"error": format!("{e}")})),
+                    );
+                }
+                let _ = state
+                    .kernel
+                    .registry
+                    .upsert_metadata_string(agent_id, "fallback_model_id", None);
+            }
+        }
+    }
+
+    // Persist updated entry to the configured backing store.
     if let Some(entry) = state.kernel.registry.get(agent_id) {
         let _ = state.kernel.memory.save_agent(&entry);
         (
@@ -8717,7 +9128,7 @@ pub async fn update_agent_identity(
 
     match state.kernel.registry.update_identity(agent_id, identity) {
         Ok(()) => {
-            // Persist identity to SQLite
+            // Persist identity to the configured backing store.
             if let Some(entry) = state.kernel.registry.get(agent_id) {
                 let _ = state.kernel.memory.save_agent(&entry);
             }

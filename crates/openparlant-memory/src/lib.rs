@@ -1,13 +1,14 @@
 //! Memory substrate for the OpenParlant Agent Operating System.
 //!
 //! Provides a unified memory API over three storage backends:
-//! - **Structured store** (SQLite): Key-value pairs, sessions, agent state
+//! - **Structured store** (SQL): Key-value pairs, sessions, agent state
 //! - **Semantic store**: Text-based search (Phase 1: LIKE matching, Phase 2: Qdrant vectors)
-//! - **Knowledge graph** (SQLite): Entities and relations
+//! - **Knowledge graph** (SQL): Entities and relations
 //!
 //! Agents interact with a single `Memory` trait that abstracts over all three stores.
 
 pub mod consolidation;
+pub mod db;
 pub mod knowledge;
 pub mod migration;
 pub mod semantic;

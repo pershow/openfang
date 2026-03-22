@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Deserialize a `Vec<String>` that tolerates both string and integer elements.
 ///
@@ -978,6 +978,8 @@ pub struct KernelConfig {
     pub default_model: DefaultModelConfig,
     /// Memory substrate configuration.
     pub memory: MemoryConfig,
+    /// PostgreSQL connection (preferred over `[memory].database_url`).
+    pub database: DatabaseConfig,
     /// Network configuration.
     pub network: NetworkConfig,
     /// Channel bridge configuration (Telegram, etc.).
@@ -1270,6 +1272,7 @@ impl Default for KernelConfig {
             network_enabled: false,
             default_model: DefaultModelConfig::default(),
             memory: MemoryConfig::default(),
+            database: DatabaseConfig::default(),
             network: NetworkConfig::default(),
             channels: ChannelsConfig::default(),
             api_key: String::new(),
@@ -1320,6 +1323,45 @@ impl KernelConfig {
             .unwrap_or_else(|| self.home_dir.join("workspaces"))
     }
 
+    /// Resolve the PostgreSQL connection URL for the shared SQL store.
+    ///
+    /// Priority: `[database]` (`url` or split `host`/`dbname`/…), then legacy
+    /// `[memory].database_url`.
+    ///
+    /// Split-field password: `database.password` is an env var name; value is read from
+    /// `{home_dir}/secrets.env` first, then the process environment.
+    pub fn resolved_postgres_url(&self) -> Option<String> {
+        let pw = self.resolve_database_password();
+        if let Some(url) = self.database.postgres_url(&pw) {
+            return Some(url);
+        }
+        self.memory.database_url.as_ref().and_then(|s| {
+            let t = s.trim();
+            if t.is_empty() {
+                None
+            } else {
+                Some(t.to_string())
+            }
+        })
+    }
+
+    fn resolve_database_password(&self) -> String {
+        let Some(var_name) = self.database.password.as_deref() else {
+            return String::new();
+        };
+        let key = var_name.trim();
+        if key.is_empty() {
+            return String::new();
+        }
+        let secrets_path = self.home_dir.join("secrets.env");
+        if let Ok(map) = load_dotenv_file(&secrets_path) {
+            if let Some(v) = map.get(key) {
+                return v.clone();
+            }
+        }
+        std::env::var(key).unwrap_or_default()
+    }
+
     /// Resolve the API key env var name for a provider.
     ///
     /// Checks: 1) explicit `provider_api_keys` mapping, 2) `auth_profiles` first entry,
@@ -1353,6 +1395,7 @@ impl std::fmt::Debug for KernelConfig {
             .field("network_enabled", &self.network_enabled)
             .field("default_model", &self.default_model)
             .field("memory", &self.memory)
+            .field("database", &self.database)
             .field("network", &self.network)
             .field("channels", &self.channels)
             .field(
@@ -1467,10 +1510,192 @@ impl Default for DefaultModelConfig {
     }
 }
 
+/// PostgreSQL connection settings.
+///
+/// Prefer this section over `[memory].database_url`. Use split fields (`host`, `dbname`, etc.)
+/// so passwords may contain `@` or other reserved URI characters without manual encoding.
+#[derive(Clone, Serialize)]
+pub struct DatabaseConfig {
+    /// Full `postgresql://...` URI. When set, split fields below are ignored.
+    pub url: Option<String>,
+    pub host: Option<String>,
+    #[serde(default = "default_pg_port")]
+    pub port: u16,
+    pub user: Option<String>,
+    /// Name of the environment variable holding the DB password (same idea as `api_key_env`).
+    /// Resolved from `secrets.env` in [`KernelConfig::home_dir`] first, then the process
+    /// environment. Prefer the TOML key `password`; legacy `password_env` is still accepted.
+    pub password: Option<String>,
+    /// Database name (the PostgreSQL database to connect to).
+    pub dbname: Option<String>,
+    /// Appended as `?sslmode=...` (e.g. `require`, `disable`).
+    #[serde(default)]
+    pub ssl_mode: String,
+}
+
+fn default_pg_port() -> u16 {
+    5432
+}
+
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        Self {
+            url: None,
+            host: None,
+            port: default_pg_port(),
+            user: None,
+            password: None,
+            dbname: None,
+            ssl_mode: String::new(),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for DatabaseConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize, Default)]
+        #[serde(default)]
+        struct RawDatabaseConfig {
+            url: Option<String>,
+            host: Option<String>,
+            #[serde(default = "default_pg_port")]
+            port: u16,
+            user: Option<String>,
+            password: Option<String>,
+            password_env: Option<String>,
+            dbname: Option<String>,
+            database: Option<String>,
+            ssl_mode: String,
+        }
+
+        let raw = RawDatabaseConfig::deserialize(deserializer)?;
+        Ok(Self {
+            url: raw.url,
+            host: raw.host,
+            port: raw.port,
+            user: raw.user,
+            password: raw.password.or(raw.password_env),
+            dbname: raw.dbname.or(raw.database),
+            ssl_mode: raw.ssl_mode,
+        })
+    }
+}
+
+impl std::fmt::Debug for DatabaseConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DatabaseConfig")
+            .field("url", &self.url.as_ref().map(|_| "<redacted>"))
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("user", &self.user)
+            .field("password", &self.password)
+            .field("dbname", &self.dbname)
+            .field("ssl_mode", &self.ssl_mode)
+            .finish()
+    }
+}
+
+/// Parse a minimal dotenv file (`KEY=value`, `#` comments, optional quotes).
+fn load_dotenv_file(path: &Path) -> Result<HashMap<String, String>, std::io::Error> {
+    if !path.exists() {
+        return Ok(HashMap::new());
+    }
+    let content = std::fs::read_to_string(path)?;
+    let mut map = HashMap::new();
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((key, value)) = line.split_once('=') {
+            let key = key.trim();
+            let mut value = value.trim().to_string();
+            if (value.starts_with('"') && value.ends_with('"'))
+                || (value.starts_with('\'') && value.ends_with('\''))
+            {
+                value = value[1..value.len() - 1].to_string();
+            }
+            map.insert(key.to_string(), value);
+        }
+    }
+    Ok(map)
+}
+
+/// Percent-encode a string for PostgreSQL URI userinfo (user or password).
+fn percent_encode_userinfo(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for &b in s.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                out.push(b as char);
+            }
+            _ => {
+                use std::fmt::Write;
+                let _ = write!(out, "%{b:02X}");
+            }
+        }
+    }
+    out
+}
+
+/// Percent-encode a single path segment (database name).
+fn percent_encode_path_segment(s: &str) -> String {
+    percent_encode_userinfo(s)
+}
+
+impl DatabaseConfig {
+    /// Build a PostgreSQL URL from `url` or from split fields with a resolved password.
+    ///
+    /// Split mode requires non-empty `host` and `dbname`. User defaults to `postgres`.
+    /// Password is percent-encoded so values like `p@ss` are safe.
+    pub fn postgres_url(&self, resolved_password: &str) -> Option<String> {
+        if let Some(ref u) = self.url {
+            let t = u.trim();
+            if !t.is_empty() {
+                return Some(t.to_string());
+            }
+        }
+        let host = self.host.as_deref()?.trim();
+        if host.is_empty() {
+            return None;
+        }
+        let dbname = self.dbname.as_deref()?.trim();
+        if dbname.is_empty() {
+            return None;
+        }
+        let port = if self.port == 0 {
+            default_pg_port()
+        } else {
+            self.port
+        };
+        let user = self.user.as_deref().unwrap_or("postgres").trim();
+        let enc_user = percent_encode_userinfo(user);
+        let enc_db = percent_encode_path_segment(dbname);
+        let mut url = if resolved_password.is_empty() {
+            format!("postgresql://{enc_user}@{host}:{port}/{enc_db}")
+        } else {
+            let enc_pw = percent_encode_userinfo(resolved_password);
+            format!("postgresql://{enc_user}:{enc_pw}@{host}:{port}/{enc_db}")
+        };
+        let mode = self.ssl_mode.trim();
+        if !mode.is_empty() {
+            let sep = if url.contains('?') { '&' } else { '?' };
+            url.push_str(&format!("{sep}sslmode={}", percent_encode_userinfo(mode)));
+        }
+        Some(url)
+    }
+}
+
 /// Memory substrate configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MemoryConfig {
+    /// Legacy PostgreSQL connection string. Prefer `[database]`; when set (and
+    /// `[database]` does not define a URL or split fields), takes precedence over `sqlite_path`.
+    pub database_url: Option<String>,
     /// Path to SQLite database file.
     pub sqlite_path: Option<PathBuf>,
     /// Embedding model for semantic search.
@@ -1497,6 +1722,7 @@ fn default_consolidation_interval() -> u64 {
 impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
+            database_url: None,
             sqlite_path: None,
             embedding_model: "all-MiniLM-L6-v2".to_string(),
             consolidation_threshold: 10_000,
@@ -3533,6 +3759,106 @@ mod tests {
         assert_eq!(config.log_level, "info");
         assert_eq!(config.api_listen, "127.0.0.1:50051");
         assert!(!config.network_enabled);
+    }
+
+    #[test]
+    fn test_database_split_postgres_url_encodes_special_chars_in_password() {
+        let db = DatabaseConfig {
+            host: Some("db.example.com".to_string()),
+            port: 5432,
+            user: Some("app".to_string()),
+            dbname: Some("openparlant".to_string()),
+            ..Default::default()
+        };
+        let url = db.postgres_url("p@ss:word").expect("url");
+        assert_eq!(
+            url,
+            "postgresql://app:p%40ss%3Aword@db.example.com:5432/openparlant"
+        );
+    }
+
+    #[test]
+    fn test_resolved_postgres_url_prefers_database_section_over_memory_legacy() {
+        let mut config = KernelConfig::default();
+        config.database.host = Some("new.host".to_string());
+        config.database.dbname = Some("db1".to_string());
+        config.memory.database_url = Some("postgresql://legacy:ignored@host/db".to_string());
+        assert_eq!(
+            config.resolved_postgres_url().as_deref(),
+            Some("postgresql://postgres@new.host:5432/db1")
+        );
+    }
+
+    #[test]
+    fn test_resolved_postgres_url_falls_back_to_memory_database_url() {
+        let mut config = KernelConfig::default();
+        config.memory.database_url = Some("postgresql://user:pw@localhost:5432/legacy".to_string());
+        assert_eq!(
+            config.resolved_postgres_url().as_deref(),
+            Some("postgresql://user:pw@localhost:5432/legacy")
+        );
+    }
+
+    #[test]
+    fn test_database_password_toml_key() {
+        let db: DatabaseConfig = toml::from_str(r#"password = "OPENFANG_PG_PASSWORD""#).unwrap();
+        assert_eq!(db.password.as_deref(), Some("OPENFANG_PG_PASSWORD"));
+    }
+
+    #[test]
+    fn test_database_password_env_toml_alias() {
+        let db: DatabaseConfig =
+            toml::from_str(r#"password_env = "OPENFANG_PG_PASSWORD""#).unwrap();
+        assert_eq!(db.password.as_deref(), Some("OPENFANG_PG_PASSWORD"));
+    }
+
+    #[test]
+    fn test_database_password_prefers_password_over_password_env_when_both_present() {
+        let db: DatabaseConfig = toml::from_str(
+            r#"
+            password = "PRIMARY_PG_PASSWORD"
+            password_env = "LEGACY_PG_PASSWORD"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(db.password.as_deref(), Some("PRIMARY_PG_PASSWORD"));
+    }
+
+    #[test]
+    fn test_database_dbname_toml_alias_database() {
+        let db: DatabaseConfig = toml::from_str(
+            r#"
+            host = "localhost"
+            database = "myapp"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(db.dbname.as_deref(), Some("myapp"));
+    }
+
+    #[test]
+    fn test_resolved_postgres_password_from_secrets_env_file() {
+        let tmp = std::env::temp_dir().join(format!(
+            "openparlant-pg-secrets-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let secrets = tmp.join("secrets.env");
+        std::fs::write(&secrets, "# comment\nOPENFANG_PG_PASSWORD=\"p@file\"\n").unwrap();
+
+        let mut config = KernelConfig::default();
+        config.home_dir = tmp.clone();
+        config.database.host = Some("db.local".to_string());
+        config.database.dbname = Some("app".to_string());
+        config.database.password = Some("OPENFANG_PG_PASSWORD".to_string());
+
+        let url = config.resolved_postgres_url().expect("url");
+        assert!(
+            url.starts_with("postgresql://postgres:p%40file@db.local:5432/app"),
+            "unexpected url: {url}"
+        );
+
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]

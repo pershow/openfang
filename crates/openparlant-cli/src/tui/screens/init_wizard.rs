@@ -1150,7 +1150,7 @@ decay_rate = 0.05
     state.saving_done = true;
 
     // Auto-start the daemon so all launch options work immediately.
-    match crate::start_daemon_background() {
+    match crate::start_daemon_background(None) {
         Ok(url) => {
             state.daemon_started = true;
             state.daemon_url = url;

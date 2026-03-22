@@ -909,7 +909,7 @@ fn main() {
             match launcher::run(cli.config.clone()) {
                 launcher::LauncherChoice::GetStarted => cmd_init(false),
                 launcher::LauncherChoice::Chat => cmd_quick_chat(cli.config, None),
-                launcher::LauncherChoice::Dashboard => cmd_dashboard(),
+                launcher::LauncherChoice::Dashboard => cmd_dashboard(cli.config),
                 launcher::LauncherChoice::DesktopApp => launcher::launch_desktop_app(),
                 launcher::LauncherChoice::TerminalUI => tui::run(cli.config),
                 launcher::LauncherChoice::ShowHelp => {
@@ -996,7 +996,7 @@ fn main() {
         Some(Commands::Chat { agent }) => cmd_quick_chat(cli.config, agent),
         Some(Commands::Status { json }) => cmd_status(cli.config, json),
         Some(Commands::Doctor { json, repair }) => cmd_doctor(json, repair),
-        Some(Commands::Dashboard) => cmd_dashboard(),
+        Some(Commands::Dashboard) => cmd_dashboard(cli.config),
         Some(Commands::Completion { shell }) => cmd_completion(shell),
         Some(Commands::Mcp) => mcp::run_mcp_server(cli.config),
         Some(Commands::Add { name, key }) => cmd_integration_add(&name, key.as_deref()),
@@ -2288,29 +2288,51 @@ decay_rate = 0.05
             checks.push(serde_json::json!({"check": "stale_daemon_json", "status": if repair { "repaired" } else { "warn" }}));
         }
 
-        // --- Check 6: Database file ---
-        let db_path = openparlant_dir.join("data").join("openparlant.db");
-        if db_path.exists() {
-            // Quick SQLite magic bytes check
-            if let Ok(bytes) = std::fs::read(&db_path) {
-                if bytes.len() >= 16 && bytes.starts_with(b"SQLite format 3") {
-                    if !json {
-                        ui::check_ok("Database file (valid SQLite)");
-                    }
-                    checks.push(serde_json::json!({"check": "database", "status": "ok"}));
-                } else {
-                    if !json {
-                        ui::check_fail("Database file exists but is not valid SQLite");
-                    }
-                    checks.push(serde_json::json!({"check": "database", "status": "fail"}));
-                    all_ok = false;
-                }
-            }
-        } else {
+        // --- Check 6: Database backend ---
+        let postgres_configured = config_path
+            .exists()
+            .then(|| std::fs::read_to_string(&config_path).ok())
+            .flatten()
+            .and_then(|s| toml::from_str::<openparlant_types::config::KernelConfig>(&s).ok())
+            .and_then(|cfg| cfg.resolved_postgres_url())
+            .is_some();
+        if postgres_configured {
             if !json {
-                ui::check_warn("No database file (will be created on first run)");
+                ui::check_ok("Database backend: PostgreSQL (configured)");
             }
-            checks.push(serde_json::json!({"check": "database", "status": "warn"}));
+            checks.push(
+                serde_json::json!({"check": "database", "status": "ok", "backend": "postgres"}),
+            );
+        } else {
+            let db_path = openparlant_dir.join("data").join("openparlant.db");
+            if db_path.exists() {
+                // Quick SQLite magic bytes check
+                if let Ok(bytes) = std::fs::read(&db_path) {
+                    if bytes.len() >= 16 && bytes.starts_with(b"SQLite format 3") {
+                        if !json {
+                            ui::check_ok("Database backend: SQLite (valid local file)");
+                        }
+                        checks.push(
+                            serde_json::json!({"check": "database", "status": "ok", "backend": "sqlite"}),
+                        );
+                    } else {
+                        if !json {
+                            ui::check_fail("Database file exists but is not valid SQLite");
+                        }
+                        checks.push(
+                            serde_json::json!({"check": "database", "status": "fail", "backend": "sqlite"}),
+                        );
+                        all_ok = false;
+                    }
+                }
+            } else {
+                if !json {
+                    ui::check_warn("No SQLite database file (will be created on first run)");
+                }
+                checks.push(
+                    serde_json::json!({"check": "database", "status": "warn", "backend": "sqlite"}),
+                );
+            }
         }
 
         // --- Check 7: Disk space ---
@@ -2943,13 +2965,13 @@ decay_rate = 0.05
 // Dashboard command
 // ---------------------------------------------------------------------------
 
-fn cmd_dashboard() {
+fn cmd_dashboard(config: Option<PathBuf>) {
     let base = if let Some(url) = find_daemon() {
         url
     } else {
         // Auto-start the daemon
         ui::hint("No daemon running — starting one now...");
-        match start_daemon_background() {
+        match start_daemon_background(config.as_deref()) {
             Ok(url) => {
                 ui::success("Daemon started");
                 url
@@ -4496,7 +4518,7 @@ pub(crate) fn test_api_key(provider: &str, env_var: &str) -> bool {
 /// Spawn `openparlant start` as a detached background process.
 ///
 /// Polls for daemon health for up to 10 seconds. Returns the daemon URL on success.
-pub(crate) fn start_daemon_background() -> Result<String, String> {
+pub(crate) fn start_daemon_background(config: Option<&std::path::Path>) -> Result<String, String> {
     let exe = std::env::current_exe().map_err(|e| format!("Cannot find executable: {e}"))?;
 
     #[cfg(windows)]
@@ -4504,9 +4526,12 @@ pub(crate) fn start_daemon_background() -> Result<String, String> {
         use std::os::windows::process::CommandExt;
         const DETACHED_PROCESS: u32 = 0x00000008;
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-        std::process::Command::new(&exe)
-            .arg("start")
-            .stdin(std::process::Stdio::null())
+        let mut cmd = std::process::Command::new(&exe);
+        cmd.arg("start");
+        if let Some(config_path) = config {
+            cmd.arg("--config").arg(config_path);
+        }
+        cmd.stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
@@ -4516,9 +4541,12 @@ pub(crate) fn start_daemon_background() -> Result<String, String> {
 
     #[cfg(not(windows))]
     {
-        std::process::Command::new(&exe)
-            .arg("start")
-            .stdin(std::process::Stdio::null())
+        let mut cmd = std::process::Command::new(&exe);
+        cmd.arg("start");
+        if let Some(config_path) = config {
+            cmd.arg("--config").arg(config_path);
+        }
+        cmd.stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()

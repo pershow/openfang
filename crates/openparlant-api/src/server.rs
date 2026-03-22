@@ -1,24 +1,26 @@
 use crate::channel_bridge;
 use crate::control_routes;
+use crate::dashboard_routes;
 use crate::middleware;
+use crate::notification_routes;
 use crate::rate_limiter;
 use crate::routes::{self, AppState};
 use crate::webchat;
 use crate::ws;
 use axum::Router;
-use openparlant_context::SqliteKnowledgeCompiler;
+use openparlant_context::StoreKnowledgeCompiler;
 use openparlant_control::{ControlStore, DefaultTurnControlCoordinator};
-use openparlant_journey::{JourneyStore, SqliteJourneyRuntime};
+use openparlant_journey::{JourneyStore, StoreJourneyRuntime};
 use openparlant_kernel::OpenFangKernel;
-use openparlant_memory::migration::run_migrations;
+use openparlant_memory::db::SharedDb;
+use openparlant_memory::migration::{run_migrations, run_postgres_migrations};
 use openparlant_policy::{
-    LlmObservationMatcher, LlmPolicyResolver, PolicyStore, SqliteObservationMatcher,
-    SqlitePolicyResolver, SqliteToolGate,
+    LlmObservationMatcher, LlmPolicyResolver, PolicyStore, StoreObservationMatcher,
+    StorePolicyResolver, StoreToolGate,
 };
-use rusqlite::Connection;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Instant;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
@@ -85,6 +87,47 @@ struct KernelEmbedder {
     driver: Arc<dyn openparlant_runtime::embedding::EmbeddingDriver + Send + Sync>,
 }
 
+fn tenant_model_env_var(model_id: &str) -> String {
+    let normalized = model_id
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    format!("OPENPARLANT_TENANT_MODEL_{normalized}_API_KEY")
+}
+
+fn hydrate_tenant_model_api_keys(control_store: &ControlStore) {
+    let Ok(tenants) = control_store.list_tenants() else {
+        return;
+    };
+    for tenant in tenants {
+        let key = format!("tenant_llm_models_{}", tenant.tenant_id);
+        let Ok(Some(setting)) = control_store.get_setting(&key) else {
+            continue;
+        };
+        let Ok(models) = serde_json::from_str::<Vec<serde_json::Value>>(&setting.value_json) else {
+            continue;
+        };
+        for model in models {
+            let Some(model_id) = model.get("id").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Some(api_key) = model.get("api_key").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            if api_key.is_empty() {
+                continue;
+            }
+            std::env::set_var(tenant_model_env_var(model_id), api_key);
+        }
+    }
+}
+
 #[async_trait::async_trait]
 impl openparlant_types::control::ControlEmbedder for KernelEmbedder {
     async fn embed(&self, text: &str) -> anyhow::Result<Vec<f32>> {
@@ -115,23 +158,42 @@ pub async fn build_router(
         .sqlite_path
         .clone()
         .unwrap_or_else(|| kernel.config.data_dir.join("openparlant.db"));
-    let cp_conn = Connection::open(&db_path)
-        .unwrap_or_else(|_| Connection::open_in_memory().expect("in-memory SQLite fallback"));
-    // Run migrations so control-plane tables exist on first boot.
-    if let Err(e) = run_migrations(&cp_conn) {
-        tracing::warn!("control-plane migration warning: {e}");
+    let control_db = if let Some(database_url) = kernel.config.resolved_postgres_url() {
+        info!("Using PostgreSQL shared database backend for control plane");
+        let db = SharedDb::open_postgres(&database_url)
+            .await
+            .expect("control-plane postgres");
+        if let Some(pool) = db.postgres() {
+            if let Err(e) = run_postgres_migrations(&pool).await {
+                tracing::warn!("control-plane postgres migration warning: {e}");
+            }
+        }
+        db
+    } else {
+        info!(path = %db_path.display(), "Using SQLite database backend for control plane");
+        let db = SharedDb::open_sqlite(&db_path).expect("control-plane sqlite");
+        if let Some(conn) = db.sqlite() {
+            let conn = conn.lock().expect("control-plane sqlite migration lock");
+            if let Err(e) = run_migrations(&conn) {
+                tracing::warn!("control-plane migration warning: {e}");
+            }
+        }
+        db
+    };
+
+    let control_store = ControlStore::new(control_db.clone());
+    let policy_store = PolicyStore::new(control_db.clone());
+    let journey_store = JourneyStore::new(control_db.clone());
+
+    if kernel.config.auth.enabled && !kernel.config.auth.password_hash.trim().is_empty() {
+        if let Err(e) = control_store.ensure_default_tenant_and_admin(
+            &kernel.config.auth.username,
+            &kernel.config.auth.password_hash,
+        ) {
+            tracing::warn!("dashboard bootstrap warning: {e}");
+        }
     }
-    let cp_conn = Arc::new(Mutex::new(cp_conn));
-
-    let control_store = ControlStore::new(cp_conn.clone());
-    let policy_store = PolicyStore::new(cp_conn.clone());
-    let journey_store = JourneyStore::new(cp_conn.clone());
-
-    // Build a sqlx pool on the same DB file for async knowledge compilation.
-    let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
-    let sqlx_pool = sqlx::SqlitePool::connect(&db_url)
-        .await
-        .expect("sqlx pool for context store");
+    hydrate_tenant_model_api_keys(&control_store);
 
     // Use LLM-based semantic matchers when a default driver is available and
     // `OPENPARLANT_CONTROL_SEMANTIC=true` is set (opt-in to avoid latency in tests).
@@ -147,7 +209,7 @@ pub async fn build_router(
 
     // Build knowledge compiler, wiring in the embedding driver when available.
     let knowledge_compiler = {
-        let base = SqliteKnowledgeCompiler::new(sqlx_pool);
+        let base = StoreKnowledgeCompiler::new(control_db.clone());
         if let Some(emb_driver) = kernel.embedding_driver.clone() {
             base.with_embedder(Arc::new(KernelEmbedder { driver: emb_driver }))
         } else {
@@ -158,11 +220,11 @@ pub async fn build_router(
     let coordinator: Arc<dyn openparlant_types::control::TurnControlCoordinator> = if use_semantic {
         Arc::new(
             DefaultTurnControlCoordinator::new_with_gate(
-                LlmObservationMatcher::new(cp_conn.clone(), llm_caller.clone()),
-                LlmPolicyResolver::new(cp_conn.clone(), llm_caller.clone()),
-                SqliteJourneyRuntime::new(cp_conn.clone()),
+                LlmObservationMatcher::new(control_db.clone(), llm_caller.clone()),
+                LlmPolicyResolver::new(control_db.clone(), llm_caller.clone()),
+                StoreJourneyRuntime::new(control_db.clone()),
                 knowledge_compiler,
-                SqliteToolGate::new(cp_conn.clone()),
+                StoreToolGate::new(control_db.clone()),
             )
             .with_store(control_store.clone())
             .with_llm_caller(llm_caller),
@@ -170,11 +232,11 @@ pub async fn build_router(
     } else {
         Arc::new(
             DefaultTurnControlCoordinator::new_with_gate(
-                SqliteObservationMatcher::new(cp_conn.clone()),
-                SqlitePolicyResolver::new(cp_conn.clone()),
-                SqliteJourneyRuntime::new(cp_conn.clone()),
+                StoreObservationMatcher::new(control_db.clone()),
+                StorePolicyResolver::new(control_db.clone()),
+                StoreJourneyRuntime::new(control_db.clone()),
                 knowledge_compiler,
-                SqliteToolGate::new(cp_conn.clone()),
+                StoreToolGate::new(control_db.clone()),
             )
             .with_store(control_store.clone())
             .with_llm_caller(llm_caller),
@@ -202,7 +264,6 @@ pub async fn build_router(
         shutdown_notify: Arc::new(tokio::sync::Notify::new()),
         clawhub_cache: dashmap::DashMap::new(),
         provider_probe_cache: openparlant_runtime::provider_health::ProbeCache::new(),
-        db_conn: cp_conn,
         control_coordinator: coordinator,
         control_store,
         policy_store,
@@ -861,9 +922,203 @@ pub async fn build_router(
             axum::routing::get(crate::openai_compat::list_models),
         )
         // Dashboard authentication endpoints
-        .route("/api/auth/login", axum::routing::post(routes::auth_login))
+        .route(
+            "/api/auth/register",
+            axum::routing::post(dashboard_routes::auth_register),
+        )
+        .route(
+            "/api/auth/login",
+            axum::routing::post(dashboard_routes::auth_login),
+        )
         .route("/api/auth/logout", axum::routing::post(routes::auth_logout))
         .route("/api/auth/check", axum::routing::get(routes::auth_check))
+        .route(
+            "/api/auth/me",
+            axum::routing::get(dashboard_routes::auth_me).patch(dashboard_routes::auth_update_me),
+        )
+        .route(
+            "/api/auth/me/password",
+            axum::routing::put(dashboard_routes::auth_update_password),
+        )
+        .route(
+            "/api/tenants/self-create",
+            axum::routing::post(dashboard_routes::self_create_company),
+        )
+        .route(
+            "/api/tenants/join",
+            axum::routing::post(dashboard_routes::join_company),
+        )
+        .route(
+            "/api/tenants/registration-config",
+            axum::routing::get(dashboard_routes::registration_config),
+        )
+        .route(
+            "/api/tenants",
+            axum::routing::get(dashboard_routes::list_tenants),
+        )
+        .route(
+            "/api/tenants/{tenant_id}",
+            axum::routing::get(dashboard_routes::get_tenant)
+                .put(dashboard_routes::update_tenant)
+                .delete(dashboard_routes::delete_tenant),
+        )
+        .route(
+            "/api/admin/companies",
+            axum::routing::get(dashboard_routes::admin_list_companies)
+                .post(dashboard_routes::admin_create_company),
+        )
+        .route(
+            "/api/admin/companies/{company_id}/toggle",
+            axum::routing::put(dashboard_routes::admin_toggle_company),
+        )
+        .route(
+            "/api/admin/platform-settings",
+            axum::routing::get(dashboard_routes::admin_get_platform_settings)
+                .put(dashboard_routes::admin_update_platform_settings),
+        )
+        .route(
+            "/api/users",
+            axum::routing::get(dashboard_routes::list_users),
+        )
+        .route(
+            "/api/users/{user_id}/quota",
+            axum::routing::patch(dashboard_routes::update_user_quota),
+        )
+        .route(
+            "/api/enterprise/invitation-codes",
+            axum::routing::get(dashboard_routes::list_invitation_codes)
+                .post(dashboard_routes::create_invitation_codes),
+        )
+        .route(
+            "/api/enterprise/invitation-codes/export",
+            axum::routing::get(dashboard_routes::export_invitation_codes_csv),
+        )
+        .route(
+            "/api/enterprise/invitation-codes/{invitation_id}",
+            axum::routing::delete(dashboard_routes::delete_invitation_code),
+        )
+        .route(
+            "/api/enterprise/system-settings/{key}",
+            axum::routing::get(dashboard_routes::get_system_setting)
+                .put(dashboard_routes::upsert_system_setting),
+        )
+        .route(
+            "/api/enterprise/system-settings/{key}/public",
+            axum::routing::get(dashboard_routes::get_system_setting_public),
+        )
+        .route(
+            "/api/enterprise/org/departments",
+            axum::routing::get(dashboard_routes::enterprise_org_departments),
+        )
+        .route(
+            "/api/enterprise/org/members",
+            axum::routing::get(dashboard_routes::enterprise_org_members),
+        )
+        .route(
+            "/api/enterprise/org/sync",
+            axum::routing::post(dashboard_routes::enterprise_org_sync),
+        )
+        .route(
+            "/api/enterprise/tenant-quotas",
+            axum::routing::get(dashboard_routes::enterprise_tenant_quotas)
+                .patch(dashboard_routes::update_enterprise_tenant_quotas),
+        )
+        .route(
+            "/api/enterprise/stats",
+            axum::routing::get(dashboard_routes::enterprise_stats),
+        )
+        .route(
+            "/api/enterprise/approvals",
+            axum::routing::get(dashboard_routes::enterprise_approvals),
+        )
+        .route(
+            "/api/enterprise/approvals/{id}/resolve",
+            axum::routing::post(dashboard_routes::enterprise_resolve_approval),
+        )
+        .route(
+            "/api/enterprise/audit-logs",
+            axum::routing::get(dashboard_routes::enterprise_audit_logs),
+        )
+        .route(
+            "/api/enterprise/llm-providers",
+            axum::routing::get(dashboard_routes::enterprise_llm_providers),
+        )
+        .route(
+            "/api/enterprise/llm-models",
+            axum::routing::get(dashboard_routes::enterprise_llm_models)
+                .post(dashboard_routes::enterprise_add_llm_model),
+        )
+        .route(
+            "/api/enterprise/llm-models/{id}",
+            axum::routing::put(dashboard_routes::enterprise_update_llm_model)
+                .delete(dashboard_routes::enterprise_delete_llm_model),
+        )
+        .route(
+            "/api/enterprise/llm-test",
+            axum::routing::post(dashboard_routes::enterprise_llm_test),
+        )
+        .route(
+            "/api/org/users",
+            axum::routing::get(dashboard_routes::plaza_org_users),
+        )
+        .route(
+            "/api/notifications",
+            axum::routing::get(notification_routes::list_notifications),
+        )
+        .route(
+            "/api/notifications/unread-count",
+            axum::routing::get(notification_routes::notifications_unread_count),
+        )
+        .route(
+            "/api/notifications/read-all",
+            axum::routing::post(notification_routes::notifications_mark_all_read),
+        )
+        .route(
+            "/api/notifications/{id}/read",
+            axum::routing::post(notification_routes::notification_mark_read),
+        )
+        .route(
+            "/api/notifications/broadcast",
+            axum::routing::post(notification_routes::notifications_broadcast),
+        )
+        .route(
+            "/api/messages/inbox",
+            axum::routing::get(notification_routes::messages_inbox),
+        )
+        .route(
+            "/api/messages/unread-count",
+            axum::routing::get(notification_routes::messages_unread_count),
+        )
+        .route(
+            "/api/messages/{id}/read",
+            axum::routing::put(notification_routes::messages_mark_read),
+        )
+        .route(
+            "/api/messages/read-all",
+            axum::routing::put(notification_routes::messages_mark_all_read),
+        )
+        .route(
+            "/api/plaza/posts",
+            axum::routing::get(dashboard_routes::plaza_list_posts)
+                .post(dashboard_routes::plaza_create_post),
+        )
+        .route(
+            "/api/plaza/posts/{post_id}",
+            axum::routing::get(dashboard_routes::plaza_get_post)
+                .delete(dashboard_routes::plaza_delete_post),
+        )
+        .route(
+            "/api/plaza/posts/{post_id}/comments",
+            axum::routing::post(dashboard_routes::plaza_add_comment),
+        )
+        .route(
+            "/api/plaza/posts/{post_id}/like",
+            axum::routing::post(dashboard_routes::plaza_toggle_like),
+        )
+        .route(
+            "/api/plaza/stats",
+            axum::routing::get(dashboard_routes::plaza_stats),
+        )
         // ── Control plane API ──────────────────────────────────────────────
         .route(
             "/api/control/scopes",
@@ -945,6 +1200,10 @@ pub async fn build_router(
             "/api/control/journeys/{journey_id}/states",
             axum::routing::get(control_routes::list_journey_states)
                 .post(control_routes::create_journey_state),
+        )
+        .route(
+            "/api/control/journeys/{journey_id}/entry-state",
+            axum::routing::post(control_routes::set_journey_entry_state),
         )
         .route(
             "/api/control/journeys/{journey_id}/transitions",
@@ -1042,6 +1301,7 @@ pub async fn build_router(
             "/api/control/scopes/{scope_id}/releases",
             axum::routing::get(control_routes::list_releases),
         )
+        .fallback(webchat::frontend_fallback)
         .layer(axum::middleware::from_fn_with_state(
             auth_state,
             middleware::auth,

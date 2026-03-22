@@ -1,14 +1,14 @@
 {
   "app": {
-    "name": "Clawith",
+    "name": "OpenFang",
     "tagline": "Enterprise Digital Employee Platform"
   },
   "login": {
     "hero": {
       "badge": "Open Source · Multi-Agent Collaboration",
-      "title": "Clawith",
-      "subtitle": "OpenClaw for Teams",
-      "description": "OpenClaw empowers individuals.<br>Clawith scales it to frontier organizations.",
+      "title": "OpenFang",
+      "subtitle": "OpenFang for Teams",
+      "description": "OpenClaw empowers individuals.<br>OpenFang scales it to frontier organizations.",
       "features": {
         "multiAgent": {
           "title": "Multi-Agent Crew",

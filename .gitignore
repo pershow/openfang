@@ -2,6 +2,15 @@
 /target
 **/*.rs.bk
 *.pdb
+*.profraw
+*.profdata
+lcov.info
+
+# Frontend (Node / Vite)
+node_modules/
+frontend/dist
+frontend/.vite
+*.tsbuildinfo
 
 # Environment & secrets
 .env

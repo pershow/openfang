@@ -634,17 +634,25 @@ impl OpenFangKernel {
             .map_err(|e| KernelError::BootFailed(format!("Failed to create data dir: {e}")))?;
 
         // Initialize memory substrate
-        let db_path = config
-            .memory
-            .sqlite_path
-            .clone()
-            .unwrap_or_else(|| config.data_dir.join("openparlant.db"));
-        let memory = Arc::new(
+        let memory = Arc::new(if let Some(database_url) = config.resolved_postgres_url() {
+            info!("Using PostgreSQL shared database backend for runtime state");
+            openparlant_memory::db::block_on(MemorySubstrate::open_postgres(
+                &database_url,
+                config.memory.decay_rate,
+            ))
+            .map_err(|e| KernelError::BootFailed(format!("Memory init failed: {e}")))?
+        } else {
+            let db_path = config
+                .memory
+                .sqlite_path
+                .clone()
+                .unwrap_or_else(|| config.data_dir.join("openparlant.db"));
+            info!(path = %db_path.display(), "Using SQLite database backend for runtime state");
             MemorySubstrate::open(&db_path, config.memory.decay_rate)
-                .map_err(|e| KernelError::BootFailed(format!("Memory init failed: {e}")))?,
-        );
+                .map_err(|e| KernelError::BootFailed(format!("Memory init failed: {e}")))?
+        });
 
-        // Initialize credential resolver (vault → dotenv → env var)
+        // Initialize credential resolver (vault → .env → secrets.env → env var)
         let credential_resolver = {
             let vault_path = config.home_dir.join("vault.enc");
             let vault = if vault_path.exists() {
@@ -795,10 +803,9 @@ impl OpenFangKernel {
             Arc::new(StubDriver) as Arc<dyn LlmDriver>
         };
 
-        // Initialize metering engine (shares the same SQLite connection as the memory substrate)
-        let metering = Arc::new(MeteringEngine::new(Arc::new(
-            openparlant_memory::usage::UsageStore::new(memory.usage_conn()),
-        )));
+        // Initialize metering engine from the substrate-owned usage store so callers
+        // do not need to rebuild database-specific handles.
+        let metering = Arc::new(MeteringEngine::new(Arc::new(memory.usage().clone())));
 
         let supervisor = Supervisor::new();
         let background = BackgroundExecutor::new(supervisor.subscribe());
@@ -1090,7 +1097,7 @@ impl OpenFangKernel {
             workflows: WorkflowEngine::new(),
             triggers: TriggerEngine::new(),
             background,
-            audit_log: Arc::new(AuditLog::with_db(memory.usage_conn())),
+            audit_log: Arc::new(AuditLog::with_db(memory.shared_db())),
             metering,
             default_driver: driver,
             wasm_sandbox,
@@ -1132,7 +1139,7 @@ impl OpenFangKernel {
             control_coordinator: OnceLock::new(),
         };
 
-        // Restore persisted agents from SQLite
+        // Restore persisted agents from the configured backing store.
         match kernel.memory.load_all_agents() {
             Ok(agents) => {
                 let count = agents.len();
@@ -1383,7 +1390,12 @@ impl OpenFangKernel {
                 if !dm.model.is_empty() {
                     manifest.model.model = dm.model.clone();
                 }
-                if !dm.api_key_env.is_empty() && manifest.model.api_key_env.is_none() {
+                // When an agent explicitly opts into the kernel default model,
+                // any bundled api_key_env hint should not override the user's
+                // configured default provider credentials.
+                if dm.api_key_env.is_empty() {
+                    manifest.model.api_key_env = None;
+                } else {
                     manifest.model.api_key_env = Some(dm.api_key_env.clone());
                 }
                 if dm.base_url.is_some() && manifest.model.base_url.is_none() {
@@ -1471,7 +1483,7 @@ impl OpenFangKernel {
             self.registry.add_child(parent_id, agent_id);
         }
 
-        // Persist agent to SQLite so it survives restarts
+        // Persist agent so it survives restarts.
         self.memory
             .save_agent(&entry)
             .map_err(KernelError::OpenParlant)?;
@@ -2213,7 +2225,8 @@ impl OpenFangKernel {
                 }
             }
 
-            let tools = kernel_clone.filter_controlled_tools(&base_tools, compiled_ctx_opt.as_ref());
+            let tools =
+                kernel_clone.filter_controlled_tools(&base_tools, compiled_ctx_opt.as_ref());
             let prompt_overlay = kernel_clone.build_runtime_prompt_overlay(
                 &manifest,
                 agent_id,
@@ -5622,7 +5635,12 @@ impl OpenFangKernel {
                         Arc::clone(&self.default_driver)
                     } else {
                         return Err(KernelError::BootFailed(format!(
-                            "Agent LLM driver init failed: {e}"
+                            "Agent LLM driver init failed for '{}' (provider='{}', model='{}', api_key_env={:?}, base_url={:?}): {e}",
+                            manifest.name,
+                            manifest.model.provider,
+                            manifest.model.model,
+                            manifest.model.api_key_env,
+                            manifest.model.base_url
                         )));
                     }
                 }

@@ -4,12 +4,15 @@ mod store;
 
 use anyhow::Result;
 use async_trait::async_trait;
+use openparlant_memory::db::SharedDb;
 use openparlant_types::control::{
     CanonicalMessage, ExcludedGuideline, GuidelineActivation, ObservationDefinition,
     ObservationHit, ScopeId, ToolAuthorization, ToolCandidate, ToolExposurePolicy,
 };
+#[cfg(test)]
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
 use std::sync::{Arc, Mutex};
 pub use store::PolicyStore;
 
@@ -68,16 +71,16 @@ pub trait PolicyResolver: Send + Sync {
     ) -> Result<PolicyResolution>;
 }
 
-// ─── SQLite-backed implementations ───────────────────────────────────────────
+// ─── Shared database-backed implementations ──────────────────────────────────
 
 pub struct SqliteObservationMatcher {
     store: PolicyStore,
 }
 
 impl SqliteObservationMatcher {
-    pub fn new(conn: Arc<Mutex<Connection>>) -> Self {
+    pub fn new(db: impl Into<SharedDb>) -> Self {
         Self {
-            store: PolicyStore::new(conn),
+            store: PolicyStore::new(db),
         }
     }
 }
@@ -127,7 +130,7 @@ fn match_observation_deterministic(
     };
 
     match mt.as_str() {
-        "always" => return Some(hit("sqlite_observation_matcher (always)")),
+        "always" => return Some(hit("deterministic_observation_matcher (always)")),
 
         "semantic" => {
             tracing::trace!(
@@ -142,7 +145,7 @@ fn match_observation_deterministic(
             match regex_lite::Regex::new(pattern) {
                 Ok(re) => {
                     if re.is_match(text) {
-                        return Some(hit("sqlite_observation_matcher (regex)"));
+                        return Some(hit("deterministic_observation_matcher (regex)"));
                     }
                 }
                 Err(e) => {
@@ -170,7 +173,7 @@ fn match_observation_deterministic(
     // keyword / contains / default
     if let Some(s) = obs.matcher_config.get("substring").and_then(|v| v.as_str()) {
         if text_lc.contains(&s.to_lowercase()) {
-            return Some(hit("sqlite_observation_matcher (keyword:substring)"));
+            return Some(hit("deterministic_observation_matcher (keyword:substring)"));
         }
         return None;
     }
@@ -185,7 +188,7 @@ fn match_observation_deterministic(
             .filter_map(|v| v.as_str().map(|s| s.to_lowercase()))
             .collect();
         if !terms.is_empty() && terms.iter().any(|t| text_lc.contains(t)) {
-            return Some(hit("sqlite_observation_matcher (keyword:contains)"));
+            return Some(hit("deterministic_observation_matcher (keyword:contains)"));
         }
         if !terms.is_empty() {
             return None;
@@ -198,7 +201,7 @@ fn match_observation_deterministic(
             .filter_map(|v| v.as_str().map(|s| s.to_lowercase()))
             .collect();
         if !terms.is_empty() && terms.iter().all(|t| text_lc.contains(t)) {
-            return Some(hit("sqlite_observation_matcher (keyword:all)"));
+            return Some(hit("deterministic_observation_matcher (keyword:all)"));
         }
         if !terms.is_empty() {
             return None;
@@ -206,7 +209,7 @@ fn match_observation_deterministic(
     }
 
     if text_lc.contains(&obs.name.to_lowercase()) {
-        return Some(hit("sqlite_observation_matcher (keyword:name)"));
+        return Some(hit("deterministic_observation_matcher (keyword:name)"));
     }
 
     None
@@ -409,10 +412,16 @@ pub struct SqlitePolicyResolver {
     store: PolicyStore,
 }
 
+/// Backend-agnostic alias for the default store-backed observation matcher.
+pub type StoreObservationMatcher = SqliteObservationMatcher;
+
+/// Backend-agnostic alias for the default store-backed policy resolver.
+pub type StorePolicyResolver = SqlitePolicyResolver;
+
 impl SqlitePolicyResolver {
-    pub fn new(conn: Arc<Mutex<Connection>>) -> Self {
+    pub fn new(db: impl Into<SharedDb>) -> Self {
         Self {
-            store: PolicyStore::new(conn),
+            store: PolicyStore::new(db),
         }
     }
 }
@@ -630,7 +639,7 @@ pub trait ToolGate: Send + Sync {
     ) -> Result<Vec<ToolGateDecision>>;
 }
 
-/// SQLite-backed tool gate.
+/// Shared database-backed tool gate.
 ///
 /// Evaluates `tool_exposure_policies` for each candidate tool.
 /// When a scope has any tool policy entries, the scope is treated as
@@ -641,9 +650,9 @@ pub struct SqliteToolGate {
 }
 
 impl SqliteToolGate {
-    pub fn new(conn: Arc<Mutex<Connection>>) -> Self {
+    pub fn new(db: impl Into<SharedDb>) -> Self {
         Self {
-            store: PolicyStore::new(conn),
+            store: PolicyStore::new(db),
         }
     }
 }
@@ -722,6 +731,9 @@ impl ToolGate for SqliteToolGate {
     }
 }
 
+/// Backend-agnostic alias for the default store-backed tool gate.
+pub type StoreToolGate = SqliteToolGate;
+
 /// No-op tool gate (allows everything, requires no approval).
 #[derive(Debug, Default)]
 pub struct NoopToolGate;
@@ -754,7 +766,7 @@ use openparlant_types::control::ControlLlmCaller;
 
 /// Observation matcher that handles `matcher_type = "semantic"` via an LLM call.
 ///
-/// All other matcher types are delegated to [`SqliteObservationMatcher`] (deterministic).
+/// All other matcher types are delegated to [`StoreObservationMatcher`] (deterministic).
 /// Semantic observations are evaluated by asking the LLM whether the condition is met.
 pub struct LlmObservationMatcher {
     store: PolicyStore,
@@ -762,12 +774,9 @@ pub struct LlmObservationMatcher {
 }
 
 impl LlmObservationMatcher {
-    pub fn new(
-        conn: std::sync::Arc<Mutex<Connection>>,
-        llm: std::sync::Arc<dyn ControlLlmCaller>,
-    ) -> Self {
+    pub fn new(db: impl Into<SharedDb>, llm: std::sync::Arc<dyn ControlLlmCaller>) -> Self {
         Self {
-            store: PolicyStore::new(conn),
+            store: PolicyStore::new(db),
             llm,
         }
     }
@@ -873,12 +882,9 @@ pub struct LlmPolicyResolver {
 }
 
 impl LlmPolicyResolver {
-    pub fn new(
-        conn: std::sync::Arc<Mutex<Connection>>,
-        llm: std::sync::Arc<dyn ControlLlmCaller>,
-    ) -> Self {
+    pub fn new(db: impl Into<SharedDb>, llm: std::sync::Arc<dyn ControlLlmCaller>) -> Self {
         Self {
-            store: PolicyStore::new(conn),
+            store: PolicyStore::new(db),
             llm,
         }
     }
@@ -1016,7 +1022,7 @@ impl PolicyResolver for LlmPolicyResolver {
         let mut active_guidelines = deterministic_active;
         active_guidelines.extend(llm_active);
 
-        // Apply relationship graph (reuse same logic as SqlitePolicyResolver)
+        // Apply relationship graph (reuse same logic as StorePolicyResolver)
         let relationships = self
             .store
             .list_guideline_relationships(scope_id)
@@ -1096,7 +1102,7 @@ impl PolicyResolver for LlmPolicyResolver {
             })
             .collect();
 
-        // Tool authorizations (same as SqlitePolicyResolver)
+        // Tool authorizations (same as StorePolicyResolver)
         let tool_policies = self
             .store
             .list_tool_exposure_policies(scope_id)

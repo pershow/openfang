@@ -131,6 +131,8 @@ pub struct JourneyDefinition {
     pub name: String,
     pub trigger_config: serde_json::Value,
     pub completion_rule: Option<String>,
+    #[serde(default)]
+    pub entry_state_id: Option<String>,
     pub enabled: bool,
 }
 

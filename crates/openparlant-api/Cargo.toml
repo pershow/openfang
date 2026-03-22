@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "HTTP/WebSocket API server for the OpenParlant Agent OS daemon"
+build = "build.rs"
 
 [dependencies]
 openparlant-types = { path = "../openparlant-types" }
@@ -45,6 +46,7 @@ hmac = { workspace = true }
 hex = { workspace = true }
 socket2 = { workspace = true }
 reqwest = { workspace = true }
+include_dir = "0.7"
 
 [dev-dependencies]
 tokio-test = { workspace = true }

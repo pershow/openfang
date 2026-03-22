@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 /// The metering engine tracks usage cost and enforces quota limits.
 pub struct MeteringEngine {
-    /// Persistent usage store (SQLite-backed).
+    /// Persistent usage store.
     store: Arc<UsageStore>,
 }
 
@@ -17,7 +17,7 @@ impl MeteringEngine {
         Self { store }
     }
 
-    /// Record a usage event (persists to SQLite).
+    /// Record a usage event.
     pub fn record(&self, record: &UsageRecord) -> OpenFangResult<()> {
         self.store.record(record)
     }
@@ -515,7 +515,7 @@ mod tests {
 
     fn setup() -> MeteringEngine {
         let substrate = MemorySubstrate::open_in_memory(0.1).unwrap();
-        let store = Arc::new(UsageStore::new(substrate.usage_conn()));
+        let store = Arc::new(substrate.usage().clone());
         MeteringEngine::new(store)
     }
 

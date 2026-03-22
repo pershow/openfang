@@ -4,13 +4,12 @@ mod store;
 
 use anyhow::Result;
 use async_trait::async_trait;
+use openparlant_memory::db::SharedDb;
 use openparlant_types::agent::SessionId;
 use openparlant_types::control::{
     CanonicalMessage, GuidelineActivation, GuidelineId, JourneyActivation, ScopeId, TurnOutcome,
 };
-use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
 pub use store::JourneyStore;
 pub use store::TransitionRecord;
 
@@ -55,16 +54,16 @@ pub trait JourneyRuntime: Send + Sync {
     ) -> Result<Option<JourneyUpdate>>;
 }
 
-// ─── SQLite-backed implementation ────────────────────────────────────────────
+// ─── Shared database-backed implementation ───────────────────────────────────
 
 pub struct SqliteJourneyRuntime {
     store: JourneyStore,
 }
 
 impl SqliteJourneyRuntime {
-    pub fn new(conn: Arc<Mutex<Connection>>) -> Self {
+    pub fn new(db: impl Into<SharedDb>) -> Self {
         Self {
-            store: JourneyStore::new(conn),
+            store: JourneyStore::new(db),
         }
     }
 }
@@ -292,6 +291,9 @@ impl JourneyRuntime for SqliteJourneyRuntime {
         Ok(None)
     }
 }
+
+/// Backend-agnostic alias for the default store-backed journey runtime.
+pub type StoreJourneyRuntime = SqliteJourneyRuntime;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

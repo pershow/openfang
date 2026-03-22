@@ -13,7 +13,22 @@ api_key_env = "ANTHROPIC_API_KEY"         # Environment variable holding API key
 
 [memory]
 decay_rate = 0.05                         # Memory confidence decay rate
-# sqlite_path = "~/.openparlant/data/openparlant.db"   # Optional: custom DB path
+# sqlite_path = "~/.openparlant/data/openparlant.db"   # Optional: custom DB path (SQLite when no Postgres URL)
+
+# PostgreSQL — shared store for runtime + control plane (optional; defaults to SQLite).
+# Prefer split fields so passwords may contain "@" without breaking the URI.
+# [database]
+# host = "127.0.0.1"
+# port = 5432
+# user = "openparlant"
+# password = "OPENFANG_PG_PASSWORD"   # Env var name; value from secrets.env then environment
+#                                      # Preferred key; do not also set password_env
+# dbname = "openparlant"               # Must be this key (alias: database = "...")
+# ssl_mode = "disable"                  # Appended as ?sslmode=...
+# Or a single URI (split fields ignored when non-empty):
+# url = "postgresql://user:pass@host:5432/dbname"
+
+# Legacy (still supported): [memory] database_url = "postgresql://..."
 
 [network]
 listen_addr = "127.0.0.1:4200"           # OFP listen address

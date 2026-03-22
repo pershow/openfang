@@ -6,6 +6,7 @@ license.workspace = true
 description = "Policy matching and guideline resolution for the OpenParlant control plane"
 
 [dependencies]
+openparlant-memory = { path = "../openparlant-memory" }
 openparlant-types = { path = "../openparlant-types" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
@@ -18,5 +19,4 @@ uuid = { workspace = true }
 regex-lite = { workspace = true }
 
 [dev-dependencies]
-openparlant-memory = { path = "../openparlant-memory" }
 futures = { workspace = true }

@@ -156,7 +156,7 @@ function controlPage() {
 
     async onScopeChange() {
       if (!this.selectedScope) return;
-      window.__openfangControlScope = this.selectedScope || '';
+      window.__openparlantControlScope = this.selectedScope || '';
       window.dispatchEvent(new CustomEvent('control-scope-changed', {
         detail: { scopeId: this.selectedScope || '' }
       }));
@@ -397,6 +397,64 @@ function controlPage() {
       return id || 'Unknown guideline';
     },
 
+    shortId(id) {
+      if (!id) return '—';
+      var value = String(id);
+      return value.length > 12 ? value.substring(0, 12) + '…' : value;
+    },
+
+    journeyRecordById(jid) {
+      for (var i = 0; i < this.journeys.length; i++) {
+        if (this.journeys[i].journey_id === jid) return this.journeys[i];
+      }
+      return null;
+    },
+
+    updateJourneyRecord(jid, patch) {
+      var next = [];
+      for (var i = 0; i < this.journeys.length; i++) {
+        if (this.journeys[i].journey_id === jid) next.push(Object.assign({}, this.journeys[i], patch));
+        else next.push(this.journeys[i]);
+      }
+      this.journeys = next;
+    },
+
+    journeyFallbackEntryStateId(jid) {
+      var states = this.journeyStates[jid] || [];
+      if (!states.length) return '';
+      var inbound = {};
+      var transitions = this.journeyTransitions[jid] || [];
+      for (var i = 0; i < transitions.length; i++) inbound[transitions[i].to_state_id] = true;
+      for (var s = 0; s < states.length; s++) {
+        if (!inbound[states[s].state_id]) return states[s].state_id;
+      }
+      return states[0].state_id || '';
+    },
+
+    journeyEffectiveEntryStateId(journey) {
+      if (!journey) return '';
+      if (journey.entry_state_id) return journey.entry_state_id;
+      return this.journeyFallbackEntryStateId(journey.journey_id);
+    },
+
+    journeyEntryStateLabel(journey) {
+      if (!journey) return 'entry: auto';
+      var entryStateId = this.journeyEffectiveEntryStateId(journey);
+      if (!entryStateId) return 'entry: auto';
+      var states = this.journeyStates[journey.journey_id] || [];
+      for (var i = 0; i < states.length; i++) {
+        if (states[i].state_id === entryStateId) {
+          return 'entry: ' + (states[i].name || this.shortId(states[i].state_id));
+        }
+      }
+      return 'entry: ' + this.shortId(entryStateId);
+    },
+
+    isJourneyEntryState(jid, stateId) {
+      var journey = this.journeyRecordById(jid);
+      return !!(journey && this.journeyEffectiveEntryStateId(journey) === stateId);
+    },
+
     // ── Journeys ─────────────────────────────────────────────────────────────
 
     async loadJourneys() {
@@ -477,12 +535,29 @@ function controlPage() {
         var cur = (this.journeyStates[jid] || []).slice();
         cur.push(s);
         this.journeyStates = Object.assign({}, this.journeyStates, { [jid]: cur });
+        var journey = this.journeyRecordById(jid);
+        if (journey && !journey.entry_state_id) {
+          this.updateJourneyRecord(jid, { entry_state_id: s.state_id });
+        }
         this.stateForm = { name: '', description: '', required_fields: '' };
         this.toastSuccess('Journey state "' + s.name + '" created');
       } catch (e) {
         this.toastError('Failed to create state: ' + e.message);
       } finally {
         this.stateCreating = false;
+      }
+    },
+
+    async setJourneyEntryState(jid, stateId) {
+      if (!jid || !stateId) return;
+      try {
+        await OpenFangAPI.post('/api/control/journeys/' + jid + '/entry-state', {
+          state_id: stateId,
+        });
+        this.updateJourneyRecord(jid, { entry_state_id: stateId });
+        this.toastSuccess('Journey entry state updated');
+      } catch (e) {
+        this.toastError('Failed to set entry state: ' + e.message);
       }
     },
 
