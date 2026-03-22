@@ -379,28 +379,50 @@ impl ControlStore {
             .conn
             .lock()
             .map_err(|e| OpenFangError::Internal(e.to_string()))?;
-        conn.execute(
-            "INSERT INTO session_bindings
-                (binding_id, scope_id, channel_type, external_user_id, external_chat_id,
-                 agent_id, session_id, manual_mode, active_journey_instance_id, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now'))
-             ON CONFLICT(binding_id) DO UPDATE SET
-                manual_mode = excluded.manual_mode,
-                active_journey_instance_id = excluded.active_journey_instance_id,
-                updated_at = datetime('now')",
-            params![
-                binding.binding_id,
-                binding.scope_id.0.as_str(),
-                binding.channel_type,
-                binding.external_user_id,
-                binding.external_chat_id,
-                binding.agent_id,
-                binding.session_id,
-                binding.manual_mode as i64,
-                binding.active_journey_instance_id,
-            ],
-        )
-        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        let updated = conn
+            .execute(
+                "UPDATE session_bindings
+                 SET scope_id = ?1,
+                     channel_type = ?2,
+                     external_user_id = ?3,
+                     external_chat_id = ?4,
+                     agent_id = ?5,
+                     manual_mode = ?6,
+                     active_journey_instance_id = ?7,
+                     updated_at = datetime('now')
+                 WHERE session_id = ?8",
+                params![
+                    binding.scope_id.0.as_str(),
+                    binding.channel_type,
+                    binding.external_user_id,
+                    binding.external_chat_id,
+                    binding.agent_id,
+                    binding.manual_mode as i64,
+                    binding.active_journey_instance_id,
+                    binding.session_id,
+                ],
+            )
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        if updated == 0 {
+            conn.execute(
+                "INSERT INTO session_bindings
+                    (binding_id, scope_id, channel_type, external_user_id, external_chat_id,
+                     agent_id, session_id, manual_mode, active_journey_instance_id, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now'))",
+                params![
+                    binding.binding_id,
+                    binding.scope_id.0.as_str(),
+                    binding.channel_type,
+                    binding.external_user_id,
+                    binding.external_chat_id,
+                    binding.agent_id,
+                    binding.session_id,
+                    binding.manual_mode as i64,
+                    binding.active_journey_instance_id,
+                ],
+            )
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        }
         Ok(())
     }
 
@@ -416,7 +438,10 @@ impl ControlStore {
         let row = conn.query_row(
             "SELECT binding_id, scope_id, channel_type, external_user_id, external_chat_id,
                     agent_id, session_id, manual_mode, active_journey_instance_id
-             FROM session_bindings WHERE session_id = ?1 LIMIT 1",
+             FROM session_bindings
+             WHERE session_id = ?1
+             ORDER BY updated_at DESC, rowid DESC
+             LIMIT 1",
             params![session_id],
             |row| {
                 Ok(openparlant_types::control::SessionBinding {
@@ -850,6 +875,7 @@ fn memory_parse_error<E: std::fmt::Display>(error: E) -> OpenFangError {
 mod tests {
     use super::*;
     use openparlant_memory::migration::run_migrations;
+    use openparlant_types::control::SessionBinding;
 
     fn test_store() -> ControlStore {
         let conn = Connection::open_in_memory().unwrap();
@@ -906,5 +932,58 @@ mod tests {
         assert_eq!(loaded.release_version.as_deref(), Some("v1"));
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].compiled_context_hash.as_deref(), Some("hash-1"));
+    }
+
+    #[test]
+    fn session_binding_upsert_updates_scope_by_session() {
+        let store = test_store();
+        let session_id = SessionId::new().to_string();
+        let first = SessionBinding {
+            binding_id: "binding-1".to_string(),
+            scope_id: ScopeId::from("scope-a"),
+            channel_type: "web".to_string(),
+            external_user_id: None,
+            external_chat_id: None,
+            agent_id: AgentId::new().to_string(),
+            session_id: session_id.clone(),
+            manual_mode: false,
+            active_journey_instance_id: None,
+        };
+        let second = SessionBinding {
+            binding_id: "binding-2".to_string(),
+            scope_id: ScopeId::from("scope-b"),
+            channel_type: "telegram".to_string(),
+            external_user_id: Some("user-1".to_string()),
+            external_chat_id: Some("chat-1".to_string()),
+            agent_id: AgentId::new().to_string(),
+            session_id: session_id.clone(),
+            manual_mode: true,
+            active_journey_instance_id: Some("journey-1".to_string()),
+        };
+
+        store.upsert_session_binding(&first).unwrap();
+        store.upsert_session_binding(&second).unwrap();
+
+        let loaded = store.get_session_binding(&session_id).unwrap().unwrap();
+        let conn = store.conn.lock().unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM session_bindings WHERE session_id = ?1",
+                params![session_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+        assert_eq!(loaded.binding_id, "binding-1");
+        assert_eq!(loaded.scope_id, ScopeId::from("scope-b"));
+        assert_eq!(loaded.channel_type, "telegram");
+        assert_eq!(loaded.external_user_id.as_deref(), Some("user-1"));
+        assert_eq!(loaded.external_chat_id.as_deref(), Some("chat-1"));
+        assert!(loaded.manual_mode);
+        assert_eq!(
+            loaded.active_journey_instance_id.as_deref(),
+            Some("journey-1")
+        );
     }
 }

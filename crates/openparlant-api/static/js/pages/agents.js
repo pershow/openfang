@@ -605,6 +605,15 @@ function agentsPage() {
           ? String(f.control_scope_id)
           : '';
         await OpenFangAPI.patch('/api/agents/' + this.detailAgent.id + '/config', Object.assign({}, f, { control_scope_id: cs }));
+        try {
+          var full = await OpenFangAPI.get('/api/agents/' + this.detailAgent.id);
+          this.detailAgent = Object.assign({}, this.detailAgent, full, {
+            _fallbacks: full.fallback_models || []
+          });
+          this.configForm.control_scope_id = full.control_scope_id || '';
+        } catch (refreshErr) {
+          console.warn('Agent detail refresh failed after config save:', refreshErr.message);
+        }
         OpenFangToast.success('Config updated');
         await Alpine.store('app').refreshAgents();
       } catch(e) {

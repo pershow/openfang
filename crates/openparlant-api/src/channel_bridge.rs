@@ -131,24 +131,40 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
             .get(agent_id)
             .ok_or_else(|| "agent not found".to_string())?;
         let session_id = entry.session_id.to_string();
-        let scope_str = self
-            .default_control_scope_id
-            .clone()
-            .unwrap_or_else(|| agent_id.to_string());
         let existing = store
             .get_session_binding(&session_id)
             .map_err(|e| e.to_string())?;
+        let manifest_scope = entry
+            .manifest
+            .metadata
+            .get("control_scope_id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
         let binding_id = existing
             .as_ref()
             .map(|b| b.binding_id.clone())
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let scope_id = existing
+            .as_ref()
+            .map(|b| b.scope_id.clone())
+            .or_else(|| manifest_scope.map(ScopeId::new))
+            .or_else(|| {
+                self.default_control_scope_id
+                    .clone()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .map(ScopeId::new)
+            })
+            .unwrap_or_else(|| ScopeId::new(agent_id.to_string()));
         let manual_mode = existing.as_ref().map(|b| b.manual_mode).unwrap_or(false);
         let active_journey_instance_id = existing
             .as_ref()
             .and_then(|b| b.active_journey_instance_id.clone());
         let binding = SessionBinding {
             binding_id,
-            scope_id: ScopeId::new(scope_str),
+            scope_id,
             channel_type: channel_type.to_string(),
             external_user_id: external_user_id.map(|s| s.to_string()),
             external_chat_id: external_chat_id.map(|s| s.to_string()),

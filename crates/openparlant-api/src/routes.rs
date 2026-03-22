@@ -8834,6 +8834,16 @@ pub async fn patch_agent_config(
         }
     }
 
+    let requested_control_scope: Option<Option<String>> =
+        req.control_scope_id.as_ref().map(|scope| {
+            let trimmed = scope.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        });
+
     // Update name
     if let Some(ref new_name) = req.name {
         if !new_name.is_empty() {
@@ -8974,20 +8984,11 @@ pub async fn patch_agent_config(
     }
 
     // Control-plane scope (manifest.metadata.control_scope_id)
-    if let Some(scope) = req.control_scope_id {
-        let trimmed = scope.trim().to_string();
+    if let Some(scope) = requested_control_scope.clone() {
         if state
             .kernel
             .registry
-            .upsert_metadata_string(
-                agent_id,
-                "control_scope_id",
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed)
-                },
-            )
+            .upsert_metadata_string(agent_id, "control_scope_id", scope)
             .is_err()
         {
             return (
@@ -8999,12 +9000,47 @@ pub async fn patch_agent_config(
 
     // Persist updated manifest to database so changes survive restart
     if let Some(entry) = state.kernel.registry.get(agent_id) {
+        let session_id = entry.session_id.to_string();
         if let Err(e) = state.kernel.memory.save_agent(&entry) {
             tracing::error!("Failed to persist agent config update: {e}");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"error": format!("Failed to persist agent: {e}")})),
             );
+        }
+
+        if let Some(scope) = requested_control_scope {
+            match state.control_store.get_session_binding(&session_id) {
+                Ok(Some(mut binding)) => {
+                    binding.scope_id = openparlant_types::control::ScopeId::new(
+                        scope.unwrap_or_else(|| agent_id.to_string()),
+                    );
+                    binding.agent_id = agent_id.to_string();
+                    if let Err(e) = state.control_store.upsert_session_binding(&binding) {
+                        tracing::error!(
+                            "Failed to sync session binding scope after agent config update: {e}"
+                        );
+                        return (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(
+                                serde_json::json!({"error": format!("Failed to sync session binding: {e}")}),
+                            ),
+                        );
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to load session binding after agent config update: {e}"
+                    );
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(
+                            serde_json::json!({"error": format!("Failed to load session binding: {e}")}),
+                        ),
+                    );
+                }
+            }
         }
     }
 
