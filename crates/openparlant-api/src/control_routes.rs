@@ -407,6 +407,9 @@ pub struct GlossaryTermRequest {
     pub synonyms: Vec<String>,
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// When true, the term is always injected into the compiled glossary for this scope (pinned).
+    #[serde(default)]
+    pub always_include: bool,
 }
 
 /// POST /api/control/glossary-terms
@@ -422,14 +425,23 @@ pub async fn create_glossary_term(
     let result = tokio::task::spawn_blocking(move || {
         let c = conn.lock().map_err(|e| e.to_string())?;
         c.execute(
-            "INSERT INTO glossary_terms (term_id, scope_id, name, description, synonyms_json, enabled)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "INSERT INTO glossary_terms (term_id, scope_id, name, description, synonyms_json, enabled, always_include)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
              ON CONFLICT(term_id) DO UPDATE SET
                 name = excluded.name,
                 description = excluded.description,
                 synonyms_json = excluded.synonyms_json,
-                enabled = excluded.enabled",
-            rusqlite::params![term_id, req.scope_id, req.name, req.description, synonyms_json, req.enabled as i64],
+                enabled = excluded.enabled,
+                always_include = excluded.always_include",
+            rusqlite::params![
+                term_id,
+                req.scope_id,
+                req.name,
+                req.description,
+                synonyms_json,
+                req.enabled as i64,
+                req.always_include as i64
+            ],
         )
         .map_err(|e| e.to_string())?;
         Ok::<_, String>(term_id)
@@ -589,7 +601,7 @@ pub async fn list_glossary_terms(
         let c = conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = c
             .prepare(
-                "SELECT term_id, scope_id, name, description, synonyms_json, enabled
+                "SELECT term_id, scope_id, name, description, synonyms_json, enabled, COALESCE(always_include, 0) AS always_include
                  FROM glossary_terms WHERE scope_id = ?1 ORDER BY name",
             )
             .map_err(|e| e.to_string())?;
@@ -602,6 +614,7 @@ pub async fn list_glossary_terms(
                     "description": row.get::<_, String>(3)?,
                     "synonyms_json": row.get::<_, String>(4)?,
                     "enabled": row.get::<_, bool>(5)?,
+                    "always_include": row.get::<_, i64>(6)? != 0,
                 }))
             })
             .map_err(|e| e.to_string())?
@@ -1551,6 +1564,69 @@ pub async fn list_retrievers(
     match state.control_store.list_retrievers(&ScopeId::new(scope_id)) {
         Ok(items) => (StatusCode::OK, Json(serde_json::json!(items))),
         Err(e) => internal(e),
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct CreateRetrieverBindingRequest {
+    pub scope_id: String,
+    pub retriever_id: String,
+    /// One of: `guideline`, `journey_state`, `scope`, `always` (see runtime `run_retrievers`).
+    pub bind_type: String,
+    /// Guideline **name**, journey state id, or scope id string depending on `bind_type`.
+    pub bind_ref: String,
+}
+
+/// POST /api/control/retriever-bindings
+pub async fn create_retriever_binding(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CreateRetrieverBindingRequest>,
+) -> impl IntoResponse {
+    use openparlant_types::control::ScopeId;
+    match state.control_store.insert_retriever_binding(
+        &ScopeId::new(req.scope_id.clone()),
+        &req.retriever_id,
+        &req.bind_type,
+        &req.bind_ref,
+    ) {
+        Ok(binding_id) => (
+            StatusCode::CREATED,
+            Json(serde_json::json!({
+                "binding_id": binding_id,
+                "scope_id": req.scope_id,
+                "retriever_id": req.retriever_id,
+                "bind_type": req.bind_type,
+                "bind_ref": req.bind_ref,
+            })),
+        ),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/scopes/:scope_id/retriever-bindings
+pub async fn list_retriever_bindings(
+    State(state): State<Arc<AppState>>,
+    Path(scope_id): Path<String>,
+) -> impl IntoResponse {
+    use openparlant_types::control::ScopeId;
+    match state
+        .control_store
+        .list_retriever_bindings(&ScopeId::new(scope_id))
+    {
+        Ok(items) => (StatusCode::OK, Json(serde_json::json!(items))),
+        Err(e) => internal(e),
+    }
+}
+
+/// DELETE /api/control/retriever-bindings/:binding_id
+pub async fn delete_retriever_binding(
+    State(state): State<Arc<AppState>>,
+    Path(binding_id): Path<String>,
+) -> impl IntoResponse {
+    match state.control_store.delete_retriever_binding(&binding_id) {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => not_found("retriever binding").into_response(),
+        Err(e) => internal(e).into_response(),
     }
 }
 

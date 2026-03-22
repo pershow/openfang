@@ -418,6 +418,13 @@ pub struct TurnInput {
     pub prior_tool_calls: Vec<ToolCallRecord>,
 }
 
+/// Agent/session context passed into knowledge compilation (glossary selection, `agent_kv` variables).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KnowledgeCompileContext {
+    pub agent_id: AgentId,
+    pub session_id: SessionId,
+}
+
 /// Tool call outcome captured after the runtime loop finishes.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ToolCallRecord {

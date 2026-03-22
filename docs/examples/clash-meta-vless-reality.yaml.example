@@ -1,0 +1,46 @@
+# Clash Meta / Mihomo — VLESS + Vision + REALITY（steal-oneself）
+# 替换所有 REPLACE_* 后导入（需 Meta 内核）
+# 与 /opt/xray-steal-oneself/client-import.json 参数对应
+
+mixed-port: 7890
+allow-lan: false
+mode: rule
+log-level: info
+ipv6: true
+
+dns:
+  enable: true
+  enhanced-mode: fake-ip
+  nameserver:
+    - 1.1.1.1
+
+proxies:
+  - name: vless-reality-vision
+    type: vless
+    server: REPLACE_SERVER
+    port: 443
+    uuid: REPLACE_UUID
+    network: tcp
+    tls: true
+    udp: true
+    flow: xtls-rprx-vision
+    servername: REPLACE_DOMAIN
+    client-fingerprint: chrome
+    reality-opts:
+      public-key: REPLACE_PUBLIC_KEY
+      short-id: REPLACE_SHORT_ID
+
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies:
+      - vless-reality-vision
+      - DIRECT
+  - name: FINAL
+    type: select
+    proxies:
+      - PROXY
+      - DIRECT
+
+rules:
+  - MATCH,FINAL

@@ -6,7 +6,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use openparlant_types::control::{
     CannedResponseCandidate, CanonicalMessage, ControlEmbedder, GlossaryEntry, JourneyActivation,
-    ResolvedVariable, RetrievedChunk, ScopeId,
+    KnowledgeCompileContext, ResolvedVariable, RetrievedChunk, ScopeId,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
@@ -31,6 +31,7 @@ pub trait KnowledgeCompiler: Send + Sync {
         message: &CanonicalMessage,
         active_journey: Option<&JourneyActivation>,
         active_guideline_names: &[String],
+        compile_ctx: &KnowledgeCompileContext,
     ) -> Result<KnowledgeBundle>;
 }
 
@@ -65,6 +66,7 @@ impl KnowledgeCompiler for SqliteKnowledgeCompiler {
         message: &CanonicalMessage,
         active_journey: Option<&JourneyActivation>,
         active_guideline_names: &[String],
+        compile_ctx: &KnowledgeCompileContext,
     ) -> Result<KnowledgeBundle> {
         let active_journey_state = active_journey.map(|journey| journey.current_state.as_str());
         let embedder_ref = self.embedder.as_deref();
@@ -78,10 +80,18 @@ impl KnowledgeCompiler for SqliteKnowledgeCompiler {
                 embedder_ref,
             )
             .await?;
-        let glossary_terms = self.store.load_glossary_terms(scope_id).await?;
+        let glossary_terms = self
+            .store
+            .load_glossary_terms_for_turn(scope_id, &message.text)
+            .await?;
         let context_variables = self
             .store
-            .load_context_variables(scope_id, &message.text, active_journey_state)
+            .load_context_variables(
+                scope_id,
+                &message.text,
+                active_journey_state,
+                &compile_ctx.agent_id,
+            )
             .await?;
         let canned_response_candidates = self
             .store
@@ -111,6 +121,7 @@ impl KnowledgeCompiler for NoopKnowledgeCompiler {
         _message: &CanonicalMessage,
         _active_journey: Option<&JourneyActivation>,
         _active_guideline_names: &[String],
+        _compile_ctx: &KnowledgeCompileContext,
     ) -> Result<KnowledgeBundle> {
         Ok(KnowledgeBundle::default())
     }

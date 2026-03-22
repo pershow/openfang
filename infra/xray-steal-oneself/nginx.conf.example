@@ -1,0 +1,23 @@
+# 最小 nginx：80 跳转 + steal-oneself 片段。按需改 user（Debian/Ubuntu 多为 www-data）。
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    sendfile on;
+    keepalive_timeout 65;
+
+    server {
+        listen 80 default_server;
+        listen [::]:80 default_server;
+        return 301 https://$host$request_uri;
+    }
+
+    include /opt/xray-steal-oneself/nginx-steal-oneself.conf;
+}

@@ -43,6 +43,7 @@ Welcome to the OpenParlant documentation. OpenParlant is the open-source Agent O
 | Guide | Description |
 |-------|-------------|
 | [Production Checklist](production-checklist.md) | Every step before tagging v0.1.0 -- signing keys, secrets, verification |
+| [VLESS + REALITY (steal-oneself)](vless-reality-steal-oneself.md) | Optional: Xray + nginx local TLS dest; client & [Clash Meta example](examples/clash-meta-vless-reality.yaml.example) |
 
 ## Additional Resources
 

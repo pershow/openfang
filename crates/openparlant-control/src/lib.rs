@@ -13,8 +13,9 @@ use openparlant_policy::{
 };
 use openparlant_types::agent::SessionId;
 use openparlant_types::control::{
-    AuditMeta, CompiledTurnContext, PolicyMatchRecord, ResponseMode, SessionBindingFlags,
-    ToolAuthorization, ToolAuthorizationRecord, TurnControlCoordinator, TurnInput, TurnOutcome,
+    AuditMeta, CompiledTurnContext, KnowledgeCompileContext, PolicyMatchRecord, ResponseMode,
+    SessionBindingFlags, ToolAuthorization, ToolAuthorizationRecord, TurnControlCoordinator,
+    TurnInput, TurnOutcome,
 };
 use sha2::{Digest, Sha256};
 pub use store::ControlStore;
@@ -316,6 +317,10 @@ where
                 &input.candidate_tools,
             )
             .await?;
+        let compile_ctx = KnowledgeCompileContext {
+            agent_id: input.agent_id,
+            session_id: input.session_id,
+        };
         let knowledge = self
             .knowledge_compiler
             .compile_knowledge(
@@ -327,6 +332,7 @@ where
                     .iter()
                     .map(|g| g.name.clone())
                     .collect::<Vec<_>>(),
+                &compile_ctx,
             )
             .await?;
 

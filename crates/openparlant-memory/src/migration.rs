@@ -5,7 +5,7 @@
 use rusqlite::Connection;
 
 /// Current schema version.
-const SCHEMA_VERSION: u32 = 12;
+const SCHEMA_VERSION: u32 = 15;
 
 /// Run all migrations to bring the database up to date.
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -63,6 +63,9 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     }
     if current_version < 14 {
         migrate_v14(conn)?;
+    }
+    if current_version < 15 {
+        migrate_v15(conn)?;
     }
 
     set_schema_version(conn, SCHEMA_VERSION)?;
@@ -740,6 +743,21 @@ fn migrate_v14(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute(
         "INSERT OR IGNORE INTO migrations (version, applied_at, description)
          VALUES (14, datetime('now'), 'Add release_version column to turn_traces for control trace auditing')",
+        [],
+    )?;
+    Ok(())
+}
+
+fn migrate_v15(conn: &Connection) -> Result<(), rusqlite::Error> {
+    if !column_exists(conn, "glossary_terms", "always_include") {
+        conn.execute(
+            "ALTER TABLE glossary_terms ADD COLUMN always_include INTEGER NOT NULL DEFAULT 0 CHECK (always_include IN (0, 1))",
+            [],
+        )?;
+    }
+    conn.execute(
+        "INSERT OR IGNORE INTO migrations (version, applied_at, description)
+         VALUES (15, datetime('now'), 'Add always_include to glossary_terms for pinned prompt terms')",
         [],
     )?;
     Ok(())

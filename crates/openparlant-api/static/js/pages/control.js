@@ -1,10 +1,10 @@
-// OpenParlant Control Plane — Observations / Guidelines / Journeys / Tool Gate + Debug
+// OpenParlant Control Plane — Policies / Journeys / Knowledge / Releases / Debug
 'use strict';
 
 function controlPage() {
   return {
     // ── Tab routing ──────────────────────────────────────────────────────────
-    tab: 'observations',  // 'debug' | 'observations' | 'guidelines' | 'journeys' | 'knowledge' | 'toolgate' | 'handoff'
+    tab: 'observations',  // 'debug' | 'observations' | 'guidelines' | 'journeys' | 'knowledge' | 'toolgate' | 'releases' | 'handoff'
 
     // ── Scope selection ──────────────────────────────────────────────────────
     scopes: [],
@@ -31,6 +31,10 @@ function controlPage() {
     glLoading: false,
     glForm: { name: '', condition_ref: '', action_text: '', composition_mode: 'append', priority: 0, enabled: true },
     glCreating: false,
+    guidelineRelationships: [],
+    relLoading: false,
+    relForm: { from_guideline_id: '', to_guideline_id: '', relation_type: 'prioritizes_over' },
+    relCreating: false,
 
     // ── Journeys ─────────────────────────────────────────────────────────────
     journeys: [],
@@ -47,11 +51,25 @@ function controlPage() {
     transitionCreating: false,
 
     // ── Knowledge ────────────────────────────────────────────────────────────
-    glossaryForm: { name: '', description: '', synonyms: '' },
+    retrievers: [],
+    retrieversLoading: false,
+    retrieverBindings: [],
+    bindingsLoading: false,
+    glossaryTerms: [],
+    glossaryLoading: false,
+    contextVariables: [],
+    contextVariablesLoading: false,
+    cannedResponses: [],
+    cannedResponsesLoading: false,
+    retrieverForm: { name: '', retriever_type: 'static', config_json: '{"items":[]}' },
+    retrieverCreating: false,
+    bindingForm: { retriever_id: '', bind_type: 'guideline', bind_ref: '' },
+    bindingCreating: false,
+    glossaryForm: { name: '', description: '', synonyms: '', alwaysInclude: false },
     glossaryCreating: false,
-    varForm: { name: '', value_source_type: 'static', value_source_config: '{"value":""}' },
+    varForm: { name: '', value_source_type: 'static', value_source_config: '{"value":""}', visibility_rule: '' },
     varCreating: false,
-    cannedForm: { name: '', template_text: '', priority: 0 },
+    cannedForm: { name: '', template_text: '', trigger_rule: '', priority: 0 },
     cannedCreating: false,
 
     // ── Tool Gate ─────────────────────────────────────────────────────────────
@@ -62,6 +80,13 @@ function controlPage() {
       guideline_ref: '', approval_mode: 'none', enabled: true,
     },
     tpCreating: false,
+
+    // ── Releases ─────────────────────────────────────────────────────────────
+    releases: [],
+    releasesLoading: false,
+    releaseForm: { version: '', published_by: 'system' },
+    releasePublishing: false,
+    releaseRollback: false,
 
     // ── Handoff / Manual Mode ────────────────────────────────────────────────
     handoffSessionId: '',
@@ -138,8 +163,15 @@ function controlPage() {
       await Promise.all([
         this.loadObservations(),
         this.loadGuidelines(),
+        this.loadGuidelineRelationships(),
         this.loadJourneys(),
-        this.loadToolPolicies()
+        this.loadToolPolicies(),
+        this.loadRetrievers(),
+        this.loadRetrieverBindings(),
+        this.loadGlossaryTerms(),
+        this.loadContextVariables(),
+        this.loadCannedResponses(),
+        this.loadReleases()
       ]);
     },
 
@@ -205,9 +237,20 @@ function controlPage() {
       this.tab = nextTab;
       if (nextTab === 'journeys' && journeyView) this.journeyView = journeyView;
       if (nextTab === 'observations') this.loadObservations();
-      if (nextTab === 'guidelines') this.loadGuidelines();
+      if (nextTab === 'guidelines') {
+        this.loadGuidelines();
+        this.loadGuidelineRelationships();
+      }
       if (nextTab === 'journeys') this.loadJourneys();
+      if (nextTab === 'knowledge') {
+        this.loadRetrievers();
+        this.loadRetrieverBindings();
+        this.loadGlossaryTerms();
+        this.loadContextVariables();
+        this.loadCannedResponses();
+      }
       if (nextTab === 'toolgate') this.loadToolPolicies();
+      if (nextTab === 'releases') this.loadReleases();
     },
 
     openJourneyBuilder() {
@@ -309,6 +352,49 @@ function controlPage() {
       } finally {
         this.glCreating = false;
       }
+    },
+
+    async loadGuidelineRelationships() {
+      if (!this.selectedScope) return;
+      this.relLoading = true;
+      try {
+        this.guidelineRelationships = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/guideline-relationships') || [];
+      } catch (e) {
+        this.guidelineRelationships = [];
+      } finally {
+        this.relLoading = false;
+      }
+    },
+
+    async createGuidelineRelationship() {
+      if (!this.selectedScope || !this.relForm.from_guideline_id || !this.relForm.to_guideline_id) return;
+      if (this.relForm.from_guideline_id === this.relForm.to_guideline_id) {
+        this.toastError('Relationship endpoints must be different guidelines');
+        return;
+      }
+      this.relCreating = true;
+      try {
+        await OpenFangAPI.post('/api/control/guideline-relationships', {
+          scope_id: this.selectedScope,
+          from_guideline_id: this.relForm.from_guideline_id,
+          to_guideline_id: this.relForm.to_guideline_id,
+          relation_type: this.relForm.relation_type,
+        });
+        this.relForm = { from_guideline_id: '', to_guideline_id: '', relation_type: 'prioritizes_over' };
+        await this.loadGuidelineRelationships();
+        this.toastSuccess('Guideline relationship created');
+      } catch (e) {
+        this.toastError('Failed to create relationship: ' + e.message);
+      } finally {
+        this.relCreating = false;
+      }
+    },
+
+    guidelineNameById(id) {
+      for (var i = 0; i < this.guidelines.length; i++) {
+        if (this.guidelines[i].guideline_id === id) return this.guidelines[i].name;
+      }
+      return id || 'Unknown guideline';
     },
 
     // ── Journeys ─────────────────────────────────────────────────────────────
@@ -426,6 +512,120 @@ function controlPage() {
 
     // ── Knowledge ────────────────────────────────────────────────────────────
 
+    async loadRetrievers() {
+      if (!this.selectedScope) return;
+      this.retrieversLoading = true;
+      try {
+        this.retrievers = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/retrievers') || [];
+      } catch (e) {
+        this.retrievers = [];
+      } finally {
+        this.retrieversLoading = false;
+      }
+    },
+
+    async createRetriever() {
+      if (!this.retrieverForm.name.trim() || !this.selectedScope) return;
+      this.retrieverCreating = true;
+      try {
+        var cfg = {};
+        try { cfg = JSON.parse(this.retrieverForm.config_json || '{}'); } catch (_) {}
+        await OpenFangAPI.post('/api/control/retrievers', {
+          scope_id: this.selectedScope,
+          name: this.retrieverForm.name.trim(),
+          retriever_type: this.retrieverForm.retriever_type || 'static',
+          config_json: cfg,
+          enabled: true
+        });
+        this.retrieverForm = { name: '', retriever_type: 'static', config_json: '{"items":[]}' };
+        await this.loadRetrievers();
+        this.toastSuccess('Retriever created');
+      } catch (e) {
+        this.toastError('Failed to create retriever: ' + e.message);
+      } finally {
+        this.retrieverCreating = false;
+      }
+    },
+
+    async loadRetrieverBindings() {
+      if (!this.selectedScope) return;
+      this.bindingsLoading = true;
+      try {
+        this.retrieverBindings = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/retriever-bindings') || [];
+      } catch (e) {
+        this.retrieverBindings = [];
+      } finally {
+        this.bindingsLoading = false;
+      }
+    },
+
+    async loadGlossaryTerms() {
+      if (!this.selectedScope) return;
+      this.glossaryLoading = true;
+      try {
+        this.glossaryTerms = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/glossary-terms') || [];
+      } catch (e) {
+        this.glossaryTerms = [];
+      } finally {
+        this.glossaryLoading = false;
+      }
+    },
+
+    async loadContextVariables() {
+      if (!this.selectedScope) return;
+      this.contextVariablesLoading = true;
+      try {
+        this.contextVariables = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/context-variables') || [];
+      } catch (e) {
+        this.contextVariables = [];
+      } finally {
+        this.contextVariablesLoading = false;
+      }
+    },
+
+    async loadCannedResponses() {
+      if (!this.selectedScope) return;
+      this.cannedResponsesLoading = true;
+      try {
+        this.cannedResponses = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/canned-responses') || [];
+      } catch (e) {
+        this.cannedResponses = [];
+      } finally {
+        this.cannedResponsesLoading = false;
+      }
+    },
+
+    async createRetrieverBinding() {
+      if (!this.bindingForm.retriever_id || !this.bindingForm.bind_ref.trim() || !this.selectedScope) return;
+      this.bindingCreating = true;
+      try {
+        await OpenFangAPI.post('/api/control/retriever-bindings', {
+          scope_id: this.selectedScope,
+          retriever_id: this.bindingForm.retriever_id,
+          bind_type: this.bindingForm.bind_type,
+          bind_ref: this.bindingForm.bind_ref.trim()
+        });
+        this.bindingForm = { retriever_id: '', bind_type: 'guideline', bind_ref: '' };
+        await this.loadRetrieverBindings();
+        this.toastSuccess('Retriever binding created');
+      } catch (e) {
+        this.toastError('Failed to create binding: ' + e.message);
+      } finally {
+        this.bindingCreating = false;
+      }
+    },
+
+    async deleteRetrieverBinding(id) {
+      if (!id || !confirm('Delete this retriever binding?')) return;
+      try {
+        await OpenFangAPI.delete('/api/control/retriever-bindings/' + encodeURIComponent(id));
+        await this.loadRetrieverBindings();
+        this.toastSuccess('Binding deleted');
+      } catch (e) {
+        this.toastError('Failed to delete: ' + e.message);
+      }
+    },
+
     async createGlossaryTerm() {
       if (!this.glossaryForm.name.trim() || !this.selectedScope) return;
       this.glossaryCreating = true;
@@ -438,8 +638,10 @@ function controlPage() {
           name: this.glossaryForm.name,
           description: this.glossaryForm.description,
           synonyms: syns,
+          always_include: !!this.glossaryForm.alwaysInclude
         });
-        this.glossaryForm = { name: '', description: '', synonyms: '' };
+        this.glossaryForm = { name: '', description: '', synonyms: '', alwaysInclude: false };
+        await this.loadGlossaryTerms();
         this.toastSuccess('Glossary term created');
       } catch (e) {
         this.toastError('Failed to create glossary term: ' + e.message);
@@ -459,8 +661,10 @@ function controlPage() {
           name: this.varForm.name,
           value_source_type: this.varForm.value_source_type,
           value_source_config: cfg,
+          visibility_rule: this.varForm.visibility_rule || null,
         });
-        this.varForm = { name: '', value_source_type: 'static', value_source_config: '{"value":""}' };
+        this.varForm = { name: '', value_source_type: 'static', value_source_config: '{"value":""}', visibility_rule: '' };
+        await this.loadContextVariables();
         this.toastSuccess('Context variable created');
       } catch (e) {
         this.toastError('Failed to create context variable: ' + e.message);
@@ -477,9 +681,11 @@ function controlPage() {
           scope_id: this.selectedScope,
           name: this.cannedForm.name,
           template_text: this.cannedForm.template_text,
+          trigger_rule: this.cannedForm.trigger_rule || null,
           priority: Number(this.cannedForm.priority) || 0,
         });
-        this.cannedForm = { name: '', template_text: '', priority: 0 };
+        this.cannedForm = { name: '', template_text: '', trigger_rule: '', priority: 0 };
+        await this.loadCannedResponses();
         this.toastSuccess('Canned response created');
       } catch (e) {
         this.toastError('Failed to create canned response: ' + e.message);
@@ -529,6 +735,68 @@ function controlPage() {
     approvalModeBadge(mode) {
       var map = { 'none': 'badge-success', 'conditional': 'badge-warn', 'required': 'badge-error' };
       return 'badge ' + (map[mode] || 'badge-muted');
+    },
+
+    // ── Releases ─────────────────────────────────────────────────────────────
+
+    async loadReleases() {
+      if (!this.selectedScope) return;
+      this.releasesLoading = true;
+      try {
+        this.releases = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/releases') || [];
+      } catch (e) {
+        this.releases = [];
+      } finally {
+        this.releasesLoading = false;
+      }
+    },
+
+    async publishRelease() {
+      if (!this.selectedScope || !this.releaseForm.version.trim()) return;
+      this.releasePublishing = true;
+      try {
+        await OpenFangAPI.post('/api/control/releases/publish', {
+          scope_id: this.selectedScope,
+          version: this.releaseForm.version.trim(),
+          published_by: (this.releaseForm.published_by || 'system').trim() || 'system',
+        });
+        await this.loadReleases();
+        this.toastSuccess('Release published');
+      } catch (e) {
+        this.toastError('Failed to publish release: ' + e.message);
+      } finally {
+        this.releasePublishing = false;
+      }
+    },
+
+    async rollbackRelease() {
+      if (!this.selectedScope) return;
+      this.releaseRollback = true;
+      try {
+        await OpenFangAPI.post('/api/control/releases/rollback', { scope_id: this.selectedScope });
+        await this.loadReleases();
+        this.toastSuccess('Release rolled back');
+      } catch (e) {
+        this.toastError('Failed to roll back release: ' + e.message);
+      } finally {
+        this.releaseRollback = false;
+      }
+    },
+
+    currentPublishedRelease() {
+      for (var i = 0; i < this.releases.length; i++) {
+        if (this.releases[i].status === 'published') return this.releases[i];
+      }
+      return null;
+    },
+
+    releaseStatusBadge(status) {
+      var map = {
+        'published': 'badge badge-ok',
+        'superseded': 'badge badge-muted',
+        'rolled_back': 'badge badge-warn'
+      };
+      return map[status] || 'badge badge-muted';
     },
 
     // ── Handoff / Manual Mode ─────────────────────────────────────────────────
@@ -596,8 +864,13 @@ function controlPage() {
     },
 
     responseModeBadge(mode) {
-      var map = { 'free': 'badge-success', 'constrained': 'badge-warn', 'canned_only': 'badge-error', 'silent': 'badge-muted' };
-      return 'badge ' + (map[mode] || 'badge-muted');
+      var map = {
+        'freeform': 'badge badge-success',
+        'guided': 'badge badge-info',
+        'strict': 'badge badge-warn',
+        'canned_only': 'badge badge-error'
+      };
+      return map[mode] || 'badge badge-muted';
     },
   };
 }

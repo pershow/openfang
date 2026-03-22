@@ -1,4 +1,5 @@
 use anyhow::Result;
+use openparlant_types::agent::AgentId;
 use openparlant_types::control::{
     CannedResponseCandidate, ControlEmbedder, GlossaryEntry, ResolvedVariable, RetrievedChunk,
     ScopeId,
@@ -307,38 +308,80 @@ impl ContextStore {
         Ok(chunks)
     }
 
-    /// Load all active glossary terms for a given scope.
-    pub async fn load_glossary_terms(&self, scope_id: &ScopeId) -> Result<Vec<GlossaryEntry>> {
+    /// Select glossary terms for this turn: pinned (`always_include`) plus top matches vs. user text.
+    ///
+    /// Avoids injecting the entire scope glossary on every turn (token cost + noise). Terms with
+    /// no keyword overlap and not pinned are omitted.
+    pub async fn load_glossary_terms_for_turn(
+        &self,
+        scope_id: &ScopeId,
+        message_text: &str,
+    ) -> Result<Vec<GlossaryEntry>> {
+        const MAX_TERMS: usize = 48;
         let rows = sqlx::query(
-            "SELECT name, description, synonyms_json
+            "SELECT name, description, synonyms_json, COALESCE(always_include, 0) as always_include
              FROM glossary_terms
-             WHERE scope_id = ? AND enabled = 1",
+             WHERE scope_id = ? AND enabled = 1
+             ORDER BY name ASC",
         )
         .bind(&scope_id.0)
         .fetch_all(&self.pool)
         .await?;
 
-        let mut terms = Vec::with_capacity(rows.len());
+        let message_lc = message_text.to_lowercase();
+        let mut pinned: Vec<GlossaryEntry> = Vec::new();
+        let mut scored: Vec<(i32, GlossaryEntry)> = Vec::new();
+
         for row in rows {
+            let name: String = row.try_get("name")?;
+            let description: String = row.try_get("description")?;
             let synonyms_json: String = row.try_get("synonyms_json")?;
+            let always_include: i64 = row.try_get("always_include")?;
             let synonyms: Vec<String> = serde_json::from_str(&synonyms_json).unwrap_or_default();
-            terms.push(GlossaryEntry {
-                name: row.try_get("name")?,
-                description: row.try_get("description")?,
+            let entry = GlossaryEntry {
+                name: name.clone(),
+                description,
                 synonyms,
-            });
+            };
+            if always_include != 0 {
+                pinned.push(entry);
+                continue;
+            }
+            let score = glossary_relevance_score(&message_lc, &name, &entry.description, &entry.synonyms);
+            if score > 0 {
+                scored.push((score, entry));
+            }
         }
-        Ok(terms)
+
+        scored.sort_by(|a, b| b.0.cmp(&a.0));
+        let mut out: Vec<GlossaryEntry> = pinned;
+        for (_, e) in scored {
+            if out.len() >= MAX_TERMS {
+                break;
+            }
+            if out.iter().any(|x| x.name == e.name) {
+                continue;
+            }
+            out.push(e);
+        }
+        Ok(out)
     }
 
     // ── Context variables ─────────────────────────────────────────────────────
 
-    /// Load all active context variables for a given scope.
+    /// Load active context variables for a given scope (visibility-filtered).
+    ///
+    /// Supported `value_source_type` values:
+    /// - `static` / `literal` — `value_source_config` JSON `{"value":"..."}`.
+    /// - `agent_kv` — `{"key":"..."}` reads `kv_store` for this agent (same SQLite DB).
+    /// - `disabled` / `noop` — skipped (soft-delete / off-switch without deleting the row).
+    /// - Other types — placeholder until wired (`<unresolved:...>`).
     pub async fn load_context_variables(
         &self,
         scope_id: &ScopeId,
         message_text: &str,
         active_journey_state: Option<&str>,
+        agent_id: &AgentId,
     ) -> Result<Vec<ResolvedVariable>> {
         let rows = sqlx::query(
             "SELECT name, value_source_type, value_source_config, visibility_rule
@@ -364,18 +407,55 @@ impl ContextStore {
                 continue;
             }
 
-            // MVP: only "static" sources are resolved inline; others are deferred.
-            let value = if source_type == "static" {
-                match serde_json::from_str::<serde_json::Value>(&config_json) {
+            let st = source_type.as_str();
+            if matches!(st, "disabled" | "noop") {
+                continue;
+            }
+
+            let value = match st {
+                "static" | "literal" => match serde_json::from_str::<serde_json::Value>(&config_json) {
                     Ok(config) => config
                         .get("value")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string(),
+                        .map(|v| {
+                            v.as_str()
+                                .map(|s| s.to_string())
+                                .unwrap_or_else(|| v.to_string())
+                        })
+                        .unwrap_or_default(),
                     Err(_) => config_json.clone(),
+                },
+                "agent_kv" => {
+                    let key = serde_json::from_str::<serde_json::Value>(&config_json)
+                        .ok()
+                        .and_then(|c| c.get("key").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                        .unwrap_or_default();
+                    if key.is_empty() {
+                        "<agent_kv: missing key in config>".to_string()
+                    } else {
+                        let aid = agent_id.0.to_string();
+                        match sqlx::query("SELECT value FROM kv_store WHERE agent_id = ? AND key = ?")
+                            .bind(&aid)
+                            .bind(&key)
+                            .fetch_optional(&self.pool)
+                            .await
+                        {
+                            Ok(Some(r)) => {
+                                let blob: Vec<u8> = r.try_get("value").unwrap_or_default();
+                                serde_json::from_slice::<serde_json::Value>(&blob)
+                                    .map(|v| match v {
+                                        serde_json::Value::String(s) => s,
+                                        _ => v.to_string(),
+                                    })
+                                    .unwrap_or_else(|_| {
+                                        String::from_utf8_lossy(&blob).into_owned()
+                                    })
+                            }
+                            Ok(None) => format!("<kv_store:{key}: not set>"),
+                            Err(e) => format!("<kv_store read error: {e}>"),
+                        }
+                    }
                 }
-            } else {
-                format!("<unresolved:{source_type}>")
+                other => format!("<unresolved:{other}>"),
             };
 
             variables.push(ResolvedVariable {
@@ -419,6 +499,40 @@ impl ContextStore {
         }
         Ok(candidates)
     }
+}
+
+fn glossary_relevance_score(
+    message_lc: &str,
+    name: &str,
+    description: &str,
+    synonyms: &[String],
+) -> i32 {
+    let mut s = 0i32;
+    let name_lc = name.to_lowercase();
+    if !name_lc.is_empty() && message_lc.contains(&name_lc) {
+        s += 100;
+    }
+    for part in name_lc.split(|c: char| !c.is_alphanumeric()).filter(|p| p.len() > 1) {
+        if message_lc.contains(part) {
+            s += 40;
+        }
+    }
+    let desc_lc = description.to_lowercase();
+    for tok in message_lc.split_whitespace() {
+        if tok.len() < 3 {
+            continue;
+        }
+        if desc_lc.contains(tok) {
+            s += 15;
+        }
+    }
+    for syn in synonyms {
+        let sl = syn.to_lowercase();
+        if sl.len() > 1 && message_lc.contains(&sl) {
+            s += 35;
+        }
+    }
+    s
 }
 
 fn matches_text_rule(

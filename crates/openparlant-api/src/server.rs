@@ -1017,6 +1017,18 @@ pub async fn build_router(
             "/api/control/scopes/{scope_id}/retrievers",
             axum::routing::get(control_routes::list_retrievers),
         )
+        .route(
+            "/api/control/retriever-bindings",
+            axum::routing::post(control_routes::create_retriever_binding),
+        )
+        .route(
+            "/api/control/scopes/{scope_id}/retriever-bindings",
+            axum::routing::get(control_routes::list_retriever_bindings),
+        )
+        .route(
+            "/api/control/retriever-bindings/{binding_id}",
+            axum::routing::delete(control_routes::delete_retriever_binding),
+        )
         // ── Releases ─────────────────────────────────────────────────────────
         .route(
             "/api/control/releases/publish",

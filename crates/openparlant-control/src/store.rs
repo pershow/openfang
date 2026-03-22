@@ -510,6 +510,79 @@ impl ControlStore {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
+    /// Create a retriever binding (which guideline / journey / scope activates this retriever).
+    pub fn insert_retriever_binding(
+        &self,
+        scope_id: &ScopeId,
+        retriever_id: &str,
+        bind_type: &str,
+        bind_ref: &str,
+    ) -> OpenFangResult<String> {
+        let binding_id = uuid::Uuid::new_v4().to_string();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        conn.execute(
+            "INSERT INTO retriever_bindings (binding_id, scope_id, retriever_id, bind_type, bind_ref)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                binding_id.as_str(),
+                scope_id.0.as_str(),
+                retriever_id,
+                bind_type,
+                bind_ref
+            ],
+        )
+        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        Ok(binding_id)
+    }
+
+    /// List all retriever bindings for a scope.
+    pub fn list_retriever_bindings(
+        &self,
+        scope_id: &ScopeId,
+    ) -> OpenFangResult<Vec<serde_json::Value>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT binding_id, scope_id, retriever_id, bind_type, bind_ref
+             FROM retriever_bindings WHERE scope_id = ?1
+             ORDER BY retriever_id ASC, bind_type ASC, bind_ref ASC",
+            )
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![scope_id.0.as_str()], |row| {
+                Ok(serde_json::json!({
+                    "binding_id": row.get::<_, String>(0)?,
+                    "scope_id": row.get::<_, String>(1)?,
+                    "retriever_id": row.get::<_, String>(2)?,
+                    "bind_type": row.get::<_, String>(3)?,
+                    "bind_ref": row.get::<_, String>(4)?,
+                }))
+            })
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// Delete a retriever binding by id.
+    pub fn delete_retriever_binding(&self, binding_id: &str) -> OpenFangResult<bool> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+        let n = conn
+            .execute(
+                "DELETE FROM retriever_bindings WHERE binding_id = ?1",
+                params![binding_id],
+            )
+            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        Ok(n > 0)
+    }
+
     // ── Control Releases ──────────────────────────────────────────────────────
 
     /// Publish a new release snapshot for a scope.

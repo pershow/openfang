@@ -5293,6 +5293,11 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
         <span class="control-summary-value" x-text="toolPolicies.length"></span>
         <span class="control-summary-meta">Approval and exposure rules for hands, tools, and operators.</span>
       </button>
+      <button class="card control-summary-card" @click="switchTab('releases')">
+        <span class="control-summary-label">Releases</span>
+        <span class="control-summary-value" x-text="releases.length"></span>
+        <span class="control-summary-meta">Publish, track, and roll back control-plane versions for the current scope.</span>
+      </button>
     </div>
 
     <div class="card mb-4" x-show="selectedScope">
@@ -5306,6 +5311,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
           <button class="btn btn-ghost btn-sm" @click="switchTab('observations')">New Observation</button>
           <button class="btn btn-ghost btn-sm" @click="switchTab('guidelines')">New Guideline</button>
           <button class="btn btn-primary btn-sm" @click="openJourneyBuilder()">Visual Journey Builder</button>
+          <button class="btn btn-ghost btn-sm" @click="switchTab('releases')">Publish Release</button>
           <button class="btn btn-ghost btn-sm" @click="switchTab('debug')">Compile Turn Debug</button>
         </div>
       </div>
@@ -5318,6 +5324,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
       <div class="tab" role="tab" :class="{ active: tab === 'journeys' }" @click="switchTab('journeys')">Journeys</div>
       <div class="tab" role="tab" :class="{ active: tab === 'knowledge' }" @click="switchTab('knowledge')">Knowledge</div>
       <div class="tab" role="tab" :class="{ active: tab === 'toolgate' }" @click="switchTab('toolgate')">Tool Gate</div>
+      <div class="tab" role="tab" :class="{ active: tab === 'releases' }" @click="switchTab('releases')">Releases</div>
       <div class="tab" role="tab" :class="{ active: tab === 'handoff' }" @click="switchTab('handoff')">Handoff</div>
       <div class="tabs-separator"></div>
       <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'debug' }" @click="switchTab('debug')">Debug</div>
@@ -5520,6 +5527,59 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
               <span x-show="!glCreating">+ Create Guideline</span>
               <span x-show="glCreating">Creating…</span>
             </button>
+          </div>
+        </div>
+        <div class="card mb-4">
+          <div class="card-header"><h3 class="card-title">Guideline Relationships</h3></div>
+          <div class="card-body flex flex-col gap-3">
+            <p class="text-xs text-dim" style="margin:0;line-height:1.5">
+              Use relationships to express policy precedence and dependencies.
+              <code>prioritizes_over</code> wins conflicts, <code>excludes</code> suppresses the target,
+              and <code>depends_on</code> requires the target to be active first.
+            </p>
+            <div class="flex gap-3 flex-wrap items-end">
+              <select class="input" x-model="relForm.from_guideline_id" style="min-width:220px">
+                <option value="">From guideline</option>
+                <template x-for="g in guidelines" :key="'rel-from-' + g.guideline_id">
+                  <option :value="g.guideline_id" x-text="g.name"></option>
+                </template>
+              </select>
+              <select class="input" x-model="relForm.relation_type" style="width:180px">
+                <option value="prioritizes_over">prioritizes_over</option>
+                <option value="excludes">excludes</option>
+                <option value="depends_on">depends_on</option>
+              </select>
+              <select class="input" x-model="relForm.to_guideline_id" style="min-width:220px">
+                <option value="">To guideline</option>
+                <template x-for="g in guidelines" :key="'rel-to-' + g.guideline_id">
+                  <option :value="g.guideline_id" x-text="g.name"></option>
+                </template>
+              </select>
+              <button class="btn btn-primary btn-sm" @click="createGuidelineRelationship()" :disabled="relCreating || !relForm.from_guideline_id || !relForm.to_guideline_id || !selectedScope">
+                <span x-show="!relCreating">+ Create Relationship</span>
+                <span x-show="relCreating">Creating...</span>
+              </button>
+            </div>
+            <div x-show="relLoading" class="text-muted text-sm">Loading...</div>
+            <div x-show="!relLoading && guidelineRelationships.length === 0" class="text-muted text-sm">No guideline relationships yet.</div>
+            <table class="table table-sm" x-show="!relLoading && guidelineRelationships.length > 0">
+              <thead><tr><th>From</th><th>Relation</th><th>To</th></tr></thead>
+              <tbody>
+                <template x-for="rel in guidelineRelationships" :key="rel.relationship_id">
+                  <tr>
+                    <td>
+                      <div class="font-medium text-sm" x-text="guidelineNameById(rel.from_guideline_id)"></div>
+                      <div class="text-xs text-muted font-mono" x-text="rel.from_guideline_id"></div>
+                    </td>
+                    <td><span class="badge badge-info" x-text="rel.relation_type"></span></td>
+                    <td>
+                      <div class="font-medium text-sm" x-text="guidelineNameById(rel.to_guideline_id)"></div>
+                      <div class="text-xs text-muted font-mono" x-text="rel.to_guideline_id"></div>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
           </div>
         </div>
         <!-- List -->
@@ -5855,53 +5915,192 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
     <!-- ── Knowledge Tab ─────────────────────────────────────────────────── -->
     <template x-if="tab === 'knowledge'">
       <div class="flex flex-col gap-4">
+        <!-- Retrievers -->
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Retrievers</h3></div>
+          <div class="card-body flex flex-col gap-3">
+            <p class="text-xs text-dim" style="margin:0;line-height:1.5">Define knowledge sources (<code>static</code> items, <code>faq_sqlite</code>, <code>embedding</code>, …). Bind them below to guidelines or journey states so only relevant retrievers run.</p>
+            <div class="flex gap-3 flex-wrap items-end">
+              <input class="input" placeholder="Name" x-model="retrieverForm.name" style="width:180px">
+              <select class="input" x-model="retrieverForm.retriever_type" style="width:140px">
+                <option value="static">static</option>
+                <option value="faq_sqlite">faq_sqlite</option>
+                <option value="embedding">embedding</option>
+              </select>
+              <input class="input font-mono text-xs" placeholder='config JSON' x-model="retrieverForm.config_json" style="flex:1;min-width:220px">
+              <button class="btn btn-primary btn-sm" @click="createRetriever()" :disabled="retrieverCreating || !retrieverForm.name.trim() || !selectedScope">+ Retriever</button>
+            </div>
+            <div x-show="retrieversLoading" class="text-xs text-dim">Loading…</div>
+            <div class="table-wrap" x-show="retrievers.length && !retrieversLoading">
+              <table class="table table-sm">
+                <thead><tr><th>Name</th><th>Type</th><th>ID</th></tr></thead>
+                <tbody>
+                  <template x-for="r in retrievers" :key="r.retriever_id">
+                    <tr>
+                      <td x-text="r.name"></td>
+                      <td class="text-xs font-mono" x-text="r.retriever_type"></td>
+                      <td class="text-xs font-mono truncate" style="max-width:200px" :title="r.retriever_id" x-text="r.retriever_id"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <!-- Retriever bindings -->
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Retriever bindings</h3></div>
+          <div class="card-body flex flex-col gap-3">
+            <p class="text-xs text-dim" style="margin:0;line-height:1.5"><strong>guideline</strong>: <code>bind_ref</code> = guideline <em>name</em>. <strong>journey_state</strong>: state id. <strong>scope</strong>: scope id. <strong>always</strong>: bind_ref ignored. Unbound retrievers still run every turn.</p>
+            <div class="flex gap-3 flex-wrap items-end">
+              <select class="input" x-model="bindingForm.retriever_id" style="min-width:200px">
+                <option value="">— retriever —</option>
+                <template x-for="r in retrievers" :key="r.retriever_id">
+                  <option :value="r.retriever_id" x-text="r.name + ' (' + r.retriever_type + ')'"></option>
+                </template>
+              </select>
+              <select class="input" x-model="bindingForm.bind_type" style="width:140px">
+                <option value="guideline">guideline</option>
+                <option value="journey_state">journey_state</option>
+                <option value="scope">scope</option>
+                <option value="always">always</option>
+              </select>
+              <input class="input" placeholder="bind_ref (guideline name / state id / scope id)" x-model="bindingForm.bind_ref" style="flex:1;min-width:200px">
+              <button class="btn btn-primary btn-sm" @click="createRetrieverBinding()" :disabled="bindingCreating || !bindingForm.retriever_id || !bindingForm.bind_ref.trim() || !selectedScope">+ Binding</button>
+            </div>
+            <div x-show="bindingsLoading" class="text-xs text-dim">Loading…</div>
+            <div class="table-wrap" x-show="retrieverBindings.length && !bindingsLoading">
+              <table class="table table-sm">
+                <thead><tr><th>Retriever</th><th>Type</th><th>Ref</th><th></th></tr></thead>
+                <tbody>
+                  <template x-for="b in retrieverBindings" :key="b.binding_id">
+                    <tr>
+                      <td class="text-xs font-mono truncate" style="max-width:140px" :title="b.retriever_id" x-text="b.retriever_id"></td>
+                      <td x-text="b.bind_type"></td>
+                      <td x-text="b.bind_ref"></td>
+                      <td><button type="button" class="btn btn-ghost btn-sm text-danger" @click="deleteRetrieverBinding(b.binding_id)">Remove</button></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
         <!-- Glossary -->
         <div class="card">
-          <div class="card-header"><h3 class="card-title">Glossary Terms</h3></div>
+          <div class="card-header flex items-center justify-between">
+            <h3 class="card-title">Glossary Terms <span class="badge badge-muted ml-1" x-text="glossaryTerms.length"></span></h3>
+            <button class="btn btn-ghost btn-sm" @click="loadGlossaryTerms()">Refresh</button>
+          </div>
           <div class="card-body flex flex-col gap-3">
             <div class="flex gap-3 flex-wrap">
               <input class="input" placeholder="Term name" x-model="glossaryForm.name" style="width:160px">
               <input class="input" placeholder="Description" x-model="glossaryForm.description" style="flex:1;min-width:200px">
               <input class="input" placeholder="Synonyms (comma-separated)" x-model="glossaryForm.synonyms" style="flex:1;min-width:200px">
+              <label class="flex items-center gap-1 text-xs text-dim whitespace-nowrap"><input type="checkbox" x-model="glossaryForm.alwaysInclude"> Always include</label>
             </div>
             <button class="btn btn-primary btn-sm" @click="createGlossaryTerm()" :disabled="glossaryCreating || !glossaryForm.name.trim() || !selectedScope">
               <span x-show="!glossaryCreating">+ Add Glossary Term</span>
-              <span x-show="glossaryCreating">Saving…</span>
+              <span x-show="glossaryCreating">Saving...</span>
             </button>
+            <div x-show="glossaryLoading" class="text-xs text-dim">Loading...</div>
+            <div x-show="!glossaryLoading && glossaryTerms.length === 0" class="text-xs text-dim">No glossary terms yet.</div>
+            <div class="table-wrap" x-show="glossaryTerms.length && !glossaryLoading">
+              <table class="table table-sm">
+                <thead><tr><th>Name</th><th>Description</th><th>Synonyms</th><th>Flags</th></tr></thead>
+                <tbody>
+                  <template x-for="term in glossaryTerms" :key="term.term_id">
+                    <tr>
+                      <td class="font-medium" x-text="term.name"></td>
+                      <td class="text-xs text-muted" x-text="term.description || '-'"></td>
+                      <td class="text-xs" x-text="term.synonyms_json || '[]'"></td>
+                      <td>
+                        <span class="badge badge-info" x-show="term.always_include">always_include</span>
+                        <span :class="term.enabled ? 'badge badge-ok' : 'badge badge-muted'" x-text="term.enabled ? 'enabled' : 'disabled'"></span>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
         <!-- Context Variables -->
         <div class="card">
-          <div class="card-header"><h3 class="card-title">Context Variables</h3></div>
+          <div class="card-header flex items-center justify-between">
+            <h3 class="card-title">Context Variables <span class="badge badge-muted ml-1" x-text="contextVariables.length"></span></h3>
+            <button class="btn btn-ghost btn-sm" @click="loadContextVariables()">Refresh</button>
+          </div>
           <div class="card-body flex flex-col gap-3">
             <div class="flex gap-3 flex-wrap">
               <input class="input" placeholder="Variable name" x-model="varForm.name" style="width:160px">
-              <select class="input" x-model="varForm.value_source_type" style="width:120px">
+              <select class="input" x-model="varForm.value_source_type" style="width:130px">
                 <option value="static">static</option>
-                <option value="session">session</option>
+                <option value="literal">literal</option>
+                <option value="agent_kv">agent_kv</option>
+                <option value="disabled">disabled</option>
                 <option value="api">api</option>
               </select>
-              <input class="input font-mono text-xs" placeholder='Source config JSON, e.g. {"value":"hello"}' x-model="varForm.value_source_config" style="flex:1;min-width:220px">
+              <input class="input font-mono text-xs" placeholder='static: {"value":"…"} · agent_kv: {"key":"…"}' x-model="varForm.value_source_config" style="flex:1;min-width:220px">
             </div>
+            <input class="input" placeholder='Visibility rule (optional), e.g. contains:refund or journey_state:triage' x-model="varForm.visibility_rule">
             <button class="btn btn-primary btn-sm" @click="createContextVariable()" :disabled="varCreating || !varForm.name.trim() || !selectedScope">
               <span x-show="!varCreating">+ Add Variable</span>
-              <span x-show="varCreating">Saving…</span>
+              <span x-show="varCreating">Saving...</span>
             </button>
+            <div x-show="contextVariablesLoading" class="text-xs text-dim">Loading...</div>
+            <div x-show="!contextVariablesLoading && contextVariables.length === 0" class="text-xs text-dim">No context variables yet.</div>
+            <div class="table-wrap" x-show="contextVariables.length && !contextVariablesLoading">
+              <table class="table table-sm">
+                <thead><tr><th>Name</th><th>Source</th><th>Visibility</th><th>Config</th></tr></thead>
+                <tbody>
+                  <template x-for="variable in contextVariables" :key="variable.variable_id">
+                    <tr>
+                      <td class="font-medium" x-text="variable.name"></td>
+                      <td class="text-xs font-mono" x-text="variable.value_source_type"></td>
+                      <td class="text-xs text-muted" x-text="variable.visibility_rule || 'always'"></td>
+                      <td class="text-xs font-mono truncate" style="max-width:260px" :title="variable.value_source_config" x-text="variable.value_source_config"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
         <!-- Canned Responses -->
         <div class="card">
-          <div class="card-header"><h3 class="card-title">Canned Responses</h3></div>
+          <div class="card-header flex items-center justify-between">
+            <h3 class="card-title">Canned Responses <span class="badge badge-muted ml-1" x-text="cannedResponses.length"></span></h3>
+            <button class="btn btn-ghost btn-sm" @click="loadCannedResponses()">Refresh</button>
+          </div>
           <div class="card-body flex flex-col gap-3">
             <div class="flex gap-3 flex-wrap">
               <input class="input" placeholder="Response name" x-model="cannedForm.name" style="width:160px">
               <input class="input" placeholder="Priority" type="number" x-model="cannedForm.priority" style="width:90px">
             </div>
+            <input class="input" placeholder='Trigger rule (optional), e.g. contains:refund or journey_state:handoff' x-model="cannedForm.trigger_rule">
             <textarea class="input" rows="4" placeholder="Template text… use {variable_name} for substitution" x-model="cannedForm.template_text"></textarea>
             <button class="btn btn-primary btn-sm" @click="createCannedResponse()" :disabled="cannedCreating || !cannedForm.name.trim() || !cannedForm.template_text.trim() || !selectedScope">
               <span x-show="!cannedCreating">+ Add Canned Response</span>
-              <span x-show="cannedCreating">Saving…</span>
+              <span x-show="cannedCreating">Saving...</span>
             </button>
+            <div x-show="cannedResponsesLoading" class="text-xs text-dim">Loading...</div>
+            <div x-show="!cannedResponsesLoading && cannedResponses.length === 0" class="text-xs text-dim">No canned responses yet.</div>
+            <div class="table-wrap" x-show="cannedResponses.length && !cannedResponsesLoading">
+              <table class="table table-sm">
+                <thead><tr><th>Name</th><th>Priority</th><th>Trigger</th><th>Template</th></tr></thead>
+                <tbody>
+                  <template x-for="response in cannedResponses" :key="response.response_id">
+                    <tr>
+                      <td class="font-medium" x-text="response.name"></td>
+                      <td x-text="response.priority"></td>
+                      <td class="text-xs text-muted" x-text="response.trigger_rule || 'always'"></td>
+                      <td class="text-xs text-muted" x-text="response.template_text"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -5928,9 +6127,10 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
               <input class="input" placeholder="guideline_ref (optional)" x-model="tpForm.guideline_ref" style="flex:1;min-width:160px">
               <input class="input" placeholder="journey_state_ref (optional)" x-model="tpForm.journey_state_ref" style="flex:1;min-width:160px">
             </div>
+            <input class="input" placeholder="skill_ref (optional)" x-model="tpForm.skill_ref">
             <button class="btn btn-primary btn-sm" @click="createToolPolicy()" :disabled="tpCreating || !tpForm.tool_name.trim() || !selectedScope">
               <span x-show="!tpCreating">+ Create Policy</span>
-              <span x-show="tpCreating">Creating…</span>
+              <span x-show="tpCreating">Creating...</span>
             </button>
             <p class="text-xs text-muted" x-show="!selectedScope">⚠ Select a scope first</p>
           </div>
@@ -5945,7 +6145,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             <div x-show="tpLoading" class="text-muted text-sm">Loading…</div>
             <div x-show="!tpLoading && toolPolicies.length === 0" class="text-muted text-sm">No tool policies yet. All tools are open by default.</div>
             <table class="table table-sm" x-show="!tpLoading && toolPolicies.length > 0">
-              <thead><tr><th>Tool</th><th>Approval Mode</th><th>Observation Ref</th><th>Guideline Ref</th><th>Enabled</th></tr></thead>
+              <thead><tr><th>Tool</th><th>Approval Mode</th><th>Observation Ref</th><th>Guideline Ref</th><th>Skill Ref</th><th>Enabled</th></tr></thead>
               <tbody>
                 <template x-for="p in toolPolicies" :key="p.policy_id">
                   <tr>
@@ -5953,6 +6153,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                     <td><span :class="approvalModeBadge(p.approval_mode)" x-text="p.approval_mode"></span></td>
                     <td class="text-xs text-muted" x-text="p.observation_ref || '—'"></td>
                     <td class="text-xs text-muted" x-text="p.guideline_ref || '—'"></td>
+                    <td class="text-xs text-muted" x-text="p.skill_ref || '—'"></td>
                     <td><span :class="p.enabled ? 'badge badge-ok' : 'badge badge-muted'" x-text="p.enabled ? 'yes' : 'no'"></span></td>
                   </tr>
                 </template>
@@ -5967,6 +6168,70 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             <p><strong>conditional</strong> — Tool is visible only when the specified observation/guideline/state matches; requires approval if matched.</p>
             <p><strong>required</strong> — Tool is always visible but requires explicit human approval before execution.</p>
             <p class="mt-1">Policies with no <code>observation_ref</code> / <code>guideline_ref</code> apply unconditionally to the tool.</p>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- ── Releases Tab ─────────────────────────────────────────────────────── -->
+    <template x-if="tab === 'releases'">
+      <div class="flex flex-col gap-4">
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Release Management</h3></div>
+          <div class="card-body flex flex-col gap-3">
+            <p class="text-sm text-muted">Publish control-plane versions for the selected scope. The active published version is written into turn traces and used for replay/explainability.</p>
+            <template x-if="currentPublishedRelease()">
+              <div class="rounded p-3 text-sm" style="background:var(--surface-2)">
+                <span class="badge badge-ok">Published</span>
+                <span class="ml-2 font-medium" x-text="currentPublishedRelease().version"></span>
+                <span class="ml-2 text-muted" x-text="currentPublishedRelease().published_by ? ('by ' + currentPublishedRelease().published_by) : ''"></span>
+              </div>
+            </template>
+            <div class="flex gap-3 flex-wrap items-end">
+              <div class="flex flex-col gap-1" style="flex:1;min-width:200px">
+                <label class="label text-xs">Version</label>
+                <input class="input" x-model="releaseForm.version" placeholder="e.g. 2026.03.22-rc1">
+              </div>
+              <div class="flex flex-col gap-1" style="flex:1;min-width:160px">
+                <label class="label text-xs">Published By</label>
+                <input class="input" x-model="releaseForm.published_by" placeholder="system">
+              </div>
+              <button class="btn btn-primary btn-sm" @click="publishRelease()" :disabled="releasePublishing || !releaseForm.version.trim() || !selectedScope">
+                <span x-show="!releasePublishing">Publish Release</span>
+                <span x-show="releasePublishing">Publishing...</span>
+              </button>
+              <button class="btn btn-ghost btn-sm" @click="rollbackRelease()" :disabled="releaseRollback || !currentPublishedRelease()">
+                <span x-show="!releaseRollback">Rollback</span>
+                <span x-show="releaseRollback">Rolling back...</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header flex items-center justify-between">
+            <h3 class="card-title">Release History <span class="badge badge-muted ml-1" x-text="releases.length"></span></h3>
+            <button class="btn btn-ghost btn-sm" @click="loadReleases()">Refresh</button>
+          </div>
+          <div class="card-body">
+            <div x-show="releasesLoading" class="text-muted text-sm">Loading...</div>
+            <div x-show="!releasesLoading && releases.length === 0" class="text-muted text-sm">No releases published yet for this scope.</div>
+            <table class="table table-sm" x-show="!releasesLoading && releases.length > 0">
+              <thead><tr><th>Version</th><th>Status</th><th>Published By</th><th>Created</th></tr></thead>
+              <tbody>
+                <template x-for="release in releases" :key="release.release_id">
+                  <tr>
+                    <td>
+                      <div class="font-medium" x-text="release.version"></div>
+                      <div class="text-xs text-muted font-mono" x-text="release.release_id"></div>
+                    </td>
+                    <td><span :class="releaseStatusBadge(release.status)" x-text="release.status"></span></td>
+                    <td class="text-xs text-muted" x-text="release.published_by || 'system'"></td>
+                    <td class="text-xs text-muted" x-text="release.created_at ? release.created_at.substring(0, 16).replace('T', ' ') : '—'"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
