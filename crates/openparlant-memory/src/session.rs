@@ -3,7 +3,7 @@
 use crate::db::{block_on, SharedDb};
 use chrono::Utc;
 use openparlant_types::agent::{AgentId, SessionId};
-use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::error::{SiliCrewError, SiliCrewResult};
 use openparlant_types::message::{ContentBlock, Message, MessageContent, Role};
 #[cfg(test)]
 use rusqlite::Connection;
@@ -40,15 +40,15 @@ impl SessionStore {
     }
 
     /// Load a session from the database.
-    pub fn get_session(&self, session_id: SessionId) -> OpenFangResult<Option<Session>> {
+    pub fn get_session(&self, session_id: SessionId) -> SiliCrewResult<Option<Session>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare("SELECT agent_id, messages, context_window_tokens, label FROM sessions WHERE id = ?1")
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 let result = stmt.query_row(rusqlite::params![session_id.0.to_string()], |row| {
                     let agent_str: String = row.get(0)?;
@@ -67,7 +67,7 @@ impl SessionStore {
                         label,
                     )?)),
                     Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                    Err(e) => Err(OpenFangError::Memory(e.to_string())),
+                    Err(e) => Err(SiliCrewError::Memory(e.to_string())),
                 }
             }
             SharedDb::Postgres(pool) => {
@@ -80,19 +80,19 @@ impl SessionStore {
                     .fetch_optional(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 match row {
                     Some(row) => Ok(Some(decode_session(
                         session_id,
                         row.try_get("agent_id")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get("messages")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get::<i64, _>("context_window_tokens")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get("label")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                     )?)),
                     None => Ok(None),
                 }
@@ -101,15 +101,15 @@ impl SessionStore {
     }
 
     /// Save a session to the database.
-    pub fn save_session(&self, session: &Session) -> OpenFangResult<()> {
+    pub fn save_session(&self, session: &Session) -> SiliCrewResult<()> {
         let messages_blob = rmp_serde::to_vec_named(&session.messages)
-            .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+            .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
         let now = Utc::now().to_rfc3339();
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO sessions (id, agent_id, messages, context_window_tokens, label, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
@@ -123,7 +123,7 @@ impl SessionStore {
                         now,
                     ],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -150,24 +150,24 @@ impl SessionStore {
                     .execute(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
     }
 
     /// Delete a session from the database.
-    pub fn delete_session(&self, session_id: SessionId) -> OpenFangResult<()> {
+    pub fn delete_session(&self, session_id: SessionId) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "DELETE FROM sessions WHERE id = ?1",
                     rusqlite::params![session_id.0.to_string()],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -177,24 +177,24 @@ impl SessionStore {
                         .execute(&*pool)
                         .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
     }
 
     /// Delete all sessions belonging to an agent.
-    pub fn delete_agent_sessions(&self, agent_id: AgentId) -> OpenFangResult<()> {
+    pub fn delete_agent_sessions(&self, agent_id: AgentId) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "DELETE FROM sessions WHERE agent_id = ?1",
                     rusqlite::params![agent_id.0.to_string()],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -204,24 +204,24 @@ impl SessionStore {
                         .execute(&*pool)
                         .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
     }
 
     /// Delete the canonical (cross-channel) session for an agent.
-    pub fn delete_canonical_session(&self, agent_id: AgentId) -> OpenFangResult<()> {
+    pub fn delete_canonical_session(&self, agent_id: AgentId) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "DELETE FROM canonical_sessions WHERE agent_id = ?1",
                     rusqlite::params![agent_id.0.to_string()],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -231,24 +231,24 @@ impl SessionStore {
                         .execute(&*pool)
                         .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
     }
 
     /// List all sessions with metadata (session_id, agent_id, message_count, created_at).
-    pub fn list_sessions(&self) -> OpenFangResult<Vec<serde_json::Value>> {
+    pub fn list_sessions(&self) -> SiliCrewResult<Vec<serde_json::Value>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT id, agent_id, messages, created_at, label FROM sessions ORDER BY created_at DESC",
                     )
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 let rows = stmt
                     .query_map([], |row| {
@@ -265,11 +265,11 @@ impl SessionStore {
                             label,
                         ))
                     })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 let mut sessions = Vec::new();
                 for row in rows {
-                    sessions.push(row.map_err(|e| OpenFangError::Memory(e.to_string()))?);
+                    sessions.push(row.map_err(|e| SiliCrewError::Memory(e.to_string()))?);
                 }
                 Ok(sessions)
             }
@@ -282,21 +282,21 @@ impl SessionStore {
                     .fetch_all(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 let mut sessions = Vec::with_capacity(rows.len());
                 for row in rows {
                     sessions.push(session_meta_json(
                         row.try_get("id")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get("agent_id")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get("messages")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get("created_at")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get("label")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                     ));
                 }
                 Ok(sessions)
@@ -305,7 +305,7 @@ impl SessionStore {
     }
 
     /// Create a new empty session for an agent.
-    pub fn create_session(&self, agent_id: AgentId) -> OpenFangResult<Session> {
+    pub fn create_session(&self, agent_id: AgentId) -> SiliCrewResult<Session> {
         let session = Session {
             id: SessionId::new(),
             agent_id,
@@ -322,18 +322,18 @@ impl SessionStore {
         &self,
         session_id: SessionId,
         label: Option<&str>,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         let now = Utc::now().to_rfc3339();
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "UPDATE sessions SET label = ?1, updated_at = ?2 WHERE id = ?3",
                     rusqlite::params![label, now, session_id.0.to_string()],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -346,7 +346,7 @@ impl SessionStore {
                         .execute(&*pool)
                         .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
@@ -357,18 +357,18 @@ impl SessionStore {
         &self,
         agent_id: AgentId,
         label: &str,
-    ) -> OpenFangResult<Option<Session>> {
+    ) -> SiliCrewResult<Option<Session>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT id, messages, context_window_tokens, label FROM sessions \
                          WHERE agent_id = ?1 AND label = ?2 LIMIT 1",
                     )
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 let result =
                     stmt.query_row(rusqlite::params![agent_id.0.to_string(), label], |row| {
@@ -383,7 +383,7 @@ impl SessionStore {
                     Ok((id_str, messages_blob, tokens, lbl)) => {
                         let session_id = uuid::Uuid::parse_str(&id_str)
                             .map(SessionId)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                         Ok(Some(decode_session(
                             session_id,
                             agent_id.0.to_string(),
@@ -393,7 +393,7 @@ impl SessionStore {
                         )?))
                     }
                     Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                    Err(e) => Err(OpenFangError::Memory(e.to_string())),
+                    Err(e) => Err(SiliCrewError::Memory(e.to_string())),
                 }
             }
             SharedDb::Postgres(pool) => {
@@ -410,25 +410,25 @@ impl SessionStore {
                     .fetch_optional(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 match row {
                     Some(row) => {
                         let session_id = uuid::Uuid::parse_str(
                             &row.try_get::<String, _>("id")
-                                .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                                .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         )
                         .map(SessionId)
-                        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                         Ok(Some(decode_session(
                             session_id,
                             agent_id.0.to_string(),
                             row.try_get("messages")
-                                .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                                .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                             row.try_get::<i64, _>("context_window_tokens")
-                                .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                                .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                             row.try_get("label")
-                                .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                                .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         )?))
                     }
                     None => Ok(None),
@@ -440,17 +440,17 @@ impl SessionStore {
 
 impl SessionStore {
     /// List all sessions for a specific agent.
-    pub fn list_agent_sessions(&self, agent_id: AgentId) -> OpenFangResult<Vec<serde_json::Value>> {
+    pub fn list_agent_sessions(&self, agent_id: AgentId) -> SiliCrewResult<Vec<serde_json::Value>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT id, messages, created_at, label FROM sessions WHERE agent_id = ?1 ORDER BY created_at DESC",
                     )
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 let rows = stmt
                     .query_map(rusqlite::params![agent_id.0.to_string()], |row| {
@@ -465,11 +465,11 @@ impl SessionStore {
                             label,
                         ))
                     })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 let mut sessions = Vec::new();
                 for row in rows {
-                    sessions.push(row.map_err(|e| OpenFangError::Memory(e.to_string()))?);
+                    sessions.push(row.map_err(|e| SiliCrewError::Memory(e.to_string()))?);
                 }
                 Ok(sessions)
             }
@@ -483,19 +483,19 @@ impl SessionStore {
                     .fetch_all(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 let mut sessions = Vec::with_capacity(rows.len());
                 for row in rows {
                     sessions.push(agent_session_meta_json(
                         row.try_get("id")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get("messages")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get("created_at")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get("label")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                     ));
                 }
                 Ok(sessions)
@@ -508,7 +508,7 @@ impl SessionStore {
         &self,
         agent_id: AgentId,
         label: Option<&str>,
-    ) -> OpenFangResult<Session> {
+    ) -> SiliCrewResult<Session> {
         let session = Session {
             id: SessionId::new(),
             agent_id,
@@ -530,7 +530,7 @@ impl SessionStore {
         agent_id: AgentId,
         summary: &str,
         kept_messages: Vec<Message>,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         let mut canonical = self.load_canonical(agent_id)?;
         canonical.compacted_summary = Some(summary.to_string());
         canonical.messages = kept_messages;
@@ -571,12 +571,12 @@ fn decode_session(
     messages_blob: Vec<u8>,
     tokens: i64,
     label: Option<String>,
-) -> OpenFangResult<Session> {
+) -> SiliCrewResult<Session> {
     let agent_id = uuid::Uuid::parse_str(&agent_str)
         .map(AgentId)
-        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
     let messages: Vec<Message> = rmp_serde::from_slice(&messages_blob)
-        .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+        .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
     Ok(Session {
         id: session_id,
         agent_id,
@@ -592,9 +592,9 @@ fn decode_canonical(
     cursor: i64,
     summary: Option<String>,
     updated_at: String,
-) -> OpenFangResult<CanonicalSession> {
+) -> SiliCrewResult<CanonicalSession> {
     let messages: Vec<Message> = rmp_serde::from_slice(&messages_blob)
-        .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+        .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
     Ok(CanonicalSession {
         agent_id,
         messages,
@@ -652,18 +652,18 @@ fn agent_session_meta_json(
 
 impl SessionStore {
     /// Load the canonical session for an agent, creating one if it doesn't exist.
-    pub fn load_canonical(&self, agent_id: AgentId) -> OpenFangResult<CanonicalSession> {
+    pub fn load_canonical(&self, agent_id: AgentId) -> SiliCrewResult<CanonicalSession> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT messages, compaction_cursor, compacted_summary, updated_at \
                          FROM canonical_sessions WHERE agent_id = ?1",
                     )
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 let result = stmt.query_row(rusqlite::params![agent_id.0.to_string()], |row| {
                     let messages_blob: Vec<u8> = row.get(0)?;
@@ -682,7 +682,7 @@ impl SessionStore {
                         updated_at,
                     )?),
                     Err(rusqlite::Error::QueryReturnedNoRows) => Ok(empty_canonical(agent_id)),
-                    Err(e) => Err(OpenFangError::Memory(e.to_string())),
+                    Err(e) => Err(SiliCrewError::Memory(e.to_string())),
                 }
             }
             SharedDb::Postgres(pool) => {
@@ -696,19 +696,19 @@ impl SessionStore {
                     .fetch_optional(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 match row {
                     Some(row) => Ok(decode_canonical(
                         agent_id,
                         row.try_get("messages")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get::<i64, _>("compaction_cursor")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get("compacted_summary")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get("updated_at")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                     )?),
                     None => Ok(empty_canonical(agent_id)),
                 }
@@ -726,7 +726,7 @@ impl SessionStore {
         agent_id: AgentId,
         new_messages: &[Message],
         compaction_threshold: Option<usize>,
-    ) -> OpenFangResult<CanonicalSession> {
+    ) -> SiliCrewResult<CanonicalSession> {
         let mut canonical = self.load_canonical(agent_id)?;
         canonical.messages.extend(new_messages.iter().cloned());
 
@@ -791,7 +791,7 @@ impl SessionStore {
         &self,
         agent_id: AgentId,
         window_size: Option<usize>,
-    ) -> OpenFangResult<(Option<String>, Vec<Message>)> {
+    ) -> SiliCrewResult<(Option<String>, Vec<Message>)> {
         let canonical = self.load_canonical(agent_id)?;
         let window = window_size.unwrap_or(DEFAULT_CANONICAL_WINDOW);
         let start = canonical.messages.len().saturating_sub(window);
@@ -800,14 +800,14 @@ impl SessionStore {
     }
 
     /// Persist a canonical session to the backing store.
-    fn save_canonical(&self, canonical: &CanonicalSession) -> OpenFangResult<()> {
+    fn save_canonical(&self, canonical: &CanonicalSession) -> SiliCrewResult<()> {
         let messages_blob = rmp_serde::to_vec(&canonical.messages)
-            .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+            .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO canonical_sessions (agent_id, messages, compaction_cursor, compacted_summary, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5)
@@ -820,7 +820,7 @@ impl SessionStore {
                         canonical.updated_at,
                     ],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -846,7 +846,7 @@ impl SessionStore {
                     .execute(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())

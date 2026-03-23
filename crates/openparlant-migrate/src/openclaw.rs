@@ -415,16 +415,16 @@ struct LegacyYamlChannelConfig {
 
 /// OpenParlant config.toml structure for serialization.
 #[derive(Serialize)]
-struct OpenFangConfig {
-    default_model: OpenFangModelConfig,
-    memory: OpenFangMemorySection,
-    network: OpenFangNetworkSection,
+struct SiliCrewConfig {
+    default_model: SiliCrewModelConfig,
+    memory: SiliCrewMemorySection,
+    network: SiliCrewNetworkSection,
     #[serde(skip_serializing_if = "Option::is_none")]
     channels: Option<toml::Value>,
 }
 
 #[derive(Serialize)]
-struct OpenFangModelConfig {
+struct SiliCrewModelConfig {
     provider: String,
     model: String,
     api_key_env: String,
@@ -433,12 +433,12 @@ struct OpenFangModelConfig {
 }
 
 #[derive(Serialize)]
-struct OpenFangMemorySection {
+struct SiliCrewMemorySection {
     decay_rate: f32,
 }
 
 #[derive(Serialize)]
-struct OpenFangNetworkSection {
+struct SiliCrewNetworkSection {
     listen_addr: String,
 }
 
@@ -1379,15 +1379,15 @@ fn migrate_config_from_json(
     // Extract channels (writes secrets.env)
     let channels = migrate_channels_from_json(root, target, dry_run, report);
 
-    let of_config = OpenFangConfig {
-        default_model: OpenFangModelConfig {
+    let of_config = SiliCrewConfig {
+        default_model: SiliCrewModelConfig {
             provider: resolved.provider,
             model: resolved.model,
             api_key_env,
             base_url: resolved.base_url,
         },
-        memory: OpenFangMemorySection { decay_rate: 0.05 },
-        network: OpenFangNetworkSection {
+        memory: SiliCrewMemorySection { decay_rate: 0.05 },
+        network: SiliCrewNetworkSection {
             listen_addr: "127.0.0.1:4200".to_string(),
         },
         channels,
@@ -2610,21 +2610,21 @@ fn migrate_legacy_config(
         .api_key_env
         .unwrap_or_else(|| default_api_key_env(&provider));
 
-    let of_config = OpenFangConfig {
-        default_model: OpenFangModelConfig {
+    let of_config = SiliCrewConfig {
+        default_model: SiliCrewModelConfig {
             provider,
             model: oc_config.model,
             api_key_env,
             base_url: oc_config.base_url,
         },
-        memory: OpenFangMemorySection {
+        memory: SiliCrewMemorySection {
             decay_rate: oc_config
                 .memory
                 .as_ref()
                 .and_then(|m| m.decay_rate)
                 .unwrap_or(0.05),
         },
-        network: OpenFangNetworkSection {
+        network: SiliCrewNetworkSection {
             listen_addr: "127.0.0.1:4200".to_string(),
         },
         channels,

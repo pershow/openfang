@@ -753,7 +753,7 @@ Loop steps are bounded by `max_iterations` (default: 5 in the API). The engine w
 
 ### Hourly Token Quota
 
-The `AgentScheduler` (in `openparlant-kernel/src/scheduler.rs`) tracks per-agent token usage with a rolling 1-hour window via `UsageTracker`. If an agent exceeds its `ResourceQuota.max_llm_tokens_per_hour`, the scheduler returns `OpenFangError::QuotaExceeded`. The window resets automatically after 3600 seconds. This quota applies to all agent interactions, including those invoked by workflows.
+The `AgentScheduler` (in `openparlant-kernel/src/scheduler.rs`) tracks per-agent token usage with a rolling 1-hour window via `UsageTracker`. If an agent exceeds its `ResourceQuota.max_llm_tokens_per_hour`, the scheduler returns `SiliCrewError::QuotaExceeded`. The window resets automatically after 3600 seconds. This quota applies to all agent interactions, including those invoked by workflows.
 
 ---
 
@@ -805,7 +805,7 @@ The `AgentScheduler` (in `openparlant-kernel/src/scheduler.rs`) tracks per-agent
 
 ## Internal Architecture Notes
 
-- The `WorkflowEngine` is decoupled from `OpenFangKernel`. The `execute_run` method takes two closures: `agent_resolver` (resolves `StepAgent` to `AgentId` + name) and `send_message` (sends a prompt to an agent and returns output + token counts). This design makes the engine testable without a live kernel.
+- The `WorkflowEngine` is decoupled from `SiliCrewKernel`. The `execute_run` method takes two closures: `agent_resolver` (resolves `StepAgent` to `AgentId` + name) and `send_message` (sends a prompt to an agent and returns output + token counts). This design makes the engine testable without a live kernel.
 - All state is held in `Arc<RwLock<HashMap>>`, allowing concurrent read access and serialized writes.
 - The `TriggerEngine` uses `DashMap` for lock-free concurrent access, with an `agent_triggers` index for efficient per-agent trigger lookups.
 - Fan-out parallelism uses `futures::future::join_all` -- all fan-out steps in a consecutive group are launched simultaneously.

@@ -6,7 +6,6 @@ import { useTranslation } from 'react-i18next';
 import ConfirmModal from '../components/ConfirmModal';
 import type { FileBrowserApi } from '../components/FileBrowser';
 import FileBrowser from '../components/FileBrowser';
-import ChannelConfig from '../components/ChannelConfig';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import PromptModal from '../components/PromptModal';
 import { activityApi, agentApi, channelApi, enterpriseApi, fileApi, scheduleApi, skillApi, taskApi, triggerApi, uploadFileWithProgress } from '../services/api';
@@ -1454,6 +1453,14 @@ function AgentDetailInner() {
         queryFn: () => enterpriseApi.llmModels(),
         enabled: activeTab === 'settings' || activeTab === 'status' || activeTab === 'chat',
     });
+    const selectableLlmModels = llmModels.filter(
+        (m: any) =>
+            m.enabled
+            || m.id === settingsForm.primary_model_id
+            || m.id === settingsForm.fallback_model_id
+            || m.id === agent?.primary_model_id
+            || m.id === agent?.fallback_model_id
+    );
 
     const supportsVision = !!agent?.primary_model_id && llmModels.some(
         (m: any) => m.id === agent.primary_model_id && m.supports_vision
@@ -3585,6 +3592,13 @@ function AgentDetailInner() {
                         );
 
                         const handleSaveSettings = async () => {
+                            if (
+                                settingsForm.primary_model_id
+                                && settingsForm.primary_model_id === settingsForm.fallback_model_id
+                            ) {
+                                setSettingsError(t('agent.settings.modelConfig', 'Primary and fallback models must be different'));
+                                return;
+                            }
                             setSettingsSaving(true);
                             setSettingsError('');
                             try {
@@ -3664,7 +3678,7 @@ function AgentDetailInner() {
                                                 onChange={(e) => setSettingsForm(f => ({ ...f, primary_model_id: e.target.value }))}
                                             >
                                                 <option value="">--</option>
-                                                {llmModels.map((m: any) => (
+                                                {selectableLlmModels.map((m: any) => (
                                                     <option key={m.id} value={m.id}>{m.label} ({m.provider}/{m.model})</option>
                                                 ))}
                                             </select>
@@ -3678,7 +3692,7 @@ function AgentDetailInner() {
                                                 onChange={(e) => setSettingsForm(f => ({ ...f, fallback_model_id: e.target.value }))}
                                             >
                                                 <option value="">--</option>
-                                                {llmModels.map((m: any) => (
+                                                {selectableLlmModels.map((m: any) => (
                                                     <option key={m.id} value={m.id}>{m.label} ({m.provider}/{m.model})</option>
                                                 ))}
                                             </select>
@@ -4212,9 +4226,19 @@ function AgentDetailInner() {
                                     </div>
                                 </div>
 
-                                {/* Channel Config */}
-                                <div style={{ marginBottom: "12px" }}>
-                                    <ChannelConfig mode="edit" agentId={id!} />
+                                <div className="card" style={{ marginBottom: '12px' }}>
+                                    <h4 style={{ marginBottom: '10px' }}>{t('agent.settings.channel.title')}</h4>
+                                    <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+                                        SiliCrew 当前使用全局渠道配置。请前往 Channels 页面统一配置并测试 Feishu、Slack、Discord、WeCom 等接入。
+                                    </p>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                        <button className="btn btn-primary" onClick={() => navigate('/channels')}>
+                                            Open Channels
+                                        </button>
+                                        <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                                            {webhookData?.webhook_url ? `Webhook: ${webhookData.webhook_url}` : '配置完成后可在 Channels 页面查看 webhook。'}
+                                        </span>
+                                    </div>
                                 </div>
 
                                 {/* Danger Zone */}

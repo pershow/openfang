@@ -1,6 +1,6 @@
 //! Event system: crossterm polling, tick timer, streaming bridges.
 
-use openparlant_kernel::OpenFangKernel;
+use openparlant_kernel::SiliCrewKernel;
 use openparlant_runtime::agent_loop::AgentLoopResult;
 use openparlant_runtime::llm_driver::StreamEvent;
 use openparlant_types::agent::AgentId;
@@ -33,7 +33,7 @@ use super::screens::{
 #[derive(Clone)]
 pub enum BackendRef {
     Daemon(String),
-    InProcess(Arc<OpenFangKernel>),
+    InProcess(Arc<SiliCrewKernel>),
 }
 
 // ── AppEvent ────────────────────────────────────────────────────────────────
@@ -49,7 +49,7 @@ pub enum AppEvent {
     /// The streaming agent loop finished.
     StreamDone(Result<AgentLoopResult, String>),
     /// The kernel finished booting in the background.
-    KernelReady(Arc<OpenFangKernel>),
+    KernelReady(Arc<SiliCrewKernel>),
     /// The kernel failed to boot.
     KernelError(String),
     /// An agent was successfully spawned (daemon mode).
@@ -270,7 +270,7 @@ pub fn spawn_kernel_boot(config: Option<std::path::PathBuf>, tx: mpsc::Sender<Ap
         let rt = tokio::runtime::Runtime::new().unwrap();
         let _guard = rt.enter();
 
-        match OpenFangKernel::boot(config.as_deref()) {
+        match SiliCrewKernel::boot(config.as_deref()) {
             Ok(k) => {
                 let k = Arc::new(k);
                 k.set_self_handle();
@@ -285,7 +285,7 @@ pub fn spawn_kernel_boot(config: Option<std::path::PathBuf>, tx: mpsc::Sender<Ap
 
 /// Spawn a background thread for in-process streaming.
 pub fn spawn_inprocess_stream(
-    kernel: Arc<OpenFangKernel>,
+    kernel: Arc<SiliCrewKernel>,
     agent_id: AgentId,
     message: String,
     tx: mpsc::Sender<AppEvent>,

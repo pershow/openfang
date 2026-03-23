@@ -451,7 +451,7 @@ Sprint 4: COMPLETE
   4.5 Final release ................ READY (tag + build)
 
 Production audit:
-  - OpenFangAPI.delete() bug ....... FIXED
+  - SiliCrewAPI.delete() bug ....... FIXED
   - /api/config/set missing ........ FIXED
   - Tauri CSP hardened ............. FIXED
   - Middleware CSP narrowed ........ FIXED

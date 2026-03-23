@@ -5,12 +5,12 @@ use crate::store::{
 use chrono::{DateTime, Utc};
 use openparlant_memory::db::{block_on, SharedDb};
 use openparlant_types::control::{ControlScope, ScopeId};
-use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::error::{SiliCrewError, SiliCrewResult};
 use rusqlite::params;
 use sqlx::Row;
 use std::collections::HashMap;
 
-fn parse_timestamp(value: &str) -> OpenFangResult<DateTime<Utc>> {
+fn parse_timestamp(value: &str) -> SiliCrewResult<DateTime<Utc>> {
     chrono::DateTime::parse_from_rfc3339(value)
         .map(|dt| dt.with_timezone(&Utc))
         .or_else(|_| {
@@ -23,31 +23,57 @@ fn now_rfc3339() -> String {
     Utc::now().to_rfc3339()
 }
 
-fn memory_error<E: std::fmt::Display>(error: E) -> OpenFangError {
-    OpenFangError::Memory(error.to_string())
+fn memory_error<E: std::fmt::Display>(error: E) -> SiliCrewError {
+    SiliCrewError::Memory(error.to_string())
 }
 
 fn tenant_from_sqlite_row(
-    row: (String, String, String, i64, String, i32, String, i32, i32),
-) -> OpenFangResult<DashboardTenant> {
+    row: (
+        String,
+        String,
+        String,
+        String,
+        String,
+        i64,
+        String,
+        i32,
+        String,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+    ),
+) -> SiliCrewResult<DashboardTenant> {
     Ok(DashboardTenant {
         tenant_id: row.0,
         name: row.1,
         slug: row.2,
-        is_active: row.3 != 0,
-        created_at: parse_timestamp(&row.4)?,
-        default_message_limit: row.5,
-        default_message_period: row.6,
-        default_max_agents: row.7,
-        default_agent_ttl_hours: row.8,
+        im_provider: row.3,
+        timezone: row.4,
+        is_active: row.5 != 0,
+        created_at: parse_timestamp(&row.6)?,
+        default_message_limit: row.7,
+        default_message_period: row.8,
+        default_max_agents: row.9,
+        default_agent_ttl_hours: row.10,
+        default_max_llm_calls_per_day: row.11,
+        min_heartbeat_interval_minutes: row.12,
+        default_max_triggers: row.13,
+        min_poll_interval_floor: row.14,
+        max_webhook_rate_ceiling: row.15,
     })
 }
 
-fn tenant_from_postgres_row(row: sqlx::postgres::PgRow) -> OpenFangResult<DashboardTenant> {
+fn tenant_from_postgres_row(row: sqlx::postgres::PgRow) -> SiliCrewResult<DashboardTenant> {
     Ok(DashboardTenant {
         tenant_id: row.try_get("id").map_err(memory_error)?,
         name: row.try_get("name").map_err(memory_error)?,
         slug: row.try_get("slug").map_err(memory_error)?,
+        im_provider: row.try_get("im_provider").map_err(memory_error)?,
+        timezone: row.try_get("timezone").map_err(memory_error)?,
         is_active: row.try_get("is_active").map_err(memory_error)?,
         created_at: parse_timestamp(
             &row.try_get::<String, _>("created_at")
@@ -61,6 +87,19 @@ fn tenant_from_postgres_row(row: sqlx::postgres::PgRow) -> OpenFangResult<Dashbo
         default_agent_ttl_hours: row
             .try_get("default_agent_ttl_hours")
             .map_err(memory_error)?,
+        default_max_llm_calls_per_day: row
+            .try_get("default_max_llm_calls_per_day")
+            .map_err(memory_error)?,
+        min_heartbeat_interval_minutes: row
+            .try_get("min_heartbeat_interval_minutes")
+            .map_err(memory_error)?,
+        default_max_triggers: row.try_get("default_max_triggers").map_err(memory_error)?,
+        min_poll_interval_floor: row
+            .try_get("min_poll_interval_floor")
+            .map_err(memory_error)?,
+        max_webhook_rate_ceiling: row
+            .try_get("max_webhook_rate_ceiling")
+            .map_err(memory_error)?,
     })
 }
 
@@ -69,7 +108,7 @@ impl ControlStore {
         &self,
         username: &str,
         password_hash: &str,
-    ) -> OpenFangResult<(DashboardTenant, DashboardUser)> {
+    ) -> SiliCrewResult<(DashboardTenant, DashboardUser)> {
         let tenant = match self.get_tenant_by_slug("default")? {
             Some(existing) => existing,
             None => {
@@ -77,12 +116,19 @@ impl ControlStore {
                     tenant_id: uuid::Uuid::new_v4().to_string(),
                     name: "Default Company".to_string(),
                     slug: "default".to_string(),
+                    im_provider: "web_only".to_string(),
+                    timezone: "UTC".to_string(),
                     is_active: true,
                     created_at: Utc::now(),
                     default_message_limit: 50,
                     default_message_period: "permanent".to_string(),
                     default_max_agents: 2,
                     default_agent_ttl_hours: 48,
+                    default_max_llm_calls_per_day: 100,
+                    min_heartbeat_interval_minutes: 120,
+                    default_max_triggers: 20,
+                    min_poll_interval_floor: 5,
+                    max_webhook_rate_ceiling: 5,
                 };
                 self.upsert_tenant(&tenant)?;
                 tenant
@@ -126,35 +172,51 @@ impl ControlStore {
         Ok((tenant, user))
     }
 
-    pub fn upsert_tenant(&self, tenant: &DashboardTenant) -> OpenFangResult<()> {
+    pub fn upsert_tenant(&self, tenant: &DashboardTenant) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO tenants (
-                        id, name, slug, is_active, created_at,
-                        default_message_limit, default_message_period, default_max_agents, default_agent_ttl_hours
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                        id, name, slug, im_provider, timezone, is_active, created_at,
+                        default_message_limit, default_message_period, default_max_agents, default_agent_ttl_hours,
+                        default_max_llm_calls_per_day, min_heartbeat_interval_minutes, default_max_triggers,
+                        min_poll_interval_floor, max_webhook_rate_ceiling
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
                      ON CONFLICT(id) DO UPDATE SET
                         name = excluded.name,
                         slug = excluded.slug,
+                        im_provider = excluded.im_provider,
+                        timezone = excluded.timezone,
                         is_active = excluded.is_active,
                         default_message_limit = excluded.default_message_limit,
                         default_message_period = excluded.default_message_period,
                         default_max_agents = excluded.default_max_agents,
-                        default_agent_ttl_hours = excluded.default_agent_ttl_hours",
+                        default_agent_ttl_hours = excluded.default_agent_ttl_hours,
+                        default_max_llm_calls_per_day = excluded.default_max_llm_calls_per_day,
+                        min_heartbeat_interval_minutes = excluded.min_heartbeat_interval_minutes,
+                        default_max_triggers = excluded.default_max_triggers,
+                        min_poll_interval_floor = excluded.min_poll_interval_floor,
+                        max_webhook_rate_ceiling = excluded.max_webhook_rate_ceiling",
                     params![
                         tenant.tenant_id,
                         tenant.name,
                         tenant.slug,
+                        tenant.im_provider,
+                        tenant.timezone,
                         tenant.is_active as i64,
                         tenant.created_at.to_rfc3339(),
                         tenant.default_message_limit,
                         tenant.default_message_period,
                         tenant.default_max_agents,
                         tenant.default_agent_ttl_hours,
+                        tenant.default_max_llm_calls_per_day,
+                        tenant.min_heartbeat_interval_minutes,
+                        tenant.default_max_triggers,
+                        tenant.min_poll_interval_floor,
+                        tenant.max_webhook_rate_ceiling,
                     ],
                 )
                 .map_err(memory_error)?;
@@ -165,27 +227,43 @@ impl ControlStore {
                 block_on(async move {
                     sqlx::query(
                         "INSERT INTO tenants (
-                            id, name, slug, is_active, created_at,
-                            default_message_limit, default_message_period, default_max_agents, default_agent_ttl_hours
-                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                            id, name, slug, im_provider, timezone, is_active, created_at,
+                            default_message_limit, default_message_period, default_max_agents, default_agent_ttl_hours,
+                            default_max_llm_calls_per_day, min_heartbeat_interval_minutes, default_max_triggers,
+                            min_poll_interval_floor, max_webhook_rate_ceiling
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
                         ON CONFLICT(id) DO UPDATE SET
                             name = EXCLUDED.name,
                             slug = EXCLUDED.slug,
+                            im_provider = EXCLUDED.im_provider,
+                            timezone = EXCLUDED.timezone,
                             is_active = EXCLUDED.is_active,
                             default_message_limit = EXCLUDED.default_message_limit,
                             default_message_period = EXCLUDED.default_message_period,
                             default_max_agents = EXCLUDED.default_max_agents,
-                            default_agent_ttl_hours = EXCLUDED.default_agent_ttl_hours",
+                            default_agent_ttl_hours = EXCLUDED.default_agent_ttl_hours,
+                            default_max_llm_calls_per_day = EXCLUDED.default_max_llm_calls_per_day,
+                            min_heartbeat_interval_minutes = EXCLUDED.min_heartbeat_interval_minutes,
+                            default_max_triggers = EXCLUDED.default_max_triggers,
+                            min_poll_interval_floor = EXCLUDED.min_poll_interval_floor,
+                            max_webhook_rate_ceiling = EXCLUDED.max_webhook_rate_ceiling",
                     )
                     .bind(tenant.tenant_id)
                     .bind(tenant.name)
                     .bind(tenant.slug)
+                    .bind(tenant.im_provider)
+                    .bind(tenant.timezone)
                     .bind(tenant.is_active)
                     .bind(tenant.created_at.to_rfc3339())
                     .bind(tenant.default_message_limit)
                     .bind(tenant.default_message_period)
                     .bind(tenant.default_max_agents)
                     .bind(tenant.default_agent_ttl_hours)
+                    .bind(tenant.default_max_llm_calls_per_day)
+                    .bind(tenant.min_heartbeat_interval_minutes)
+                    .bind(tenant.default_max_triggers)
+                    .bind(tenant.min_poll_interval_floor)
+                    .bind(tenant.max_webhook_rate_ceiling)
                     .execute(&*pool)
                     .await
                 })
@@ -209,41 +287,52 @@ impl ControlStore {
         Ok(())
     }
 
-    pub fn get_tenant(&self, tenant_id: &str) -> OpenFangResult<Option<DashboardTenant>> {
+    pub fn get_tenant(&self, tenant_id: &str) -> SiliCrewResult<Option<DashboardTenant>> {
         self.get_tenant_by("id", tenant_id)
     }
 
-    pub fn get_tenant_by_slug(&self, slug: &str) -> OpenFangResult<Option<DashboardTenant>> {
+    pub fn get_tenant_by_slug(&self, slug: &str) -> SiliCrewResult<Option<DashboardTenant>> {
         self.get_tenant_by("slug", slug)
     }
 
-    fn get_tenant_by(&self, field: &str, value: &str) -> OpenFangResult<Option<DashboardTenant>> {
+    fn get_tenant_by(&self, field: &str, value: &str) -> SiliCrewResult<Option<DashboardTenant>> {
         let sqlite_sql = format!(
-            "SELECT id, name, slug, is_active, created_at, default_message_limit, \
-             default_message_period, default_max_agents, default_agent_ttl_hours \
+            "SELECT id, name, slug, im_provider, timezone, is_active, created_at, default_message_limit, \
+             default_message_period, default_max_agents, default_agent_ttl_hours, \
+             default_max_llm_calls_per_day, min_heartbeat_interval_minutes, default_max_triggers, \
+             min_poll_interval_floor, max_webhook_rate_ceiling \
              FROM tenants WHERE {field} = ?1"
         );
         let pg_sql = format!(
-            "SELECT id, name, slug, is_active, created_at, default_message_limit, \
-             default_message_period, default_max_agents, default_agent_ttl_hours \
+            "SELECT id, name, slug, im_provider, timezone, is_active, created_at, default_message_limit, \
+             default_message_period, default_max_agents, default_agent_ttl_hours, \
+             default_max_llm_calls_per_day, min_heartbeat_interval_minutes, default_max_triggers, \
+             min_poll_interval_floor, max_webhook_rate_ceiling \
              FROM tenants WHERE {field} = $1"
         );
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let row = conn.query_row(&sqlite_sql, params![value], |row| {
                     Ok((
                         row.get::<_, String>(0)?,
                         row.get::<_, String>(1)?,
                         row.get::<_, String>(2)?,
-                        row.get::<_, i64>(3)?,
+                        row.get::<_, String>(3)?,
                         row.get::<_, String>(4)?,
-                        row.get::<_, i32>(5)?,
+                        row.get::<_, i64>(5)?,
                         row.get::<_, String>(6)?,
                         row.get::<_, i32>(7)?,
-                        row.get::<_, i32>(8)?,
+                        row.get::<_, String>(8)?,
+                        row.get::<_, i32>(9)?,
+                        row.get::<_, i32>(10)?,
+                        row.get::<_, i32>(11)?,
+                        row.get::<_, i32>(12)?,
+                        row.get::<_, i32>(13)?,
+                        row.get::<_, i32>(14)?,
+                        row.get::<_, i32>(15)?,
                     ))
                 });
                 match row {
@@ -270,16 +359,18 @@ impl ControlStore {
         }
     }
 
-    pub fn list_tenants(&self) -> OpenFangResult<Vec<DashboardTenant>> {
+    pub fn list_tenants(&self) -> SiliCrewResult<Vec<DashboardTenant>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
-                        "SELECT id, name, slug, is_active, created_at, default_message_limit,
-                                default_message_period, default_max_agents, default_agent_ttl_hours
+                        "SELECT id, name, slug, im_provider, timezone, is_active, created_at, default_message_limit,
+                                default_message_period, default_max_agents, default_agent_ttl_hours,
+                                default_max_llm_calls_per_day, min_heartbeat_interval_minutes, default_max_triggers,
+                                min_poll_interval_floor, max_webhook_rate_ceiling
                          FROM tenants ORDER BY created_at DESC",
                     )
                     .map_err(memory_error)?;
@@ -289,12 +380,19 @@ impl ControlStore {
                             row.get::<_, String>(0)?,
                             row.get::<_, String>(1)?,
                             row.get::<_, String>(2)?,
-                            row.get::<_, i64>(3)?,
+                            row.get::<_, String>(3)?,
                             row.get::<_, String>(4)?,
-                            row.get::<_, i32>(5)?,
+                            row.get::<_, i64>(5)?,
                             row.get::<_, String>(6)?,
                             row.get::<_, i32>(7)?,
-                            row.get::<_, i32>(8)?,
+                            row.get::<_, String>(8)?,
+                            row.get::<_, i32>(9)?,
+                            row.get::<_, i32>(10)?,
+                            row.get::<_, i32>(11)?,
+                            row.get::<_, i32>(12)?,
+                            row.get::<_, i32>(13)?,
+                            row.get::<_, i32>(14)?,
+                            row.get::<_, i32>(15)?,
                         ))
                     })
                     .map_err(memory_error)?;
@@ -305,8 +403,10 @@ impl ControlStore {
                 let pool = pool.clone();
                 let rows = block_on(async move {
                     sqlx::query(
-                        "SELECT id, name, slug, is_active, created_at, default_message_limit,
-                                default_message_period, default_max_agents, default_agent_ttl_hours
+                        "SELECT id, name, slug, im_provider, timezone, is_active, created_at, default_message_limit,
+                                default_message_period, default_max_agents, default_agent_ttl_hours,
+                                default_max_llm_calls_per_day, min_heartbeat_interval_minutes, default_max_triggers,
+                                min_poll_interval_floor, max_webhook_rate_ceiling
                          FROM tenants ORDER BY created_at DESC",
                     )
                     .fetch_all(&*pool)
@@ -318,25 +418,25 @@ impl ControlStore {
         }
     }
 
-    pub fn delete_tenant(&self, tenant_id: &str) -> OpenFangResult<Option<String>> {
+    pub fn delete_tenant(&self, tenant_id: &str) -> SiliCrewResult<Option<String>> {
         let Some(tenant) = self.get_tenant(tenant_id)? else {
             return Ok(None);
         };
         if tenant.slug == "default" {
-            return Err(OpenFangError::InvalidInput(
+            return Err(SiliCrewError::InvalidInput(
                 "default tenant cannot be deleted".to_string(),
             ));
         }
 
         let fallback = self
             .get_tenant_by_slug("default")?
-            .ok_or_else(|| OpenFangError::Memory("default tenant missing".to_string()))?;
+            .ok_or_else(|| SiliCrewError::Memory("default tenant missing".to_string()))?;
 
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "UPDATE users SET tenant_id = ?1, updated_at = ?2 WHERE tenant_id = ?3",
                     params![fallback.tenant_id, now_rfc3339(), tenant_id],
@@ -380,12 +480,12 @@ impl ControlStore {
         Ok(Some(fallback.tenant_id))
     }
 
-    pub fn upsert_user(&self, user: &DashboardUser) -> OpenFangResult<()> {
+    pub fn upsert_user(&self, user: &DashboardUser) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO users (
                         user_id, username, email, password_hash, display_name, role, tenant_id,
@@ -479,15 +579,15 @@ impl ControlStore {
         Ok(())
     }
 
-    pub fn get_user_by_username(&self, username: &str) -> OpenFangResult<Option<DashboardUser>> {
+    pub fn get_user_by_username(&self, username: &str) -> SiliCrewResult<Option<DashboardUser>> {
         self.get_user_by("username", username)
     }
 
-    pub fn get_user_by_id(&self, user_id: &str) -> OpenFangResult<Option<DashboardUser>> {
+    pub fn get_user_by_id(&self, user_id: &str) -> SiliCrewResult<Option<DashboardUser>> {
         self.get_user_by("user_id", user_id)
     }
 
-    fn get_user_by(&self, field: &str, value: &str) -> OpenFangResult<Option<DashboardUser>> {
+    fn get_user_by(&self, field: &str, value: &str) -> SiliCrewResult<Option<DashboardUser>> {
         let sqlite_sql = format!(
             "SELECT user_id, username, email, password_hash, display_name, role, tenant_id,
                     is_active, created_at, updated_at, quota_message_limit, quota_message_period,
@@ -504,7 +604,7 @@ impl ControlStore {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let row = conn.query_row(&sqlite_sql, params![value], user_row_sqlite);
                 match row {
                     Ok(row) => Ok(Some(user_from_sqlite_row(row)?)),
@@ -530,7 +630,7 @@ impl ControlStore {
         }
     }
 
-    pub fn list_users(&self, tenant_id: Option<&str>) -> OpenFangResult<Vec<DashboardUser>> {
+    pub fn list_users(&self, tenant_id: Option<&str>) -> SiliCrewResult<Vec<DashboardUser>> {
         let sqlite_sql = if tenant_id.is_some() {
             "SELECT user_id, username, email, password_hash, display_name, role, tenant_id,
                     is_active, created_at, updated_at, quota_message_limit, quota_message_period,
@@ -557,7 +657,7 @@ impl ControlStore {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn.prepare(sqlite_sql).map_err(memory_error)?;
                 let rows = if let Some(tenant_id) = tenant_id {
                     stmt.query_map(params![tenant_id], user_row_sqlite)
@@ -589,7 +689,7 @@ impl ControlStore {
         user_id: &str,
         username: Option<&str>,
         display_name: Option<&str>,
-    ) -> OpenFangResult<Option<DashboardUser>> {
+    ) -> SiliCrewResult<Option<DashboardUser>> {
         let Some(mut user) = self.get_user_by_id(user_id)? else {
             return Ok(None);
         };
@@ -608,7 +708,7 @@ impl ControlStore {
         &self,
         user_id: &str,
         password_hash: &str,
-    ) -> OpenFangResult<Option<DashboardUser>> {
+    ) -> SiliCrewResult<Option<DashboardUser>> {
         let Some(mut user) = self.get_user_by_id(user_id)? else {
             return Ok(None);
         };
@@ -625,7 +725,7 @@ impl ControlStore {
         quota_message_period: &str,
         quota_max_agents: i32,
         quota_agent_ttl_hours: i32,
-    ) -> OpenFangResult<Option<DashboardUser>> {
+    ) -> SiliCrewResult<Option<DashboardUser>> {
         let Some(mut user) = self.get_user_by_id(user_id)? else {
             return Ok(None);
         };
@@ -701,7 +801,7 @@ fn user_from_sqlite_row(
         i32,
         String,
     ),
-) -> OpenFangResult<DashboardUser> {
+) -> SiliCrewResult<DashboardUser> {
     Ok(DashboardUser {
         user_id: row.0,
         username: row.1,
@@ -722,7 +822,7 @@ fn user_from_sqlite_row(
     })
 }
 
-fn user_from_postgres_row(row: sqlx::postgres::PgRow) -> OpenFangResult<DashboardUser> {
+fn user_from_postgres_row(row: sqlx::postgres::PgRow) -> SiliCrewResult<DashboardUser> {
     Ok(DashboardUser {
         user_id: row.try_get("user_id").map_err(memory_error)?,
         username: row.try_get("username").map_err(memory_error)?,
@@ -760,7 +860,7 @@ fn invitation_from_sqlite_row(
         Option<String>,
         String,
     ),
-) -> OpenFangResult<InvitationCodeRecord> {
+) -> SiliCrewResult<InvitationCodeRecord> {
     Ok(InvitationCodeRecord {
         invitation_id: row.0,
         code: row.1,
@@ -802,7 +902,7 @@ fn invitation_row_sqlite(
 
 fn invitation_from_postgres_row(
     row: sqlx::postgres::PgRow,
-) -> OpenFangResult<InvitationCodeRecord> {
+) -> SiliCrewResult<InvitationCodeRecord> {
     Ok(InvitationCodeRecord {
         invitation_id: row.try_get("id").map_err(memory_error)?,
         code: row.try_get("code").map_err(memory_error)?,
@@ -818,7 +918,7 @@ fn invitation_from_postgres_row(
     })
 }
 
-fn setting_from_sqlite_row(row: (String, String, String)) -> OpenFangResult<SystemSettingRecord> {
+fn setting_from_sqlite_row(row: (String, String, String)) -> SiliCrewResult<SystemSettingRecord> {
     Ok(SystemSettingRecord {
         key: row.0,
         value_json: row.1,
@@ -826,7 +926,7 @@ fn setting_from_sqlite_row(row: (String, String, String)) -> OpenFangResult<Syst
     })
 }
 
-fn setting_from_postgres_row(row: sqlx::postgres::PgRow) -> OpenFangResult<SystemSettingRecord> {
+fn setting_from_postgres_row(row: sqlx::postgres::PgRow) -> SiliCrewResult<SystemSettingRecord> {
     Ok(SystemSettingRecord {
         key: row.try_get("key").map_err(memory_error)?,
         value_json: row.try_get("value_json").map_err(memory_error)?,
@@ -854,12 +954,12 @@ fn manifest_tenant_id(manifest: &openparlant_types::agent::AgentManifest) -> Opt
 }
 
 impl ControlStore {
-    pub fn create_invitation_code(&self, code: &InvitationCodeRecord) -> OpenFangResult<()> {
+    pub fn create_invitation_code(&self, code: &InvitationCodeRecord) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO invitation_codes (id, code, tenant_id, max_uses, used_count, is_active, created_by, created_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -904,12 +1004,12 @@ impl ControlStore {
     pub fn get_invitation_code_by_code(
         &self,
         code: &str,
-    ) -> OpenFangResult<Option<InvitationCodeRecord>> {
+    ) -> SiliCrewResult<Option<InvitationCodeRecord>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let row = conn.query_row(
                     "SELECT id, code, tenant_id, max_uses, used_count, is_active, created_by, created_at
                      FROM invitation_codes WHERE code = ?1",
@@ -954,12 +1054,12 @@ impl ControlStore {
         }
     }
 
-    pub fn increment_invitation_code_usage(&self, invitation_id: &str) -> OpenFangResult<bool> {
+    pub fn increment_invitation_code_usage(&self, invitation_id: &str) -> SiliCrewResult<bool> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 Ok(conn
                     .execute(
                         "UPDATE invitation_codes SET used_count = used_count + 1 WHERE id = ?1",
@@ -985,12 +1085,12 @@ impl ControlStore {
         }
     }
 
-    pub fn deactivate_invitation_code(&self, invitation_id: &str) -> OpenFangResult<bool> {
+    pub fn deactivate_invitation_code(&self, invitation_id: &str) -> SiliCrewResult<bool> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 Ok(conn
                     .execute(
                         "UPDATE invitation_codes SET is_active = 0 WHERE id = ?1",
@@ -1020,12 +1120,12 @@ impl ControlStore {
         search: Option<&str>,
         limit: usize,
         offset: usize,
-    ) -> OpenFangResult<(Vec<InvitationCodeRecord>, i64)> {
+    ) -> SiliCrewResult<(Vec<InvitationCodeRecord>, i64)> {
         let items = match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let sql = match (tenant_id.is_some(), search.is_some()) {
                     (true, true) => "SELECT id, code, tenant_id, max_uses, used_count, is_active, created_by, created_at
                                      FROM invitation_codes WHERE tenant_id = ?1 AND LOWER(code) LIKE ?2
@@ -1060,7 +1160,7 @@ impl ControlStore {
                 }
                 .map_err(memory_error)?;
                 rows.map(|row| invitation_from_sqlite_row(row.map_err(memory_error)?))
-                    .collect::<OpenFangResult<Vec<_>>>()?
+                    .collect::<SiliCrewResult<Vec<_>>>()?
             }
             SharedDb::Postgres(pool) => {
                 let pool = pool.clone();
@@ -1122,7 +1222,7 @@ impl ControlStore {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 match (tenant_id, search) {
                     (Some(tenant_id), Some(search)) => conn.query_row(
                         "SELECT COUNT(*) FROM invitation_codes WHERE tenant_id = ?1 AND LOWER(code) LIKE ?2",
@@ -1185,12 +1285,12 @@ impl ControlStore {
         Ok((items, total))
     }
 
-    pub fn get_setting(&self, key: &str) -> OpenFangResult<Option<SystemSettingRecord>> {
+    pub fn get_setting(&self, key: &str) -> SiliCrewResult<Option<SystemSettingRecord>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let row = conn.query_row(
                     "SELECT key, value_json, updated_at FROM system_settings WHERE key = ?1",
                     params![key],
@@ -1232,13 +1332,13 @@ impl ControlStore {
         &self,
         key: &str,
         value_json: &str,
-    ) -> OpenFangResult<SystemSettingRecord> {
+    ) -> SiliCrewResult<SystemSettingRecord> {
         let updated_at = Utc::now();
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO system_settings (key, value_json, updated_at)
                      VALUES (?1, ?2, ?3)
@@ -1274,7 +1374,7 @@ impl ControlStore {
         })
     }
 
-    pub fn get_bool_setting(&self, key: &str, default: bool) -> OpenFangResult<bool> {
+    pub fn get_bool_setting(&self, key: &str, default: bool) -> SiliCrewResult<bool> {
         Ok(self
             .get_setting(key)?
             .and_then(|setting| serde_json::from_str::<serde_json::Value>(&setting.value_json).ok())
@@ -1282,7 +1382,7 @@ impl ControlStore {
             .unwrap_or(default))
     }
 
-    pub fn set_bool_setting(&self, key: &str, enabled: bool) -> OpenFangResult<()> {
+    pub fn set_bool_setting(&self, key: &str, enabled: bool) -> SiliCrewResult<()> {
         self.upsert_setting(key, &serde_json::json!({ "enabled": enabled }).to_string())?;
         Ok(())
     }
@@ -1290,7 +1390,7 @@ impl ControlStore {
     pub fn list_users_with_agent_counts(
         &self,
         tenant_id: Option<&str>,
-    ) -> OpenFangResult<Vec<serde_json::Value>> {
+    ) -> SiliCrewResult<Vec<serde_json::Value>> {
         let users = self.list_users(tenant_id)?;
         let creator_counts = self.agent_creator_counts(tenant_id)?;
         Ok(users
@@ -1321,7 +1421,7 @@ impl ControlStore {
             .collect())
     }
 
-    pub fn list_company_stats(&self) -> OpenFangResult<Vec<DashboardCompanyStats>> {
+    pub fn list_company_stats(&self) -> SiliCrewResult<Vec<DashboardCompanyStats>> {
         let tenants = self.list_tenants()?;
         let users = self.list_users(None)?;
         let agent_stats = self.company_agent_stats()?;
@@ -1349,12 +1449,12 @@ impl ControlStore {
 
     fn load_agent_manifest_rows(
         &self,
-    ) -> OpenFangResult<Vec<(String, String, openparlant_types::agent::AgentManifest)>> {
+    ) -> SiliCrewResult<Vec<(String, String, openparlant_types::agent::AgentManifest)>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare("SELECT id, state, manifest FROM agents")
                     .map_err(memory_error)?;
@@ -1405,12 +1505,12 @@ impl ControlStore {
         }
     }
 
-    fn load_agent_usage_totals(&self) -> OpenFangResult<HashMap<String, i64>> {
+    fn load_agent_usage_totals(&self) -> SiliCrewResult<HashMap<String, i64>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare("SELECT agent_id, COALESCE(SUM(input_tokens + output_tokens), 0) FROM usage_events GROUP BY agent_id")
                     .map_err(memory_error)?;
@@ -1444,7 +1544,7 @@ impl ControlStore {
         }
     }
 
-    fn company_agent_stats(&self) -> OpenFangResult<HashMap<String, (i64, i64, i64)>> {
+    fn company_agent_stats(&self) -> SiliCrewResult<HashMap<String, (i64, i64, i64)>> {
         let manifests = self.load_agent_manifest_rows()?;
         let usage_totals = self.load_agent_usage_totals()?;
         let mut stats = HashMap::new();
@@ -1465,7 +1565,7 @@ impl ControlStore {
     fn agent_creator_counts(
         &self,
         tenant_id: Option<&str>,
-    ) -> OpenFangResult<HashMap<String, i64>> {
+    ) -> SiliCrewResult<HashMap<String, i64>> {
         let manifests = self.load_agent_manifest_rows()?;
         let mut counts = HashMap::new();
         for (_agent_id, _state, manifest) in manifests {

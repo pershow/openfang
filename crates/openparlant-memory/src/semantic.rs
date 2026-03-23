@@ -10,7 +10,7 @@
 use crate::db::{block_on, SharedDb};
 use chrono::Utc;
 use openparlant_types::agent::AgentId;
-use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::error::{SiliCrewError, SiliCrewResult};
 use openparlant_types::memory::{MemoryFilter, MemoryFragment, MemoryId, MemorySource};
 #[cfg(test)]
 use rusqlite::Connection;
@@ -39,7 +39,7 @@ impl SemanticStore {
         source: MemorySource,
         scope: &str,
         metadata: HashMap<String, serde_json::Value>,
-    ) -> OpenFangResult<MemoryId> {
+    ) -> SiliCrewResult<MemoryId> {
         self.remember_with_embedding(agent_id, content, source, scope, metadata, None)
     }
 
@@ -52,19 +52,19 @@ impl SemanticStore {
         scope: &str,
         metadata: HashMap<String, serde_json::Value>,
         embedding: Option<&[f32]>,
-    ) -> OpenFangResult<MemoryId> {
+    ) -> SiliCrewResult<MemoryId> {
         let id = MemoryId::new();
         let now = Utc::now().to_rfc3339();
         let source_str = serde_json::to_string(&source)
-            .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+            .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
         let meta_str = serde_json::to_string(&metadata)
-            .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+            .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
         let embedding_bytes: Option<Vec<u8>> = embedding.map(embedding_to_bytes);
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO memories (id, agent_id, content, source, scope, confidence, metadata, created_at, accessed_at, access_count, deleted, embedding)
                      VALUES (?1, ?2, ?3, ?4, ?5, 1.0, ?6, ?7, ?7, 0, 0, ?8)",
@@ -79,7 +79,7 @@ impl SemanticStore {
                         embedding_bytes,
                     ],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -101,7 +101,7 @@ impl SemanticStore {
                     .execute(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(id)
@@ -113,7 +113,7 @@ impl SemanticStore {
         query: &str,
         limit: usize,
         filter: Option<MemoryFilter>,
-    ) -> OpenFangResult<Vec<MemoryFragment>> {
+    ) -> SiliCrewResult<Vec<MemoryFragment>> {
         self.recall_with_embedding(query, limit, filter, None)
     }
 
@@ -125,7 +125,7 @@ impl SemanticStore {
         limit: usize,
         filter: Option<MemoryFilter>,
         query_embedding: Option<&[f32]>,
-    ) -> OpenFangResult<Vec<MemoryFragment>> {
+    ) -> SiliCrewResult<Vec<MemoryFragment>> {
         let fetch_limit = if query_embedding.is_some() {
             (limit * 10).max(100)
         } else {
@@ -135,7 +135,7 @@ impl SemanticStore {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut sql = String::from(
                     "SELECT id, agent_id, content, source, scope, confidence, metadata, created_at, accessed_at, access_count, embedding
                      FROM memories WHERE deleted = 0",
@@ -165,7 +165,7 @@ impl SemanticStore {
                     }
                     if let Some(ref source) = f.source {
                         let source_str = serde_json::to_string(source)
-                            .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+                            .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
                         sql.push_str(&format!(" AND source = ?{param_idx}"));
                         params.push(Box::new(source_str));
                     }
@@ -174,7 +174,7 @@ impl SemanticStore {
                 sql.push_str(&format!(" LIMIT {fetch_limit}"));
                 let mut stmt = conn
                     .prepare(&sql)
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let param_refs: Vec<&dyn rusqlite::types::ToSql> =
                     params.iter().map(|p| p.as_ref()).collect();
                 let rows = stmt
@@ -193,11 +193,11 @@ impl SemanticStore {
                             row.get::<_, Option<Vec<u8>>>(10)?,
                         ))
                     })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let mut out = Vec::new();
                 for row in rows {
                     out.push(decode_fragment(
-                        row.map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        row.map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                     )?);
                 }
                 for frag in &out {
@@ -233,7 +233,7 @@ impl SemanticStore {
                     }
                     if let Some(ref source) = f.source {
                         let source_str = serde_json::to_string(source)
-                            .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+                            .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
                         qb.push(" AND source = ");
                         qb.push_bind(source_str);
                     }
@@ -242,32 +242,32 @@ impl SemanticStore {
                 qb.push_bind(fetch_limit as i64);
                 let query_pool = Arc::clone(&pool);
                 let rows = block_on(async move { qb.build().fetch_all(&*query_pool).await })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let mut out = Vec::with_capacity(rows.len());
                 for row in rows {
                     out.push(decode_fragment((
                         row.try_get(0)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get(1)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get(2)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get(3)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get(4)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get(5)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get(6)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get(7)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get(8)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get(9)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get(10)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                     ))?);
                 }
                 for frag in &out {
@@ -315,17 +315,17 @@ impl SemanticStore {
     }
 
     /// Soft-delete a memory fragment.
-    pub fn forget(&self, id: MemoryId) -> OpenFangResult<()> {
+    pub fn forget(&self, id: MemoryId) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "UPDATE memories SET deleted = 1 WHERE id = ?1",
                     rusqlite::params![id.0.to_string()],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -335,25 +335,25 @@ impl SemanticStore {
                         .execute(&*pool)
                         .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
     }
 
     /// Update the embedding for an existing memory.
-    pub fn update_embedding(&self, id: MemoryId, embedding: &[f32]) -> OpenFangResult<()> {
+    pub fn update_embedding(&self, id: MemoryId, embedding: &[f32]) -> SiliCrewResult<()> {
         let bytes = embedding_to_bytes(embedding);
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "UPDATE memories SET embedding = ?1 WHERE id = ?2",
                     rusqlite::params![bytes, id.0.to_string()],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -364,7 +364,7 @@ impl SemanticStore {
                         .execute(&*pool)
                         .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
@@ -385,13 +385,13 @@ fn decode_fragment(
         i64,
         Option<Vec<u8>>,
     ),
-) -> OpenFangResult<MemoryFragment> {
+) -> SiliCrewResult<MemoryFragment> {
     let id = uuid::Uuid::parse_str(&row.0)
         .map(MemoryId)
-        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
     let agent_id = uuid::Uuid::parse_str(&row.1)
         .map(openparlant_types::agent::AgentId)
-        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+        .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
     let source: MemorySource = serde_json::from_str(&row.3).unwrap_or(MemorySource::System);
     let metadata: HashMap<String, serde_json::Value> =
         serde_json::from_str(&row.6).unwrap_or_default();

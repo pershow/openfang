@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores';
-import { agentApi } from '../services/api';
+import { adminApi, agentApi } from '../services/api';
 
 /* ────── SVG Icons ────── */
 const SidebarIcons = {
@@ -361,15 +361,49 @@ export default function Layout() {
         });
     };
 
-    // Use user's own tenant_id directly (no switching)
-    const currentTenant = user?.tenant_id || '';
+    const { data: companies = [] } = useQuery({
+        queryKey: ['admin-companies-switcher'],
+        queryFn: adminApi.listCompanies,
+        enabled: user?.role === 'platform_admin',
+        staleTime: 60_000,
+    });
+    const [currentTenant, setCurrentTenant] = useState(() => localStorage.getItem('current_tenant_id') || '');
 
-    // Keep tenant in localStorage for other components that read it
+    useEffect(() => {
+        if (!user) return;
+
+        let nextTenantId = user.tenant_id || '';
+        if (user.role === 'platform_admin') {
+            const availableTenantIds = companies
+                .filter((company: any) => company.is_active)
+                .map((company: any) => company.id);
+            const storedTenantId = localStorage.getItem('current_tenant_id') || '';
+            if (storedTenantId && availableTenantIds.includes(storedTenantId)) {
+                nextTenantId = storedTenantId;
+            } else if (availableTenantIds.length > 0) {
+                nextTenantId = availableTenantIds[0];
+            }
+        }
+
+        if (nextTenantId !== currentTenant) {
+            setCurrentTenant(nextTenantId);
+        }
+    }, [companies, currentTenant, user]);
+
     useEffect(() => {
         if (currentTenant) {
             localStorage.setItem('current_tenant_id', currentTenant);
+            window.dispatchEvent(new StorageEvent('storage', { key: 'current_tenant_id', newValue: currentTenant }));
+        } else {
+            localStorage.removeItem('current_tenant_id');
+            window.dispatchEvent(new StorageEvent('storage', { key: 'current_tenant_id', newValue: null }));
         }
     }, [currentTenant]);
+
+    const handleTenantChange = (tenantId: string) => {
+        setCurrentTenant(tenantId);
+        queryClient.invalidateQueries({ queryKey: ['agents'] });
+    };
 
     const { data: agents = [] } = useQuery({
         queryKey: ['agents', currentTenant],
@@ -392,10 +426,30 @@ export default function Layout() {
                 <div className="sidebar-top">
                     <div className="sidebar-logo">
                         <img src={theme === 'dark' ? '/logo-white.png' : '/logo-black.png'} alt="" style={{ width: 22, height: 22 }} />
-                        <span className="sidebar-logo-text">OpenFang</span>
+                        <span className="sidebar-logo-text">SiliCrew</span>
                     </div>
 
-
+                    {user?.role === 'platform_admin' && companies.length > 0 && !isSidebarCollapsed && (
+                        <div className="tenant-switcher" style={{ padding: '0 12px 12px' }}>
+                            <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                {isChinese ? '当前公司' : 'Current Company'}
+                            </div>
+                            <select
+                                className="form-input tenant-name"
+                                value={currentTenant}
+                                onChange={(event) => handleTenantChange(event.target.value)}
+                                style={{ width: '100%', fontSize: '13px' }}
+                            >
+                                {companies
+                                    .filter((company: any) => company.is_active)
+                                    .map((company: any) => (
+                                        <option key={company.id} value={company.id}>
+                                            {company.name}
+                                        </option>
+                                    ))}
+                            </select>
+                        </div>
+                    )}
 
                     <div className="sidebar-section">
                         <NavLink to="/plaza" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>

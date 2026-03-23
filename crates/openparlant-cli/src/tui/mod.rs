@@ -8,7 +8,7 @@ pub mod screens;
 pub mod theme;
 
 use event::{AppEvent, BackendRef};
-use openparlant_kernel::OpenFangKernel;
+use openparlant_kernel::SiliCrewKernel;
 use openparlant_runtime::llm_driver::StreamEvent;
 use openparlant_types::agent::AgentId;
 use screens::{
@@ -115,7 +115,7 @@ impl Tab {
 
 enum Backend {
     Daemon { base_url: String },
-    InProcess { kernel: Arc<OpenFangKernel> },
+    InProcess { kernel: Arc<SiliCrewKernel> },
     None,
 }
 
@@ -1219,7 +1219,7 @@ impl App {
 
     // ─── Kernel lifecycle ────────────────────────────────────────────────────
 
-    fn handle_kernel_ready(&mut self, kernel: Arc<OpenFangKernel>) {
+    fn handle_kernel_ready(&mut self, kernel: Arc<SiliCrewKernel>) {
         self.kernel_booting = false;
         self.backend = Backend::InProcess { kernel };
         self.agents.reset();

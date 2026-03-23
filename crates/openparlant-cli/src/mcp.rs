@@ -6,7 +6,7 @@
 //! Protocol: Content-Length framing over stdin/stdout.
 //! Connects to running daemon via HTTP, falls back to in-process kernel.
 
-use openparlant_kernel::OpenFangKernel;
+use openparlant_kernel::SiliCrewKernel;
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
 
@@ -17,7 +17,7 @@ enum McpBackend {
         client: reqwest::blocking::Client,
     },
     InProcess {
-        kernel: Box<OpenFangKernel>,
+        kernel: Box<SiliCrewKernel>,
         rt: tokio::runtime::Runtime,
     },
 }
@@ -147,7 +147,7 @@ fn create_backend(config: Option<std::path::PathBuf>) -> McpBackend {
     }
 
     // Fall back to in-process kernel
-    let kernel = match OpenFangKernel::boot(config.as_deref()) {
+    let kernel = match SiliCrewKernel::boot(config.as_deref()) {
         Ok(k) => k,
         Err(e) => {
             eprintln!("Failed to boot kernel for MCP: {e}");

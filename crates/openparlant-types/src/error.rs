@@ -4,7 +4,7 @@ use thiserror::Error;
 
 /// Top-level error type for the OpenParlant system.
 #[derive(Error, Debug)]
-pub enum OpenFangError {
+pub enum SiliCrewError {
     /// The requested agent was not found.
     #[error("Agent not found: {0}")]
     AgentNotFound(String),
@@ -100,5 +100,5 @@ pub enum OpenFangError {
     InvalidInput(String),
 }
 
-/// Alias for Result with OpenFangError.
-pub type OpenFangResult<T> = Result<T, OpenFangError>;
+/// Alias for Result with SiliCrewError.
+pub type SiliCrewResult<T> = Result<T, SiliCrewError>;

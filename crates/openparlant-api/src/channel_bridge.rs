@@ -1,6 +1,6 @@
 //! Channel bridge wiring — connects the OpenParlant kernel to channel adapters.
 //!
-//! Implements `ChannelBridgeHandle` on `OpenFangKernel` and provides the
+//! Implements `ChannelBridgeHandle` on `SiliCrewKernel` and provides the
 //! `start_channel_bridge()` entry point called by the daemon.
 
 use openparlant_channels::bridge::{BridgeManager, ChannelBridgeHandle};
@@ -53,7 +53,7 @@ use openparlant_channels::ntfy::NtfyAdapter;
 use openparlant_channels::webhook::WebhookAdapter;
 use openparlant_channels::wecom::WeComAdapter;
 use openparlant_control::ControlStore;
-use openparlant_kernel::OpenFangKernel;
+use openparlant_kernel::SiliCrewKernel;
 use openparlant_types::agent::AgentId;
 use openparlant_types::config::FeishuMode;
 use openparlant_types::control::{ScopeId, SessionBinding};
@@ -63,9 +63,9 @@ use tracing::{error, info, warn};
 
 use openparlant_runtime::str_utils::safe_truncate_str;
 
-/// Wraps `OpenFangKernel` to implement `ChannelBridgeHandle`.
+/// Wraps `SiliCrewKernel` to implement `ChannelBridgeHandle`.
 pub struct KernelBridgeAdapter {
-    kernel: Arc<OpenFangKernel>,
+    kernel: Arc<SiliCrewKernel>,
     started_at: Instant,
     /// When set, channel ingress can persist `session_bindings` for control-plane scope resolution.
     pub control_store: Option<Arc<ControlStore>>,
@@ -1151,7 +1151,7 @@ fn read_token(env_var_or_token: &str, adapter_name: &str) -> Option<String> {
 ///
 /// Returns `Some(BridgeManager)` if any channels were configured and started,
 /// or `None` if no channels are configured.
-pub async fn start_channel_bridge(kernel: Arc<OpenFangKernel>) -> Option<BridgeManager> {
+pub async fn start_channel_bridge(kernel: Arc<SiliCrewKernel>) -> Option<BridgeManager> {
     let channels = kernel.config.channels.clone();
     let (bridge, _names) = start_channel_bridge_with_config(kernel, &channels, None).await;
     bridge
@@ -1161,7 +1161,7 @@ pub async fn start_channel_bridge(kernel: Arc<OpenFangKernel>) -> Option<BridgeM
 ///
 /// Returns `(Option<BridgeManager>, Vec<started_channel_names>)`.
 pub async fn start_channel_bridge_with_config(
-    kernel: Arc<OpenFangKernel>,
+    kernel: Arc<SiliCrewKernel>,
     config: &openparlant_types::config::ChannelsConfig,
     control_bridge: Option<(Arc<ControlStore>, Option<String>)>,
 ) -> (Option<BridgeManager>, Vec<String>) {

@@ -86,8 +86,10 @@ pub async fn auth(
     // POST/PUT/DELETE to any endpoint ALWAYS requires auth to prevent
     // unauthenticated writes (cron job creation, skill install, etc.).
     let is_get = method == axum::http::Method::GET;
-    let is_frontend_route =
-        is_get && !path.starts_with("/api/") && !path.starts_with("/hooks/") && !path.starts_with("/mcp");
+    let is_frontend_route = is_get
+        && !path.starts_with("/api/")
+        && !path.starts_with("/hooks/")
+        && !path.starts_with("/mcp");
 
     let is_public = path == "/"
         || path == "/logo.png"

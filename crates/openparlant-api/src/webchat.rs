@@ -77,9 +77,8 @@ pub async fn logo_png() -> impl IntoResponse {
 
 /// GET /favicon.ico — Serve the favicon.
 pub async fn favicon_ico() -> impl IntoResponse {
-    response_from_embedded_file("favicon.ico").unwrap_or_else(|| {
-        response_from_bytes("favicon.ico", FALLBACK_FAVICON_ICO.to_vec())
-    })
+    response_from_embedded_file("favicon.ico")
+        .unwrap_or_else(|| response_from_bytes("favicon.ico", FALLBACK_FAVICON_ICO.to_vec()))
 }
 
 /// GET /manifest.json — Serve the PWA manifest.
@@ -127,7 +126,10 @@ pub async fn frontend_fallback(OriginalUri(uri): OriginalUri) -> impl IntoRespon
     if path.contains('.') {
         return (
             StatusCode::NOT_FOUND,
-            [(header::CONTENT_TYPE, HeaderValue::from_static("text/plain; charset=utf-8"))],
+            [(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/plain; charset=utf-8"),
+            )],
             "Not Found",
         )
             .into_response();

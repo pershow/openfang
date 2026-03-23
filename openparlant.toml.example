@@ -5,6 +5,24 @@
 # api_key = ""                               # Set to enable Bearer auth (recommended)
 # api_listen = "127.0.0.1:50051"             # HTTP API bind address (use 0.0.0.0 for public)
 
+# Web dashboard login (POST /api/auth/login, same as frontend login page).
+# password_hash is SHA-256 of the password, hex-encoded (not plaintext).
+# After enabling, restart the daemon once so the platform admin row is synced to the DB.
+#
+# Option A — CLI writes [auth] for you (recommended):
+#   openparlant auth bootstrap-admin --username admin
+#
+# Option B — set hash manually:
+#   openparlant auth hash-password --password "YourSecurePassword"
+#   # paste the printed hex into password_hash below
+#
+# [auth]
+# enabled = true
+# username = "admin"
+# password_hash = ""                      # Paste hex from `openparlant auth hash-password` (required when enabled is true)
+# session_ttl_hours = 168                 # Session lifetime in hours (default 7 days)
+
+
 [default_model]
 provider = "anthropic"                    # "anthropic", "gemini", "openai", "groq", "ollama", etc.
 model = "claude-sonnet-4-20250514"        # Model identifier

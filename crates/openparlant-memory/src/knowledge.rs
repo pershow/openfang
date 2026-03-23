@@ -4,7 +4,7 @@
 
 use crate::db::{block_on, SharedDb};
 use chrono::Utc;
-use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::error::{SiliCrewError, SiliCrewResult};
 use openparlant_types::memory::{
     Entity, EntityType, GraphMatch, GraphPattern, Relation, RelationType,
 };
@@ -30,29 +30,29 @@ impl KnowledgeStore {
     }
 
     /// Add an entity to the knowledge graph.
-    pub fn add_entity(&self, entity: Entity) -> OpenFangResult<String> {
+    pub fn add_entity(&self, entity: Entity) -> SiliCrewResult<String> {
         let id = if entity.id.is_empty() {
             Uuid::new_v4().to_string()
         } else {
             entity.id.clone()
         };
         let entity_type_str = serde_json::to_string(&entity.entity_type)
-            .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+            .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
         let props_str = serde_json::to_string(&entity.properties)
-            .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+            .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
         let now = Utc::now().to_rfc3339();
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO entities (id, entity_type, name, properties, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?5)
                      ON CONFLICT(id) DO UPDATE SET name = ?3, properties = ?4, updated_at = ?5",
                     rusqlite::params![id, entity_type_str, entity.name, props_str, now],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -75,25 +75,25 @@ impl KnowledgeStore {
                     .execute(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(id)
     }
 
     /// Add a relation between two entities.
-    pub fn add_relation(&self, relation: Relation) -> OpenFangResult<String> {
+    pub fn add_relation(&self, relation: Relation) -> SiliCrewResult<String> {
         let id = Uuid::new_v4().to_string();
         let rel_type_str = serde_json::to_string(&relation.relation)
-            .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+            .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
         let props_str = serde_json::to_string(&relation.properties)
-            .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+            .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
         let now = Utc::now().to_rfc3339();
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO relations (id, source_entity, relation_type, target_entity, properties, confidence, created_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -107,7 +107,7 @@ impl KnowledgeStore {
                         now,
                     ],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -130,19 +130,19 @@ impl KnowledgeStore {
                     .execute(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(id)
     }
 
     /// Query the knowledge graph with a pattern.
-    pub fn query_graph(&self, pattern: GraphPattern) -> OpenFangResult<Vec<GraphMatch>> {
+    pub fn query_graph(&self, pattern: GraphPattern) -> SiliCrewResult<Vec<GraphMatch>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut sql = String::from(
                     "SELECT
                         s.id, s.entity_type, s.name, s.properties, s.created_at, s.updated_at,
@@ -163,7 +163,7 @@ impl KnowledgeStore {
                 }
                 if let Some(ref relation) = pattern.relation {
                     let rel_str = serde_json::to_string(relation)
-                        .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+                        .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
                     sql.push_str(&format!(" AND r.relation_type = ?{idx}"));
                     params.push(Box::new(rel_str));
                     idx += 1;
@@ -177,7 +177,7 @@ impl KnowledgeStore {
 
                 let mut stmt = conn
                     .prepare(&sql)
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let param_refs: Vec<&dyn rusqlite::types::ToSql> =
                     params.iter().map(|p| p.as_ref()).collect();
                 let rows = stmt
@@ -204,11 +204,11 @@ impl KnowledgeStore {
                             t_updated: row.get(18)?,
                         })
                     })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let mut matches = Vec::new();
                 for row_result in rows {
                     matches.push(raw_graph_row_to_match(
-                        row_result.map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        row_result.map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                     ));
                 }
                 Ok(matches)
@@ -234,7 +234,7 @@ impl KnowledgeStore {
                 }
                 if let Some(ref relation) = pattern.relation {
                     let rel_str = serde_json::to_string(relation)
-                        .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+                        .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
                     qb.push(" AND r.relation_type = ");
                     qb.push_bind(rel_str);
                 }
@@ -247,67 +247,67 @@ impl KnowledgeStore {
                 }
                 qb.push(" LIMIT 100");
                 let rows = block_on(async move { qb.build().fetch_all(&*pool).await })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let mut matches = Vec::with_capacity(rows.len());
                 for row in rows {
                     matches.push(raw_graph_row_to_match(RawGraphRow {
                         s_id: row
                             .try_get(0)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         s_type: row
                             .try_get(1)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         s_name: row
                             .try_get(2)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         s_props: row
                             .try_get(3)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         s_created: row
                             .try_get(4)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         s_updated: row
                             .try_get(5)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         r_id: row
                             .try_get(6)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         r_source: row
                             .try_get(7)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         r_type: row
                             .try_get(8)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         r_target: row
                             .try_get(9)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         r_props: row
                             .try_get(10)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         r_confidence: row
                             .try_get(11)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         r_created: row
                             .try_get(12)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         t_id: row
                             .try_get(13)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         t_type: row
                             .try_get(14)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         t_name: row
                             .try_get(15)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         t_props: row
                             .try_get(16)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         t_created: row
                             .try_get(17)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         t_updated: row
                             .try_get(18)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                     }));
                 }
                 Ok(matches)

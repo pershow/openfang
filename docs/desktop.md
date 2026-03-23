@@ -36,7 +36,7 @@ The desktop app follows a straightforward embedded-server pattern:
 ### Startup Sequence
 
 1. **Tracing init** -- `tracing_subscriber` is configured with `RUST_LOG` env, defaulting to `openparlant=info,tauri=info`.
-2. **Kernel boot** -- `OpenFangKernel::boot(None)` loads the default configuration (from `config.toml` or defaults), wrapped in `Arc`. `set_self_handle()` is called to enable self-referencing kernel operations.
+2. **Kernel boot** -- `SiliCrewKernel::boot(None)` loads the default configuration (from `config.toml` or defaults), wrapped in `Arc`. `set_self_handle()` is called to enable self-referencing kernel operations.
 3. **Port binding** -- A `std::net::TcpListener` binds to `127.0.0.1:0` on the main thread, which lets the OS assign a random free port. This ensures the port number is known before any window is created.
 4. **Server thread** -- A dedicated OS thread named `"openparlant-server"` is spawned. It creates its own `tokio::runtime::Builder::new_multi_thread()` runtime and runs:
    - `kernel.start_background_agents()` -- heartbeat monitor, autonomous agents, etc.
@@ -51,7 +51,7 @@ The `ServerHandle` struct (defined in `src/server.rs`) manages the embedded serv
 ```rust
 pub struct ServerHandle {
     pub port: u16,
-    pub kernel: Arc<OpenFangKernel>,
+    pub kernel: Arc<SiliCrewKernel>,
     shutdown_tx: watch::Sender<bool>,
     server_thread: Option<std::thread::JoinHandle<()>>,
 }

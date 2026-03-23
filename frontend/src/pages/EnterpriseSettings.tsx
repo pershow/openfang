@@ -101,10 +101,11 @@ function OrgTab() {
     const [syncResult, setSyncResult] = useState<any>(null);
     const [memberSearch, setMemberSearch] = useState('');
     const [selectedDept, setSelectedDept] = useState<string | null>(null);
+    const currentTenantId = localStorage.getItem('current_tenant_id') || '';
 
     const { data: config } = useQuery({
-        queryKey: ['system-settings', 'feishu_org_sync'],
-        queryFn: () => fetchJson<any>('/enterprise/system-settings/feishu_org_sync'),
+        queryKey: ['system-settings', 'feishu_org_sync', currentTenantId],
+        queryFn: () => fetchJson<any>(`/enterprise/system-settings/feishu_org_sync${currentTenantId ? `?tenant_id=${currentTenantId}` : ''}`),
     });
 
     useEffect(() => {
@@ -113,7 +114,6 @@ function OrgTab() {
         }
     }, [config]);
 
-    const currentTenantId = localStorage.getItem('current_tenant_id') || '';
     const { data: departments = [] } = useQuery({
         queryKey: ['org-departments', currentTenantId],
         queryFn: () => fetchJson<any[]>(`/enterprise/org/departments${currentTenantId ? `?tenant_id=${currentTenantId}` : ''}`),
@@ -130,11 +130,11 @@ function OrgTab() {
     });
 
     const saveConfig = async () => {
-        await fetchJson('/enterprise/system-settings/feishu_org_sync', {
+        await fetchJson(`/enterprise/system-settings/feishu_org_sync${currentTenantId ? `?tenant_id=${currentTenantId}` : ''}`, {
             method: 'PUT',
             body: JSON.stringify({ value: { app_id: syncForm.app_id, app_secret: syncForm.app_secret } }),
         });
-        qc.invalidateQueries({ queryKey: ['system-settings', 'feishu_org_sync'] });
+        qc.invalidateQueries({ queryKey: ['system-settings', 'feishu_org_sync', currentTenantId] });
     };
 
     const triggerSync = async () => {
@@ -142,8 +142,9 @@ function OrgTab() {
         setSyncResult(null);
         try {
             if (syncForm.app_secret) await saveConfig();
-            const result = await fetchJson<any>('/enterprise/org/sync', { method: 'POST' });
+            const result = await fetchJson<any>(`/enterprise/org/sync${currentTenantId ? `?tenant_id=${currentTenantId}` : ''}`, { method: 'POST' });
             setSyncResult(result);
+            qc.invalidateQueries({ queryKey: ['system-settings', 'feishu_org_sync', currentTenantId] });
             qc.invalidateQueries({ queryKey: ['org-departments'] });
             qc.invalidateQueries({ queryKey: ['org-members'] });
         } catch (e: any) {
@@ -824,7 +825,7 @@ function CompanyNameEditor() {
         <div className="card" style={{ padding: '16px', marginBottom: '24px' }}>
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                 <input
-                    className="form-input"
+                    className="form-input company-name-input"
                     value={name}
                     onChange={e => setName(e.target.value)}
                     placeholder={t('enterprise.companyName.placeholder', 'Enter company name')}
@@ -919,7 +920,7 @@ function CompanyTimezoneEditor() {
 
 
 // ── Broadcast Section ──────────────────────────
-function BroadcastSection() {
+function BroadcastSection({ selectedTenantId }: { selectedTenantId: string }) {
     const { t } = useTranslation();
     const [title, setTitle] = useState('');
     const [body, setBody] = useState('');
@@ -932,7 +933,7 @@ function BroadcastSection() {
         setResult(null);
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('/api/notifications/broadcast', {
+            const res = await fetch(`/api/notifications/broadcast${selectedTenantId ? `?tenant_id=${selectedTenantId}` : ''}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ title: title.trim(), body: body.trim() }),
@@ -1027,15 +1028,15 @@ export default function EnterpriseSettings({ defaultTab = 'info' }: { defaultTab
     const [quotaSaved, setQuotaSaved] = useState(false);
     useEffect(() => {
         if (activeTab === 'quotas') {
-            fetchJson<any>('/enterprise/tenant-quotas').then(d => {
+            fetchJson<any>(`/enterprise/tenant-quotas${selectedTenantId ? `?tenant_id=${selectedTenantId}` : ''}`).then(d => {
                 if (d && Object.keys(d).length) setQuotaForm(f => ({ ...f, ...d }));
             }).catch(() => { });
         }
-    }, [activeTab]);
+    }, [activeTab, selectedTenantId]);
     const saveQuotas = async () => {
         setQuotaSaving(true);
         try {
-            await fetchJson('/enterprise/tenant-quotas', { method: 'PATCH', body: JSON.stringify(quotaForm) });
+            await fetchJson(`/enterprise/tenant-quotas${selectedTenantId ? `?tenant_id=${selectedTenantId}` : ''}`, { method: 'PATCH', body: JSON.stringify(quotaForm) });
             setQuotaSaved(true); setTimeout(() => setQuotaSaved(false), 2000);
         } catch (e) { alert('Failed to save'); }
         setQuotaSaving(false);
@@ -1587,7 +1588,7 @@ export default function EnterpriseSettings({ defaultTab = 'info' }: { defaultTab
                                 className="form-input"
                                 value={companyIntro}
                                 onChange={e => setCompanyIntro(e.target.value)}
-                                placeholder={`# Company Name\nOpenFang\n\n# About\nOpenFang For Teams\nOpen Source \u00B7 Multi-Agent Collaboration\n\nOpenClaw empowers individuals.\nOpenFang scales it to frontier organizations.`}
+                                placeholder={`# Company Name\nSiliCrew\n\n# About\nSiliCrew For Teams\nOpen Source \u00B7 Multi-Agent Collaboration\n\nOpenClaw empowers individuals.\nSiliCrew scales it to frontier organizations.`}
                                 style={{
                                     minHeight: '200px', resize: 'vertical',
                                     fontFamily: 'var(--font-mono)', fontSize: '13px',
@@ -1620,7 +1621,7 @@ export default function EnterpriseSettings({ defaultTab = 'info' }: { defaultTab
                         <ThemeColorPicker />
 
                         {/* ── Broadcast ── */}
-                        <BroadcastSection />
+                        <BroadcastSection selectedTenantId={selectedTenantId} />
 
                         {/* ── Danger Zone: Delete Company ── */}
                         <div style={{ marginTop: '32px', padding: '16px', border: '1px solid var(--status-error, #e53e3e)', borderRadius: '8px' }}>

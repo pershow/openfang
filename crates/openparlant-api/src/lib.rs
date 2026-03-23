@@ -4,6 +4,7 @@
 //! The kernel runs in-process; the CLI connects over HTTP.
 
 pub mod channel_bridge;
+pub mod compat_routes;
 pub mod control_routes;
 pub mod dashboard_routes;
 pub mod middleware;

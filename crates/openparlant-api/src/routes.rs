@@ -6,16 +6,18 @@ use axum::http::HeaderMap;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
+use base64::Engine as _;
 use dashmap::DashMap;
 use openparlant_kernel::triggers::{TriggerId, TriggerPattern};
 use openparlant_kernel::workflow::{
     ErrorMode, StepAgent, StepMode, Workflow, WorkflowId, WorkflowStep,
 };
-use openparlant_kernel::OpenFangKernel;
+use openparlant_kernel::SiliCrewKernel;
 use openparlant_runtime::kernel_handle::KernelHandle;
 use openparlant_runtime::tool_runner::builtin_tool_definitions;
 use openparlant_types::agent::{AgentId, AgentIdentity, AgentManifest};
 use std::collections::HashMap;
+use std::path::{Path as StdPath, PathBuf};
 use std::sync::{Arc, LazyLock};
 use std::time::Instant;
 
@@ -24,7 +26,7 @@ use std::time::Instant;
 /// The kernel is wrapped in Arc so it can serve as both the main kernel
 /// and the KernelHandle for inter-agent tool access.
 pub struct AppState {
-    pub kernel: Arc<OpenFangKernel>,
+    pub kernel: Arc<SiliCrewKernel>,
     pub started_at: Instant,
     /// Optional peer registry for OFP mesh networking status.
     pub peer_registry: Option<Arc<openparlant_wire::registry::PeerRegistry>>,
@@ -71,12 +73,16 @@ fn tenant_model_env_var(model_id: &str) -> String {
     format!("OPENPARLANT_TENANT_MODEL_{normalized}_API_KEY")
 }
 
-fn load_tenant_model_configs(state: &AppState, tenant_id: &str) -> Result<Vec<serde_json::Value>, String> {
+fn load_tenant_model_configs(
+    state: &AppState,
+    tenant_id: &str,
+) -> Result<Vec<serde_json::Value>, String> {
     let key = format!("tenant_llm_models_{tenant_id}");
     match state.control_store.get_setting(&key) {
-        Ok(Some(setting)) => Ok(
-            serde_json::from_str::<Vec<serde_json::Value>>(&setting.value_json).unwrap_or_default(),
-        ),
+        Ok(Some(setting)) => Ok(serde_json::from_str::<Vec<serde_json::Value>>(
+            &setting.value_json,
+        )
+        .unwrap_or_default()),
         Ok(None) => Ok(Vec::new()),
         Err(error) => Err(error.to_string()),
     }
@@ -89,89 +95,124 @@ fn apply_tenant_model_to_manifest(
     primary_model_id: Option<&str>,
     fallback_model_id: Option<&str>,
 ) -> Result<(), String> {
+    if primary_model_id.is_some() || fallback_model_id.is_some() {
+        if tenant_id.is_none() {
+            return Err("tenant_id is required when selecting tenant models".to_string());
+        }
+        if primary_model_id.is_some() && primary_model_id == fallback_model_id {
+            return Err("Primary and fallback models must be different".to_string());
+        }
+    }
+
     let Some(tenant_id) = tenant_id else {
         return Ok(());
     };
     let models = load_tenant_model_configs(state, tenant_id)?;
 
     if let Some(primary_model_id) = primary_model_id {
-        if let Some(model) = models
+        let Some(model) = models
             .iter()
             .find(|model| model.get("id").and_then(|v| v.as_str()) == Some(primary_model_id))
+        else {
+            return Err(format!(
+                "Primary model '{primary_model_id}' is not available for tenant '{tenant_id}'"
+            ));
+        };
+        if !model
+            .get("enabled")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(true)
         {
-            let provider = model
-                .get("provider")
-                .and_then(|v| v.as_str())
-                .unwrap_or("custom")
-                .to_string();
-            let model_name = model
-                .get("model")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let base_url = model
-                .get("base_url")
-                .and_then(|v| v.as_str())
-                .filter(|v| !v.is_empty())
-                .map(|v| v.to_string());
-            let api_key_env = model
-                .get("api_key")
-                .and_then(|v| v.as_str())
-                .filter(|v| !v.is_empty())
-                .map(|api_key| {
-                    let env_var = tenant_model_env_var(primary_model_id);
-                    std::env::set_var(&env_var, api_key);
-                    env_var
-                });
-            manifest.model.provider = provider;
-            manifest.model.model = model_name;
-            manifest.model.base_url = base_url;
-            manifest.model.api_key_env = api_key_env.clone();
-            manifest
-                .metadata
-                .insert("primary_model_id".to_string(), serde_json::json!(primary_model_id));
+            return Err(format!(
+                "Primary model '{primary_model_id}' is disabled for tenant '{tenant_id}'"
+            ));
         }
+        let provider = model
+            .get("provider")
+            .and_then(|v| v.as_str())
+            .unwrap_or("custom")
+            .to_string();
+        let model_name = model
+            .get("model")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let base_url = model
+            .get("base_url")
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_string());
+        let api_key_env = model
+            .get("api_key")
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.is_empty())
+            .map(|api_key| {
+                let env_var = tenant_model_env_var(primary_model_id);
+                std::env::set_var(&env_var, api_key);
+                env_var
+            });
+        manifest.model.provider = provider;
+        manifest.model.model = model_name;
+        manifest.model.base_url = base_url;
+        manifest.model.api_key_env = api_key_env.clone();
+        manifest.metadata.insert(
+            "primary_model_id".to_string(),
+            serde_json::json!(primary_model_id),
+        );
     }
 
     if let Some(fallback_model_id) = fallback_model_id {
-        if let Some(model) = models
+        let Some(model) = models
             .iter()
             .find(|model| model.get("id").and_then(|v| v.as_str()) == Some(fallback_model_id))
+        else {
+            return Err(format!(
+                "Fallback model '{fallback_model_id}' is not available for tenant '{tenant_id}'"
+            ));
+        };
+        if !model
+            .get("enabled")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(true)
         {
-            let provider = model
-                .get("provider")
-                .and_then(|v| v.as_str())
-                .unwrap_or("custom")
-                .to_string();
-            let model_name = model
-                .get("model")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let base_url = model
-                .get("base_url")
-                .and_then(|v| v.as_str())
-                .filter(|v| !v.is_empty())
-                .map(|v| v.to_string());
-            let api_key_env = model
-                .get("api_key")
-                .and_then(|v| v.as_str())
-                .filter(|v| !v.is_empty())
-                .map(|api_key| {
-                    let env_var = tenant_model_env_var(fallback_model_id);
-                    std::env::set_var(&env_var, api_key);
-                    env_var
-                });
-            manifest.fallback_models = vec![openparlant_types::agent::FallbackModel {
-                provider,
-                model: model_name,
-                api_key_env,
-                base_url,
-            }];
-            manifest
-                .metadata
-                .insert("fallback_model_id".to_string(), serde_json::json!(fallback_model_id));
+            return Err(format!(
+                "Fallback model '{fallback_model_id}' is disabled for tenant '{tenant_id}'"
+            ));
         }
+        let provider = model
+            .get("provider")
+            .and_then(|v| v.as_str())
+            .unwrap_or("custom")
+            .to_string();
+        let model_name = model
+            .get("model")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let base_url = model
+            .get("base_url")
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_string());
+        let api_key_env = model
+            .get("api_key")
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.is_empty())
+            .map(|api_key| {
+                let env_var = tenant_model_env_var(fallback_model_id);
+                std::env::set_var(&env_var, api_key);
+                env_var
+            });
+        manifest.fallback_models = vec![openparlant_types::agent::FallbackModel {
+            provider,
+            model: model_name,
+            api_key_env,
+            base_url,
+        }];
+        manifest.metadata.insert(
+            "fallback_model_id".to_string(),
+            serde_json::json!(fallback_model_id),
+        );
     }
 
     Ok(())
@@ -227,6 +268,7 @@ pub async fn spawn_agent(
     headers: HeaderMap,
     Json(req): Json<SpawnRequest>,
 ) -> impl IntoResponse {
+    let dashboard_actor = dashboard_user_from_headers(&state, &headers);
     // Resolve template name → manifest_toml if template is provided and manifest_toml is empty
     let manifest_toml = if req.manifest_toml.trim().is_empty() {
         let requested_template = req.template.clone().or(req.template_id.clone());
@@ -260,7 +302,12 @@ pub async fn spawn_agent(
                     );
                 }
             }
-        } else if let Some(name) = req.name.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty()) {
+        } else if let Some(name) = req
+            .name
+            .as_ref()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+        {
             let mut manifest = AgentManifest::default();
             manifest.name = name.to_string();
             manifest.description = req.role_description.clone().unwrap_or_default();
@@ -278,7 +325,11 @@ pub async fn spawn_agent(
                 manifest.model.system_prompt = "You are a helpful enterprise AI agent.".to_string();
             }
             manifest.skills = req.skill_ids.clone().unwrap_or_default();
-            if let Some(agent_type) = req.agent_type.as_ref().filter(|value| !value.trim().is_empty()) {
+            if let Some(agent_type) = req
+                .agent_type
+                .as_ref()
+                .filter(|value| !value.trim().is_empty())
+            {
                 manifest
                     .metadata
                     .insert("agent_type".to_string(), serde_json::json!(agent_type));
@@ -288,18 +339,20 @@ pub async fn spawn_agent(
                 .as_ref()
                 .filter(|value| !value.trim().is_empty())
             {
-                manifest
-                    .metadata
-                    .insert("permission_scope_type".to_string(), serde_json::json!(scope_type));
+                manifest.metadata.insert(
+                    "permission_scope_type".to_string(),
+                    serde_json::json!(scope_type),
+                );
             }
             if let Some(access_level) = req
                 .permission_access_level
                 .as_ref()
                 .filter(|value| !value.trim().is_empty())
             {
-                manifest
-                    .metadata
-                    .insert("permission_access_level".to_string(), serde_json::json!(access_level));
+                manifest.metadata.insert(
+                    "permission_access_level".to_string(),
+                    serde_json::json!(access_level),
+                );
             }
             if let Some(limit) = req.max_tokens_per_day {
                 manifest
@@ -396,12 +449,12 @@ pub async fn spawn_agent(
         }
     };
 
-    if let Some(user) = dashboard_user_from_headers(&state, &headers) {
+    if let Some(user) = dashboard_actor.as_ref() {
         manifest
             .metadata
             .entry("creator_user_id".to_string())
-            .or_insert_with(|| serde_json::json!(user.user_id));
-        if let Some(tenant_id) = user.tenant_id {
+            .or_insert_with(|| serde_json::json!(user.user_id.clone()));
+        if let Some(tenant_id) = user.tenant_id.clone() {
             manifest
                 .metadata
                 .entry("tenant_id".to_string())
@@ -425,6 +478,16 @@ pub async fn spawn_agent(
                 .and_then(|value| value.as_str())
                 .map(|value| value.to_string())
         });
+    if let Some(user) = dashboard_actor.as_ref() {
+        if user.role != "platform_admin"
+            && selected_tenant_scope.as_deref() != user.tenant_id.as_deref()
+        {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({"error": "Cannot create agents for another tenant"})),
+            );
+        }
+    }
     if let Err(error) = apply_tenant_model_to_manifest(
         &state,
         &mut manifest,
@@ -610,7 +673,7 @@ pub fn resolve_attachments(
 /// This injects image content blocks into the session BEFORE the kernel
 /// adds the text user message, so the LLM receives: [..., User(images), User(text)].
 pub fn inject_attachments_into_session(
-    kernel: &OpenFangKernel,
+    kernel: &SiliCrewKernel,
     agent_id: AgentId,
     image_blocks: Vec<openparlant_types::message::ContentBlock>,
 ) {
@@ -6065,6 +6128,7 @@ pub async fn update_agent(
 pub async fn patch_agent(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let agent_id: AgentId = match id.parse() {
@@ -6077,11 +6141,32 @@ pub async fn patch_agent(
         }
     };
 
-    if state.kernel.registry.get(agent_id).is_none() {
+    let Some(existing_entry) = state.kernel.registry.get(agent_id) else {
         return (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": "Agent not found"})),
         );
+    };
+    let dashboard_actor = dashboard_user_from_headers(&state, &headers);
+    if let Some(user) = dashboard_actor.as_ref() {
+        let agent_tenant = existing_entry
+            .manifest
+            .metadata
+            .get("tenant_id")
+            .and_then(|value| value.as_str())
+            .or_else(|| {
+                existing_entry
+                    .manifest
+                    .metadata
+                    .get("control_scope_id")
+                    .and_then(|value| value.as_str())
+            });
+        if user.role != "platform_admin" && agent_tenant != user.tenant_id.as_deref() {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({"error": "Cannot edit agents from another tenant"})),
+            );
+        }
     }
 
     // Apply partial updates using dedicated registry methods
@@ -6137,13 +6222,7 @@ pub async fn patch_agent(
     let primary_model_update = body.get("primary_model_id");
     let fallback_model_update = body.get("fallback_model_id");
     if primary_model_update.is_some() || fallback_model_update.is_some() {
-        let Some(entry) = state.kernel.registry.get(agent_id) else {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(serde_json::json!({"error": "Agent not found"})),
-            );
-        };
-        let mut manifest = entry.manifest.clone();
+        let mut manifest = existing_entry.manifest.clone();
         let tenant_scope = body
             .get("tenant_id")
             .and_then(|v| v.as_str())
@@ -6162,6 +6241,15 @@ pub async fn patch_agent(
                     .and_then(|v| v.as_str())
                     .map(|v| v.to_string())
             });
+        if let Some(user) = dashboard_actor.as_ref() {
+            if user.role != "platform_admin" && tenant_scope.as_deref() != user.tenant_id.as_deref()
+            {
+                return (
+                    StatusCode::FORBIDDEN,
+                    Json(serde_json::json!({"error": "Cannot assign another tenant's model pool"})),
+                );
+            }
+        }
 
         let primary_model_id = primary_model_update.and_then(|value| value.as_str());
         let fallback_model_id = fallback_model_update.and_then(|value| value.as_str());
@@ -6201,10 +6289,11 @@ pub async fn patch_agent(
                     primary_model_id.map(|value| value.to_string()),
                 );
             } else {
-                let _ = state
-                    .kernel
-                    .registry
-                    .upsert_metadata_string(agent_id, "primary_model_id", None);
+                let _ = state.kernel.registry.upsert_metadata_string(
+                    agent_id,
+                    "primary_model_id",
+                    None,
+                );
             }
         }
 
@@ -6226,16 +6315,21 @@ pub async fn patch_agent(
                     fallback_model_id.map(|value| value.to_string()),
                 );
             } else {
-                if let Err(e) = state.kernel.registry.update_fallback_models(agent_id, Vec::new()) {
+                if let Err(e) = state
+                    .kernel
+                    .registry
+                    .update_fallback_models(agent_id, Vec::new())
+                {
                     return (
                         StatusCode::BAD_REQUEST,
                         Json(serde_json::json!({"error": format!("{e}")})),
                     );
                 }
-                let _ = state
-                    .kernel
-                    .registry
-                    .upsert_metadata_string(agent_id, "fallback_model_id", None);
+                let _ = state.kernel.registry.upsert_metadata_string(
+                    agent_id,
+                    "fallback_model_id",
+                    None,
+                );
             }
         }
     }
@@ -9580,40 +9674,134 @@ const KNOWN_IDENTITY_FILES: &[&str] = &[
     "HEARTBEAT.md",
 ];
 
-/// GET /api/agents/{id}/files — List workspace identity files.
-pub async fn list_agent_files(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+fn get_agent_workspace(
+    state: &AppState,
+    id: &str,
+) -> Result<(AgentId, PathBuf), (StatusCode, Json<serde_json::Value>)> {
     let agent_id: AgentId = match id.parse() {
         Ok(id) => id,
         Err(_) => {
-            return (
+            return Err((
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid agent ID"})),
-            );
+            ));
         }
     };
 
     let entry = match state.kernel.registry.get(agent_id) {
-        Some(e) => e,
+        Some(entry) => entry,
         None => {
-            return (
+            return Err((
                 StatusCode::NOT_FOUND,
                 Json(serde_json::json!({"error": "Agent not found"})),
-            );
+            ));
         }
     };
 
     let workspace = match entry.manifest.workspace {
-        Some(ref ws) => ws.clone(),
+        Some(ref workspace) => workspace.clone(),
         None => {
-            return (
+            return Err((
                 StatusCode::NOT_FOUND,
                 Json(serde_json::json!({"error": "Agent has no workspace"})),
-            );
+            ));
         }
     };
+
+    Ok((agent_id, workspace))
+}
+
+fn list_directory_entries(
+    root: &StdPath,
+    relative_path: &str,
+) -> Result<Vec<serde_json::Value>, String> {
+    let target = if relative_path.trim().is_empty() || relative_path == "." {
+        root.to_path_buf()
+    } else {
+        openparlant_runtime::workspace_sandbox::resolve_sandbox_path(relative_path, root)?
+    };
+
+    if !target.exists() {
+        return Ok(Vec::new());
+    }
+
+    if !target.is_dir() {
+        return Err("Requested path is not a directory".to_string());
+    }
+
+    let mut items = Vec::new();
+    for entry in std::fs::read_dir(&target).map_err(|e| format!("Failed to read directory: {e}"))? {
+        let entry = entry.map_err(|e| format!("Failed to read directory entry: {e}"))?;
+        let path = entry.path();
+        let metadata = entry
+            .metadata()
+            .map_err(|e| format!("Failed to stat entry: {e}"))?;
+        let relative = path
+            .strip_prefix(root)
+            .map_err(|e| format!("Failed to resolve relative path: {e}"))?
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        items.push(serde_json::json!({
+            "name": entry.file_name().to_string_lossy().to_string(),
+            "path": relative,
+            "is_dir": metadata.is_dir(),
+            "size": if metadata.is_file() { metadata.len() } else { 0 },
+        }));
+    }
+
+    items.sort_by(|a, b| {
+        let a_dir = a["is_dir"].as_bool().unwrap_or(false);
+        let b_dir = b["is_dir"].as_bool().unwrap_or(false);
+        b_dir
+            .cmp(&a_dir)
+            .then_with(|| a["name"].as_str().cmp(&b["name"].as_str()))
+    });
+
+    Ok(items)
+}
+
+fn content_type_for_path(path: &str) -> &'static str {
+    match path
+        .rsplit('.')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "md" | "txt" | "log" | "json" | "yaml" | "yml" | "toml" | "csv" | "xml" | "html"
+        | "css" | "js" | "ts" => "text/plain; charset=utf-8",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "pdf" => "application/pdf",
+        _ => "application/octet-stream",
+    }
+}
+
+/// GET /api/agents/{id}/files — List workspace identity files.
+pub async fn list_agent_files(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let (_, workspace) = match get_agent_workspace(&state, &id) {
+        Ok(result) => result,
+        Err(error) => return error.into_response(),
+    };
+
+    if let Some(path) = params.get("path") {
+        return match list_directory_entries(&workspace, path) {
+            Ok(items) => Json(serde_json::Value::Array(items)).into_response(),
+            Err(error) => (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": error})),
+            )
+                .into_response(),
+        };
+    }
 
     let mut files = Vec::new();
     for &name in KNOWN_IDENTITY_FILES {
@@ -9631,7 +9819,7 @@ pub async fn list_agent_files(
         }));
     }
 
-    (StatusCode::OK, Json(serde_json::json!({ "files": files })))
+    (StatusCode::OK, Json(serde_json::json!({ "files": files }))).into_response()
 }
 
 /// GET /api/agents/{id}/files/{filename} — Read a workspace identity file.
@@ -9843,21 +10031,229 @@ pub async fn set_agent_file(
     )
 }
 
+/// GET /api/agents/{id}/files/content?path=... — Compatibility endpoint for arbitrary workspace file reads.
+pub async fn get_agent_file_content(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let (_, workspace) = match get_agent_workspace(&state, &id) {
+        Ok(result) => result,
+        Err(error) => return error.into_response(),
+    };
+
+    let Some(path) = params.get("path") else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Missing 'path' query parameter"})),
+        )
+            .into_response();
+    };
+
+    let resolved =
+        match openparlant_runtime::workspace_sandbox::resolve_sandbox_path(path, &workspace) {
+            Ok(path) => path,
+            Err(error) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": error})),
+                )
+                    .into_response();
+            }
+        };
+
+    let content = match std::fs::read_to_string(&resolved) {
+        Ok(content) => content,
+        Err(error) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": format!("Failed to read file: {error}")})),
+            )
+                .into_response();
+        }
+    };
+
+    Json(serde_json::json!({
+        "path": path,
+        "content": content,
+    }))
+    .into_response()
+}
+
+/// PUT /api/agents/{id}/files/content?path=... — Compatibility endpoint for arbitrary workspace file writes.
+pub async fn set_agent_file_content(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+    Json(req): Json<SetAgentFileRequest>,
+) -> impl IntoResponse {
+    let (_, workspace) = match get_agent_workspace(&state, &id) {
+        Ok(result) => result,
+        Err(error) => return error.into_response(),
+    };
+
+    let Some(path) = params.get("path") else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Missing 'path' query parameter"})),
+        )
+            .into_response();
+    };
+
+    let resolved =
+        match openparlant_runtime::workspace_sandbox::resolve_sandbox_path(path, &workspace) {
+            Ok(path) => path,
+            Err(error) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": error})),
+                )
+                    .into_response();
+            }
+        };
+
+    if let Some(parent) = resolved.parent() {
+        if let Err(error) = std::fs::create_dir_all(parent) {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to create parent directory: {error}")})),
+            )
+                .into_response();
+        }
+    }
+
+    if let Err(error) = std::fs::write(&resolved, &req.content) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Write failed: {error}")})),
+        )
+            .into_response();
+    }
+
+    Json(serde_json::json!({
+        "status": "ok",
+        "path": path,
+        "size_bytes": req.content.len(),
+    }))
+    .into_response()
+}
+
+/// DELETE /api/agents/{id}/files/content?path=... — Compatibility endpoint for arbitrary workspace deletes.
+pub async fn delete_agent_file_content(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let (_, workspace) = match get_agent_workspace(&state, &id) {
+        Ok(result) => result,
+        Err(error) => return error.into_response(),
+    };
+
+    let Some(path) = params.get("path") else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Missing 'path' query parameter"})),
+        )
+            .into_response();
+    };
+
+    let resolved =
+        match openparlant_runtime::workspace_sandbox::resolve_sandbox_path(path, &workspace) {
+            Ok(path) => path,
+            Err(error) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": error})),
+                )
+                    .into_response();
+            }
+        };
+
+    let result = if resolved.is_dir() {
+        std::fs::remove_dir_all(&resolved)
+    } else {
+        std::fs::remove_file(&resolved)
+    };
+
+    if let Err(error) = result {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Delete failed: {error}")})),
+        )
+            .into_response();
+    }
+
+    Json(serde_json::json!({
+        "status": "deleted",
+        "path": path,
+    }))
+    .into_response()
+}
+
+/// GET /api/agents/{id}/files/download?path=... — Compatibility endpoint for arbitrary workspace downloads.
+pub async fn download_agent_file_content(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let (_, workspace) = match get_agent_workspace(&state, &id) {
+        Ok(result) => result,
+        Err(error) => return error.into_response(),
+    };
+
+    let Some(path) = params.get("path") else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Missing 'path' query parameter"})),
+        )
+            .into_response();
+    };
+
+    let resolved =
+        match openparlant_runtime::workspace_sandbox::resolve_sandbox_path(path, &workspace) {
+            Ok(path) => path,
+            Err(error) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": error})),
+                )
+                    .into_response();
+            }
+        };
+
+    let bytes = match std::fs::read(&resolved) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": format!("Failed to read file: {error}")})),
+            )
+                .into_response();
+        }
+    };
+
+    let filename = resolved
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("download");
+
+    axum::http::Response::builder()
+        .status(StatusCode::OK)
+        .header(
+            axum::http::header::CONTENT_TYPE,
+            content_type_for_path(path),
+        )
+        .header(
+            axum::http::header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{filename}\""),
+        )
+        .body(axum::body::Body::from(bytes))
+        .expect("workspace download response")
+}
+
 // ---------------------------------------------------------------------------
 // File Upload endpoints
 // ---------------------------------------------------------------------------
-
-/// Response body for file uploads.
-#[derive(serde::Serialize)]
-struct UploadResponse {
-    file_id: String,
-    filename: String,
-    content_type: String,
-    size: usize,
-    /// Transcription text for audio uploads (populated via Whisper STT).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    transcription: Option<String>,
-}
 
 /// Metadata stored alongside uploaded files.
 struct UploadMeta {
@@ -9889,18 +10285,14 @@ fn is_allowed_content_type(ct: &str) -> bool {
 pub async fn upload_file(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
     headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
 ) -> impl IntoResponse {
     // Validate agent ID format
-    let _agent_id: AgentId = match id.parse() {
-        Ok(id) => id,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": "Invalid agent ID"})),
-            );
-        }
+    let (_, workspace) = match get_agent_workspace(&state, &id) {
+        Ok(result) => result,
+        Err(error) => return error.into_response(),
     };
 
     // Extract content type
@@ -9916,7 +10308,8 @@ pub async fn upload_file(
             Json(
                 serde_json::json!({"error": "Unsupported content type. Allowed: image/*, text/*, audio/*, application/pdf"}),
             ),
-        );
+        )
+            .into_response();
     }
 
     // Extract filename from header
@@ -9933,14 +10326,16 @@ pub async fn upload_file(
             Json(
                 serde_json::json!({"error": format!("File too large (max {} MB)", MAX_UPLOAD_SIZE / (1024 * 1024))}),
             ),
-        );
+        )
+            .into_response();
     }
 
     if body.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "Empty file body"})),
-        );
+        )
+            .into_response();
     }
 
     // Generate file ID and save
@@ -9951,7 +10346,8 @@ pub async fn upload_file(
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": "Failed to create upload directory"})),
-        );
+        )
+            .into_response();
     }
 
     let file_path = upload_dir.join(&file_id);
@@ -9960,7 +10356,8 @@ pub async fn upload_file(
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": "Failed to save file"})),
-        );
+        )
+            .into_response();
     }
 
     let size = body.len();
@@ -9971,6 +10368,52 @@ pub async fn upload_file(
             content_type: content_type.clone(),
         },
     );
+
+    // Optionally persist into the agent workspace when `?path=` is provided.
+    let workspace_path = params.get("path").map(|path| {
+        let trimmed = path.trim_end_matches('/');
+        if trimmed.is_empty() {
+            format!("workspace/uploads/{filename}")
+        } else {
+            format!("{trimmed}/{filename}")
+        }
+    });
+
+    if let Some(ref workspace_path) = workspace_path {
+        let relative = workspace_path
+            .strip_prefix("workspace/")
+            .unwrap_or(workspace_path.as_str());
+        let resolved = match openparlant_runtime::workspace_sandbox::resolve_sandbox_path(
+            relative, &workspace,
+        ) {
+            Ok(path) => path,
+            Err(error) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": error})),
+                )
+                    .into_response();
+            }
+        };
+
+        if let Some(parent) = resolved.parent() {
+            if let Err(error) = std::fs::create_dir_all(parent) {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": format!("Failed to create upload directory: {error}")})),
+                )
+                    .into_response();
+            }
+        }
+
+        if let Err(error) = std::fs::write(&resolved, &body) {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to persist upload: {error}")})),
+            )
+                .into_response();
+        }
+    }
 
     // Auto-transcribe audio uploads using the media engine
     let transcription = if content_type.starts_with("audio/") {
@@ -10001,16 +10444,33 @@ pub async fn upload_file(
         None
     };
 
+    let extracted_text = if content_type.starts_with("text/") {
+        String::from_utf8(body.to_vec()).ok()
+    } else {
+        transcription.clone()
+    };
+
+    let image_data_url = if content_type.starts_with("image/") {
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&body);
+        Some(format!("data:{content_type};base64,{encoded}"))
+    } else {
+        None
+    };
+
     (
         StatusCode::CREATED,
-        Json(serde_json::json!(UploadResponse {
-            file_id,
-            filename,
-            content_type,
-            size,
-            transcription,
+        Json(serde_json::json!({
+            "file_id": file_id,
+            "filename": filename,
+            "content_type": content_type,
+            "size": size,
+            "transcription": transcription,
+            "extracted_text": extracted_text,
+            "workspace_path": workspace_path,
+            "image_data_url": image_data_url,
         })),
     )
+        .into_response()
 }
 
 /// GET /api/uploads/{file_id} — Serve an uploaded file.

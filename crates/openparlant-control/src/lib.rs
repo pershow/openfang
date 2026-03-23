@@ -16,9 +16,9 @@ use openparlant_policy::{
 };
 use openparlant_types::agent::SessionId;
 use openparlant_types::control::{
-    AuditMeta, CompiledTurnContext, KnowledgeCompileContext, PolicyMatchRecord, ResponseMode,
-    SessionBindingFlags, ToolAuthorization, ToolAuthorizationRecord, TurnControlCoordinator,
-    TurnInput, TurnOutcome,
+    AuditMeta, CompiledTurnContext, GuidelineActivation, KnowledgeCompileContext,
+    PolicyMatchRecord, ResponseMode, SessionBindingFlags, ToolAuthorization,
+    ToolAuthorizationRecord, TurnControlCoordinator, TurnInput, TurnOutcome,
 };
 use sha2::{Digest, Sha256};
 pub use store::{
@@ -250,10 +250,66 @@ where
     }
 }
 
+fn normalize_composition_mode(mode: &str) -> String {
+    mode.trim().to_ascii_lowercase().replace('-', "_")
+}
+
+fn composition_mode_override(
+    active_guidelines: &[GuidelineActivation],
+    has_canned_candidates: bool,
+) -> Option<ResponseMode> {
+    let mut wants_guided = false;
+    let mut wants_strict = false;
+    let mut wants_canned_strict = false;
+
+    for guideline in active_guidelines {
+        let Some(mode) = guideline.composition_mode.as_deref() else {
+            continue;
+        };
+
+        match normalize_composition_mode(mode).as_str() {
+            "guided" | "canned_fluid" | "fluid_utterance" => wants_guided = true,
+            "strict" => wants_strict = true,
+            "canned_only"
+            | "canned_strict"
+            | "strict_canned"
+            | "strict_utterance"
+            | "canned_composited"
+            | "composited_utterance" => wants_canned_strict = true,
+            // Legacy/default modes should not change the inferred response mode.
+            "append" | "fluid" | "" => {}
+            _ => {}
+        }
+    }
+
+    if wants_canned_strict {
+        return Some(if has_canned_candidates {
+            ResponseMode::CannedOnly
+        } else {
+            ResponseMode::Strict
+        });
+    }
+    if wants_strict {
+        return Some(ResponseMode::Strict);
+    }
+    if wants_guided {
+        return Some(ResponseMode::Guided);
+    }
+
+    None
+}
+
 fn infer_response_mode(
+    active_guidelines: &[GuidelineActivation],
     knowledge: &KnowledgeBundle,
     tool_authorizations: &[ToolAuthorization],
 ) -> ResponseMode {
+    if let Some(mode) = composition_mode_override(
+        active_guidelines,
+        !knowledge.canned_response_candidates.is_empty(),
+    ) {
+        return mode;
+    }
     if !knowledge.canned_response_candidates.is_empty() {
         return ResponseMode::CannedOnly;
     }
@@ -413,7 +469,11 @@ where
             );
         }
 
-        let response_mode = infer_response_mode(&knowledge, &policy.tool_authorizations);
+        let response_mode = infer_response_mode(
+            &all_active_guidelines,
+            &knowledge,
+            &policy.tool_authorizations,
+        );
         let release_version = prior_audit_meta
             .as_ref()
             .and_then(|meta| meta.release_version.clone())
@@ -592,5 +652,50 @@ mod tests {
         assert!(ctx.active_observations.is_empty());
         assert!(ctx.allowed_tools.is_empty());
         assert_eq!(ctx.response_mode, ResponseMode::Freeform);
+    }
+
+    #[test]
+    fn composition_mode_override_respects_strict_and_canned_modes() {
+        let strict = GuidelineActivation {
+            guideline_id: openparlant_types::control::GuidelineId::new(),
+            name: "strict".to_string(),
+            action_text: "Stay within strict wording.".to_string(),
+            composition_mode: Some("strict".to_string()),
+            priority: 10,
+            source_observations: Vec::new(),
+        };
+        let canned = GuidelineActivation {
+            guideline_id: openparlant_types::control::GuidelineId::new(),
+            name: "canned".to_string(),
+            action_text: "Use approved templates.".to_string(),
+            composition_mode: Some("canned_strict".to_string()),
+            priority: 20,
+            source_observations: Vec::new(),
+        };
+        let guided = GuidelineActivation {
+            guideline_id: openparlant_types::control::GuidelineId::new(),
+            name: "guided".to_string(),
+            action_text: "Keep a guided tone.".to_string(),
+            composition_mode: Some("guided".to_string()),
+            priority: 5,
+            source_observations: Vec::new(),
+        };
+
+        assert_eq!(
+            composition_mode_override(&[strict], false),
+            Some(ResponseMode::Strict)
+        );
+        assert_eq!(
+            composition_mode_override(&[guided], false),
+            Some(ResponseMode::Guided)
+        );
+        assert_eq!(
+            composition_mode_override(std::slice::from_ref(&canned), true),
+            Some(ResponseMode::CannedOnly)
+        );
+        assert_eq!(
+            composition_mode_override(std::slice::from_ref(&canned), false),
+            Some(ResponseMode::Strict)
+        );
     }
 }

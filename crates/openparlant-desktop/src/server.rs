@@ -4,7 +4,7 @@
 //! API server on a background thread with its own tokio runtime.
 
 use openparlant_api::server::build_router;
-use openparlant_kernel::OpenFangKernel;
+use openparlant_kernel::SiliCrewKernel;
 use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -16,7 +16,7 @@ pub struct ServerHandle {
     /// The port the server is listening on.
     pub port: u16,
     /// The kernel instance (shared with the server).
-    pub kernel: Arc<OpenFangKernel>,
+    pub kernel: Arc<SiliCrewKernel>,
     /// Send `true` to trigger graceful shutdown.
     shutdown_tx: watch::Sender<bool>,
     /// Join handle for the background server thread.
@@ -70,7 +70,7 @@ pub fn start_server() -> Result<ServerHandle, Box<dyn std::error::Error>> {
     load_dotenv_files();
 
     // Boot kernel (sync — no tokio needed)
-    let kernel = OpenFangKernel::boot(None)?;
+    let kernel = SiliCrewKernel::boot(None)?;
     let kernel = Arc::new(kernel);
     kernel.set_self_handle();
 
@@ -113,7 +113,7 @@ pub fn start_server() -> Result<ServerHandle, Box<dyn std::error::Error>> {
 /// Run the axum server inside a tokio runtime, shut down when the watch
 /// channel fires.
 async fn run_embedded_server(
-    kernel: Arc<OpenFangKernel>,
+    kernel: Arc<SiliCrewKernel>,
     std_listener: TcpListener,
     listen_addr: SocketAddr,
     mut shutdown_rx: watch::Receiver<bool>,

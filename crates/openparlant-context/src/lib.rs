@@ -91,6 +91,7 @@ impl KnowledgeCompiler for SqliteKnowledgeCompiler {
                 &message.text,
                 active_journey_state,
                 &compile_ctx.agent_id,
+                &compile_ctx.session_id,
             )
             .await?;
         let canned_response_candidates = self

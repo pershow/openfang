@@ -51,10 +51,10 @@ openparlant-types          Shared types: Agent, Capability, Event, Memory, Messa
 
 | Crate | Description |
 |-------|-------------|
-| **openparlant-types** | Core type definitions used across all crates. Defines `AgentManifest`, `AgentId`, `Capability`, `Event`, `ToolDefinition`, `KernelConfig`, `OpenFangError`, taint tracking (`TaintLabel`, `TaintSet`), Ed25519 manifest signing, model catalog types (`ModelCatalogEntry`, `ProviderInfo`, `ModelTier`), tool compatibility mappings (21 OpenClaw-to-OpenParlant), MCP/A2A config types, and web config types. All config structs use `#[serde(default)]` for forward-compatible TOML parsing. |
+| **openparlant-types** | Core type definitions used across all crates. Defines `AgentManifest`, `AgentId`, `Capability`, `Event`, `ToolDefinition`, `KernelConfig`, `SiliCrewError`, taint tracking (`TaintLabel`, `TaintSet`), Ed25519 manifest signing, model catalog types (`ModelCatalogEntry`, `ProviderInfo`, `ModelTier`), tool compatibility mappings (21 OpenClaw-to-OpenParlant), MCP/A2A config types, and web config types. All config structs use `#[serde(default)]` for forward-compatible TOML parsing. |
 | **openparlant-memory** | SQLite-backed memory substrate (schema v5). Uses `Arc<Mutex<Connection>>` with `spawn_blocking` for async bridge. Provides structured KV storage, semantic search with vector embeddings, knowledge graph (entities and relations), session management, task board, usage event persistence (`usage_events` table, `UsageStore`), and canonical sessions for cross-channel memory. Five schema versions: V1 core, V2 collab, V3 embeddings, V4 usage, V5 canonical_sessions. |
 | **openparlant-runtime** | Agent execution engine. Contains the agent loop (`run_agent_loop`, `run_agent_loop_streaming`), 3 native LLM drivers (Anthropic, Gemini, OpenAI-compatible covering 20 providers), 23 built-in tools, WASM sandbox (Wasmtime with dual fuel+epoch metering), MCP client/server (JSON-RPC 2.0 over stdio/SSE), A2A protocol (AgentCard, task management), web search engine (4 providers: Tavily/Brave/Perplexity/DuckDuckGo), web fetch with SSRF protection, loop guard (SHA256-based tool loop detection), session repair (history validation), LLM session compactor (block-aware), Merkle hash chain audit trail, and embedding driver. Defines the `KernelHandle` trait that enables inter-agent tools without circular crate dependencies. |
-| **openparlant-kernel** | The central coordinator. `OpenFangKernel` assembles all subsystems: `AgentRegistry`, `AgentScheduler`, `CapabilityManager`, `EventBus`, `Supervisor`, `WorkflowEngine`, `TriggerEngine`, `BackgroundExecutor`, `WasmSandbox`, `ModelCatalog`, `MeteringEngine`, `ModelRouter`, `AuthManager` (RBAC), `HeartbeatMonitor`, `SetupWizard`, `SkillRegistry`, MCP connections, and `WebToolsContext`. Implements `KernelHandle` for inter-agent operations. Handles agent spawn/kill, message dispatch, workflow execution, trigger evaluation, capability inheritance validation, and graceful shutdown with state persistence. |
+| **openparlant-kernel** | The central coordinator. `SiliCrewKernel` assembles all subsystems: `AgentRegistry`, `AgentScheduler`, `CapabilityManager`, `EventBus`, `Supervisor`, `WorkflowEngine`, `TriggerEngine`, `BackgroundExecutor`, `WasmSandbox`, `ModelCatalog`, `MeteringEngine`, `ModelRouter`, `AuthManager` (RBAC), `HeartbeatMonitor`, `SetupWizard`, `SkillRegistry`, MCP connections, and `WebToolsContext`. Implements `KernelHandle` for inter-agent operations. Handles agent spawn/kill, message dispatch, workflow execution, trigger evaluation, capability inheritance validation, and graceful shutdown with state persistence. |
 | **openparlant-api** | HTTP API server built on Axum 0.8 with 76 endpoints. Routes for agents, workflows, triggers, memory, channels, templates, models, providers, skills, ClawHub, MCP, health, status, version, and shutdown. WebSocket handler for real-time agent chat with streaming. SSE endpoint for streaming responses. OpenAI-compatible endpoints (`POST /v1/chat/completions`, `GET /v1/models`). A2A endpoints (`/.well-known/agent.json`, `/a2a/*`). Middleware: Bearer token auth, request ID injection, structured request logging, GCRA rate limiter (cost-aware), security headers (CSP, X-Frame-Options, etc.), health endpoint redaction. |
 | **openparlant-channels** | Channel bridge layer with 40 adapters. Each adapter implements the `ChannelAdapter` trait. Includes: Telegram, Discord, Slack, WhatsApp, Signal, Matrix, Email, SMS, Webhook, Teams, Mattermost, IRC, Google Chat, Twitch, Rocket.Chat, Zulip, XMPP, LINE, Viber, Messenger, Reddit, Mastodon, Bluesky, Feishu, Revolt, Nextcloud, Guilded, Keybase, Threema, Nostr, Webex, Pumble, Flock, Twist, Mumble, DingTalk, Discourse, Gitter, Ntfy, Gotify, LinkedIn. Features: `AgentRouter` for message routing, `BridgeManager` for lifecycle coordination, `ChannelRateLimiter` (per-user DashMap tracking), `formatter.rs` (Markdown to TelegramHTML/SlackMrkdwn/PlainText), `ChannelOverrides` (model/system_prompt/dm_policy/group_policy/rate_limit/threading/output_format), DM/group policy enforcement. |
 | **openparlant-wire** | OpenParlant Protocol (OFP) for peer-to-peer agent communication. JSON-framed messages over TCP with HMAC-SHA256 mutual authentication (nonce + constant-time verify via `subtle`). `PeerNode` listens for connections and manages peers. `PeerRegistry` tracks known remote peers and their agents. |
@@ -68,7 +68,7 @@ openparlant-types          Shared types: Agent, Capability, Event, Memory, Messa
 
 ## Kernel Boot Sequence
 
-When `OpenFangKernel::boot_with_config()` is called (either by the daemon or in-process by the CLI/desktop app), the following sequence executes:
+When `SiliCrewKernel::boot_with_config()` is called (either by the daemon or in-process by the CLI/desktop app), the following sequence executes:
 
 ```
 1. Load configuration
@@ -339,7 +339,7 @@ pub trait LlmDriver: Send + Sync {
         system_prompt: &str,
         messages: &[Message],
         tools: &[ToolDefinition],
-    ) -> Result<LlmResponse, OpenFangError>;
+    ) -> Result<LlmResponse, SiliCrewError>;
 
     async fn send_message_streaming(
         &self,
@@ -348,7 +348,7 @@ pub trait LlmDriver: Send + Sync {
         messages: &[Message],
         tools: &[ToolDefinition],
         tx: mpsc::Sender<StreamEvent>,
-    ) -> Result<LlmResponse, OpenFangError>;
+    ) -> Result<LlmResponse, SiliCrewError>;
 
     fn key_required(&self) -> bool;
 }
@@ -766,7 +766,7 @@ The desktop app (`openparlant-desktop`) wraps the full OpenParlant stack in a na
 | +---------------------------------------+ |
 | | Background Thread                     | |
 | | +- Own Tokio Runtime                  | |
-| |    +- OpenFangKernel (in-process)     | |
+| |    +- SiliCrewKernel (in-process)     | |
 | |    +- Axum Server (build_router())    | |
 | |    +- ServerHandle { port, shutdown } | |
 | +---------------------------------------+ |

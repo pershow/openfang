@@ -1,20 +1,19 @@
 use crate::store::{ControlStore, NotificationRecord};
 use chrono::{DateTime, Utc};
 use openparlant_memory::db::{block_on, SharedDb};
-use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::error::{SiliCrewError, SiliCrewResult};
 use rusqlite::params;
 use sqlx::Row;
 
-fn memory_error<E: std::fmt::Display>(error: E) -> OpenFangError {
-    OpenFangError::Memory(error.to_string())
+fn memory_error<E: std::fmt::Display>(error: E) -> SiliCrewError {
+    SiliCrewError::Memory(error.to_string())
 }
 
-fn parse_timestamp(value: &str) -> OpenFangResult<DateTime<Utc>> {
+fn parse_timestamp(value: &str) -> SiliCrewResult<DateTime<Utc>> {
     chrono::DateTime::parse_from_rfc3339(value)
         .map(|dt| dt.with_timezone(&Utc))
         .or_else(|_| {
-            chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
-                .map(|dt| dt.and_utc())
+            chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S").map(|dt| dt.and_utc())
         })
         .map_err(memory_error)
 }
@@ -69,7 +68,7 @@ fn notification_from_sqlite_row(
         String,
         Option<String>,
     ),
-) -> OpenFangResult<NotificationRecord> {
+) -> SiliCrewResult<NotificationRecord> {
     Ok(NotificationRecord {
         id: row.0,
         tenant_id: row.1,
@@ -86,7 +85,7 @@ fn notification_from_sqlite_row(
     })
 }
 
-fn notification_from_pg_row(row: sqlx::postgres::PgRow) -> OpenFangResult<NotificationRecord> {
+fn notification_from_pg_row(row: sqlx::postgres::PgRow) -> SiliCrewResult<NotificationRecord> {
     Ok(NotificationRecord {
         id: row.try_get("id").map_err(memory_error)?,
         tenant_id: row.try_get("tenant_id").map_err(memory_error)?,
@@ -98,7 +97,10 @@ fn notification_from_pg_row(row: sqlx::postgres::PgRow) -> OpenFangResult<Notifi
         link: row.try_get("link").map_err(memory_error)?,
         sender_id: row.try_get("sender_id").map_err(memory_error)?,
         sender_name: row.try_get("sender_name").map_err(memory_error)?,
-        created_at: parse_timestamp(&row.try_get::<String, _>("created_at").map_err(memory_error)?)?,
+        created_at: parse_timestamp(
+            &row.try_get::<String, _>("created_at")
+                .map_err(memory_error)?,
+        )?,
         read_at: row
             .try_get::<Option<String>, _>("read_at")
             .map_err(memory_error)?
@@ -109,10 +111,12 @@ fn notification_from_pg_row(row: sqlx::postgres::PgRow) -> OpenFangResult<Notifi
 }
 
 impl ControlStore {
-    pub fn create_notification(&self, notification: &NotificationRecord) -> OpenFangResult<()> {
+    pub fn create_notification(&self, notification: &NotificationRecord) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
-                let conn = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO notifications (id, tenant_id, user_id, type, category, title, body, link, sender_id, sender_name, created_at, read_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
@@ -167,10 +171,12 @@ impl ControlStore {
         user_id: &str,
         category: Option<&str>,
         limit: usize,
-    ) -> OpenFangResult<Vec<NotificationRecord>> {
+    ) -> SiliCrewResult<Vec<NotificationRecord>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
-                let conn = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let sql = if category.is_some() && category != Some("all") {
                     "SELECT id, tenant_id, user_id, type, category, title, body, link, sender_id, sender_name, created_at, read_at
                      FROM notifications WHERE user_id = ?1 AND category = ?2 ORDER BY created_at DESC LIMIT ?3"
@@ -180,7 +186,10 @@ impl ControlStore {
                 };
                 let mut stmt = conn.prepare(sql).map_err(memory_error)?;
                 let rows = if let Some(category) = category.filter(|value| *value != "all") {
-                    stmt.query_map(params![user_id, category, limit as i64], notification_row_sqlite)
+                    stmt.query_map(
+                        params![user_id, category, limit as i64],
+                        notification_row_sqlite,
+                    )
                 } else {
                     stmt.query_map(params![user_id, limit as i64], notification_row_sqlite)
                 }
@@ -229,10 +238,12 @@ impl ControlStore {
         }
     }
 
-    pub fn unread_notification_count(&self, user_id: &str) -> OpenFangResult<i64> {
+    pub fn unread_notification_count(&self, user_id: &str) -> SiliCrewResult<i64> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
-                let conn = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.query_row(
                     "SELECT COUNT(*) FROM notifications WHERE user_id = ?1 AND read_at IS NULL",
                     params![user_id],
@@ -256,11 +267,17 @@ impl ControlStore {
         }
     }
 
-    pub fn mark_notification_read(&self, notification_id: &str, user_id: &str) -> OpenFangResult<bool> {
+    pub fn mark_notification_read(
+        &self,
+        notification_id: &str,
+        user_id: &str,
+    ) -> SiliCrewResult<bool> {
         let now = Utc::now().to_rfc3339();
         match &self.db {
             SharedDb::Sqlite(conn) => {
-                let conn = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 Ok(conn
                     .execute(
                         "UPDATE notifications SET read_at = ?1 WHERE id = ?2 AND user_id = ?3 AND read_at IS NULL",
@@ -289,11 +306,13 @@ impl ControlStore {
         }
     }
 
-    pub fn mark_all_notifications_read(&self, user_id: &str) -> OpenFangResult<u64> {
+    pub fn mark_all_notifications_read(&self, user_id: &str) -> SiliCrewResult<u64> {
         let now = Utc::now().to_rfc3339();
         match &self.db {
             SharedDb::Sqlite(conn) => {
-                let conn = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let changed = conn
                     .execute(
                         "UPDATE notifications SET read_at = ?1 WHERE user_id = ?2 AND read_at IS NULL",

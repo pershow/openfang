@@ -23,7 +23,8 @@ fn main() {
         return;
     }
 
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
+    let manifest_dir =
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
     let frontend_dir = manifest_dir.join("../../frontend");
     let npm = if cfg!(windows) { "npm.cmd" } else { "npm" };
 

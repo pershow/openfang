@@ -462,6 +462,7 @@ impl PolicyResolver for SqlitePolicyResolver {
                 guideline_id: guideline.guideline_id,
                 name: guideline.name,
                 action_text: guideline.action_text,
+                composition_mode: Some(guideline.composition_mode),
                 priority: guideline.priority,
                 source_observations: observations
                     .iter()
@@ -921,6 +922,7 @@ impl PolicyResolver for LlmPolicyResolver {
                         guideline_id: guideline.guideline_id,
                         name: guideline.name.clone(),
                         action_text: guideline.action_text.clone(),
+                        composition_mode: Some(guideline.composition_mode.clone()),
                         priority: guideline.priority,
                         source_observations: observations
                             .iter()
@@ -934,6 +936,7 @@ impl PolicyResolver for LlmPolicyResolver {
                     guideline_id: guideline.guideline_id,
                     name: guideline.name.clone(),
                     action_text: guideline.action_text.clone(),
+                    composition_mode: Some(guideline.composition_mode.clone()),
                     priority: guideline.priority,
                     source_observations: Vec::new(),
                 });
@@ -997,6 +1000,7 @@ impl PolicyResolver for LlmPolicyResolver {
                                         guideline_id: g.guideline_id,
                                         name: g.name.clone(),
                                         action_text: g.action_text.clone(),
+                                        composition_mode: Some(g.composition_mode.clone()),
                                         priority: g.priority,
                                         source_observations: Vec::new(),
                                     });

@@ -20,7 +20,7 @@ use openparlant_memory::MemorySubstrate;
 use openparlant_skills::registry::SkillRegistry;
 use openparlant_types::agent::AgentManifest;
 use openparlant_types::control::ToolCallRecord;
-use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::error::{SiliCrewError, SiliCrewResult};
 use openparlant_types::memory::{Memory, MemoryFilter, MemorySource};
 use openparlant_types::message::{
     ContentBlock, Message, MessageContent, Role, StopReason, TokenUsage,
@@ -250,7 +250,7 @@ pub trait IterativeControlCallback: Send + Sync {
     async fn on_tool_results(
         &self,
         tool_calls: &[ToolCallRecord],
-    ) -> OpenFangResult<Option<IterativeControlUpdate>>;
+    ) -> SiliCrewResult<Option<IterativeControlUpdate>>;
 }
 
 /// Result of an agent loop execution.
@@ -298,7 +298,7 @@ pub async fn run_agent_loop(
     process_manager: Option<&crate::process_manager::ProcessManager>,
     iterative_control: Option<&dyn IterativeControlCallback>,
     user_content_blocks: Option<Vec<ContentBlock>>,
-) -> OpenFangResult<AgentLoopResult> {
+) -> SiliCrewResult<AgentLoopResult> {
     info!(agent = %manifest.name, "Starting agent loop");
 
     // Extract hand-allowed env vars from manifest metadata (set by kernel for hand settings)
@@ -583,7 +583,7 @@ pub async fn run_agent_loop(
                     memory
                         .save_session_async(session)
                         .await
-                        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     return Ok(AgentLoopResult {
                         response: String::new(),
                         total_usage,
@@ -675,7 +675,7 @@ pub async fn run_agent_loop(
                 memory
                     .save_session_async(session)
                     .await
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 // Remember this interaction (with embedding if available)
                 let interaction_text = format!(
@@ -804,7 +804,7 @@ pub async fn run_agent_loop(
                                 };
                                 let _ = hook_reg.fire(&ctx);
                             }
-                            return Err(OpenFangError::Internal(msg.clone()));
+                            return Err(SiliCrewError::Internal(msg.clone()));
                         }
                         LoopGuardVerdict::Block(msg) => {
                             warn!(tool = %tool_call.name, "Tool call blocked by loop guard");
@@ -1088,7 +1088,7 @@ pub async fn run_agent_loop(
         let _ = hook_reg.fire(&ctx);
     }
 
-    Err(OpenFangError::MaxIterationsExceeded(max_iterations))
+    Err(SiliCrewError::MaxIterationsExceeded(max_iterations))
 }
 
 /// Call an LLM driver with automatic retry on rate-limit and overload errors.
@@ -1100,7 +1100,7 @@ async fn call_with_retry(
     request: CompletionRequest,
     provider: Option<&str>,
     cooldown: Option<&ProviderCooldown>,
-) -> OpenFangResult<crate::llm_driver::CompletionResponse> {
+) -> SiliCrewResult<crate::llm_driver::CompletionResponse> {
     // Check circuit breaker before calling
     if let (Some(provider), Some(cooldown)) = (provider, cooldown) {
         match cooldown.check(provider) {
@@ -1108,7 +1108,7 @@ async fn call_with_retry(
                 reason,
                 retry_after_secs,
             } => {
-                return Err(OpenFangError::LlmDriver(format!(
+                return Err(SiliCrewError::LlmDriver(format!(
                     "Provider '{provider}' is in cooldown ({reason}). Retry in {retry_after_secs}s."
                 )));
             }
@@ -1135,7 +1135,7 @@ async fn call_with_retry(
                     if let (Some(provider), Some(cooldown)) = (provider, cooldown) {
                         cooldown.record_failure(provider, false);
                     }
-                    return Err(OpenFangError::LlmDriver(format!(
+                    return Err(SiliCrewError::LlmDriver(format!(
                         "Rate limited after {} retries",
                         MAX_RETRIES
                     )));
@@ -1154,7 +1154,7 @@ async fn call_with_retry(
                     if let (Some(provider), Some(cooldown)) = (provider, cooldown) {
                         cooldown.record_failure(provider, false);
                     }
-                    return Err(OpenFangError::LlmDriver(format!(
+                    return Err(SiliCrewError::LlmDriver(format!(
                         "Model overloaded after {} retries",
                         MAX_RETRIES
                     )));
@@ -1194,12 +1194,12 @@ async fn call_with_retry(
                 } else {
                     classified.sanitized_message
                 };
-                return Err(OpenFangError::LlmDriver(user_msg));
+                return Err(SiliCrewError::LlmDriver(user_msg));
             }
         }
     }
 
-    Err(OpenFangError::LlmDriver(
+    Err(SiliCrewError::LlmDriver(
         last_error.unwrap_or_else(|| "Unknown error".to_string()),
     ))
 }
@@ -1213,7 +1213,7 @@ async fn stream_with_retry(
     tx: mpsc::Sender<StreamEvent>,
     provider: Option<&str>,
     cooldown: Option<&ProviderCooldown>,
-) -> OpenFangResult<crate::llm_driver::CompletionResponse> {
+) -> SiliCrewResult<crate::llm_driver::CompletionResponse> {
     // Check circuit breaker before calling
     if let (Some(provider), Some(cooldown)) = (provider, cooldown) {
         match cooldown.check(provider) {
@@ -1221,7 +1221,7 @@ async fn stream_with_retry(
                 reason,
                 retry_after_secs,
             } => {
-                return Err(OpenFangError::LlmDriver(format!(
+                return Err(SiliCrewError::LlmDriver(format!(
                     "Provider '{provider}' is in cooldown ({reason}). Retry in {retry_after_secs}s."
                 )));
             }
@@ -1250,7 +1250,7 @@ async fn stream_with_retry(
                     if let (Some(provider), Some(cooldown)) = (provider, cooldown) {
                         cooldown.record_failure(provider, false);
                     }
-                    return Err(OpenFangError::LlmDriver(format!(
+                    return Err(SiliCrewError::LlmDriver(format!(
                         "Rate limited after {} retries",
                         MAX_RETRIES
                     )));
@@ -1269,7 +1269,7 @@ async fn stream_with_retry(
                     if let (Some(provider), Some(cooldown)) = (provider, cooldown) {
                         cooldown.record_failure(provider, false);
                     }
-                    return Err(OpenFangError::LlmDriver(format!(
+                    return Err(SiliCrewError::LlmDriver(format!(
                         "Model overloaded after {} retries",
                         MAX_RETRIES
                     )));
@@ -1307,12 +1307,12 @@ async fn stream_with_retry(
                 } else {
                     classified.sanitized_message
                 };
-                return Err(OpenFangError::LlmDriver(user_msg));
+                return Err(SiliCrewError::LlmDriver(user_msg));
             }
         }
     }
 
-    Err(OpenFangError::LlmDriver(
+    Err(SiliCrewError::LlmDriver(
         last_error.unwrap_or_else(|| "Unknown error".to_string()),
     ))
 }
@@ -1347,7 +1347,7 @@ pub async fn run_agent_loop_streaming(
     process_manager: Option<&crate::process_manager::ProcessManager>,
     iterative_control: Option<&dyn IterativeControlCallback>,
     user_content_blocks: Option<Vec<ContentBlock>>,
-) -> OpenFangResult<AgentLoopResult> {
+) -> SiliCrewResult<AgentLoopResult> {
     info!(agent = %manifest.name, "Starting streaming agent loop");
 
     // Extract hand-allowed env vars from manifest metadata (set by kernel for hand settings)
@@ -1646,7 +1646,7 @@ pub async fn run_agent_loop_streaming(
                     memory
                         .save_session_async(session)
                         .await
-                        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     return Ok(AgentLoopResult {
                         response: String::new(),
                         total_usage,
@@ -1717,7 +1717,7 @@ pub async fn run_agent_loop_streaming(
                 memory
                     .save_session_async(session)
                     .await
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 // Remember this interaction (with embedding if available)
                 let interaction_text = format!(
@@ -1842,7 +1842,7 @@ pub async fn run_agent_loop_streaming(
                                 };
                                 let _ = hook_reg.fire(&ctx);
                             }
-                            return Err(OpenFangError::Internal(msg.clone()));
+                            return Err(SiliCrewError::Internal(msg.clone()));
                         }
                         LoopGuardVerdict::Block(msg) => {
                             warn!(tool = %tool_call.name, "Tool call blocked by loop guard (streaming)");
@@ -2135,7 +2135,7 @@ pub async fn run_agent_loop_streaming(
         let _ = hook_reg.fire(&ctx);
     }
 
-    Err(OpenFangError::MaxIterationsExceeded(max_iterations))
+    Err(SiliCrewError::MaxIterationsExceeded(max_iterations))
 }
 
 /// Recover tool calls that LLMs output as plain text instead of the proper
@@ -3205,7 +3205,7 @@ mod tests {
         async fn on_tool_results(
             &self,
             tool_calls: &[ToolCallRecord],
-        ) -> OpenFangResult<Option<IterativeControlUpdate>> {
+        ) -> SiliCrewResult<Option<IterativeControlUpdate>> {
             assert_eq!(tool_calls.len(), 1);
             assert_eq!(tool_calls[0].tool_name, "system_time");
             assert!(tool_calls[0].result.is_some());

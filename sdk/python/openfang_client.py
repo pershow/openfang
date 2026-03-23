@@ -31,7 +31,7 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode, quote
 
 
-class OpenFangError(Exception):
+class SiliCrewError(Exception):
     def __init__(self, message: str, status: int = 0, body: str = ""):
         super().__init__(message)
         self.status = status
@@ -77,7 +77,7 @@ class OpenParlant:
                 return text
         except HTTPError as e:
             body_text = e.read().decode() if e.fp else ""
-            raise OpenFangError(f"HTTP {e.code}: {body_text}", e.code, body_text) from e
+            raise SiliCrewError(f"HTTP {e.code}: {body_text}", e.code, body_text) from e
 
     def _stream(self, method: str, path: str, body: Any = None) -> Generator[Dict, None, None]:
         """SSE streaming. Yields parsed JSON events."""
@@ -90,7 +90,7 @@ class OpenParlant:
             resp = urlopen(req)
         except HTTPError as e:
             body_text = e.read().decode() if e.fp else ""
-            raise OpenFangError(f"HTTP {e.code}: {body_text}", e.code, body_text) from e
+            raise SiliCrewError(f"HTTP {e.code}: {body_text}", e.code, body_text) from e
 
         buffer = ""
         while True:

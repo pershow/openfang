@@ -231,7 +231,7 @@ impl AgentSelectState {
     }
 
     /// Load in-process agents from the kernel.
-    pub fn load_inprocess_agents(&mut self, kernel: &openparlant_kernel::OpenFangKernel) {
+    pub fn load_inprocess_agents(&mut self, kernel: &openparlant_kernel::SiliCrewKernel) {
         self.inprocess_agents.clear();
         for entry in kernel.registry.list() {
             self.inprocess_agents.push(InProcessAgent {

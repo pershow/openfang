@@ -127,7 +127,7 @@ async fn node_available() -> bool {
 /// 5. Monitors the process and restarts on crash (up to 3 times)
 ///
 /// The PID is stored in the kernel's `whatsapp_gateway_pid` for shutdown cleanup.
-pub async fn start_whatsapp_gateway(kernel: &Arc<super::kernel::OpenFangKernel>) {
+pub async fn start_whatsapp_gateway(kernel: &Arc<super::kernel::SiliCrewKernel>) {
     // Only start if WhatsApp is configured
     let wa_config = match &kernel.config.channels.whatsapp {
         Some(cfg) => cfg.clone(),

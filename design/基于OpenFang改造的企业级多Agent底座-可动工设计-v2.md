@@ -1,14 +1,14 @@
-# 基于 OpenFang 改造的企业级多-Agent 底座（可动工设计）
+# 基于 SiliCrew 改造的企业级多-Agent 底座（可动工设计）
 
 ## 1. 文档目的
 
 本文档给出一版可以直接启动研发的设计方案。总体路线为：
 
-- **Fork OpenFang**，保留其 Rust 运行时、channel、skill、tool/MCP/A2A、dashboard、API 等基础能力。
+- **Fork SiliCrew**，保留其 Rust 运行时、channel、skill、tool/MCP/A2A、dashboard、API 等基础能力。
 - **新增企业控制面**，引入 Parlant(https://github.com/emcie-co/parlant) 风格的 `policy / journey / retriever / tool exposure` 控制逻辑。
 - **前后台双路径**：
   - 前台 `Chat Path`：面向 Web Chat、飞书、客服/电销/流程办理场景，强调可控、可审计、可人工接管。
-  - 后台 `Hand Path`：继续利用 OpenFang 的 Hands / scheduler / autonomous execution 能力。
+  - 后台 `Hand Path`：继续利用 SiliCrew 的 Hands / scheduler / autonomous execution 能力。
 
 首版采用**极简依赖版**：
 
@@ -45,9 +45,9 @@
 
 ## 3. 核心架构原则
 
-### 3.1 OpenFang 做执行面，不直接定义产品控制面
+### 3.1 SiliCrew 做执行面，不直接定义产品控制面
 
-OpenFang 当前强项是：
+SiliCrew 当前强项是：
 
 - Rust Agent OS
 - Skills / Hands
@@ -113,7 +113,7 @@ graph TD
     PE --> CO
 
     CO --> IG[Inference Gateway]
-    IG --> OFR[OpenFang Runtime]
+    IG --> OFR[SiliCrew Runtime]
     OFR --> EXE[Skill/Tool/MCP Executor]
     EXE --> IG
 
@@ -164,7 +164,7 @@ graph TD
 
 原则：
 
-- 尽量保留 OpenFang 原生 Hands 机制
+- 尽量保留 SiliCrew 原生 Hands 机制
 - 不与 Chat Path 共用前台强策略控制逻辑
 - 底层复用 runtime / skills / channels / audit
 
@@ -967,7 +967,7 @@ pub trait InferenceGateway {
 
 目标：
 
-- Fork OpenFang
+- Fork SiliCrew
 - 锁定 commit
 - 跑通 server / dashboard / API
 - 建立新增 crates 空壳
@@ -1040,8 +1040,8 @@ pub trait InferenceGateway {
 
 建议立即拍板以下事项：
 
-1. **Fork OpenFang，锁 commit，不直接跟主干滚动升级**
-2. **前台 Chat Path 单独建设，不复用 OpenFang 原生 Hands-first 路径**
+1. **Fork SiliCrew，锁 commit，不直接跟主干滚动升级**
+2. **前台 Chat Path 单独建设，不复用 SiliCrew 原生 Hands-first 路径**
 3. **Skill 与 Tool 分层**
 4. **首版采用 PostgreSQL-first 极简依赖**
 5. **先用 Web Chat 跑通，再做飞书生产化**

@@ -87,10 +87,10 @@ impl CapabilityCheck {
     }
 
     /// Returns an error if denied, Ok(()) if granted.
-    pub fn require(&self) -> Result<(), crate::error::OpenFangError> {
+    pub fn require(&self) -> Result<(), crate::error::SiliCrewError> {
         match self {
             Self::Granted => Ok(()),
-            Self::Denied(reason) => Err(crate::error::OpenFangError::CapabilityDenied(
+            Self::Denied(reason) => Err(crate::error::SiliCrewError::CapabilityDenied(
                 reason.clone(),
             )),
         }

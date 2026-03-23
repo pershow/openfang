@@ -2,7 +2,7 @@
 //!
 //! Run with: GROQ_API_KEY=gsk_... cargo test -p openparlant-kernel --test multi_agent_test -- --nocapture
 
-use openparlant_kernel::OpenFangKernel;
+use openparlant_kernel::SiliCrewKernel;
 use openparlant_types::agent::AgentManifest;
 use openparlant_types::config::{DefaultModelConfig, KernelConfig};
 
@@ -35,7 +35,7 @@ async fn test_six_agent_fleet() {
         return;
     }
 
-    let kernel = OpenFangKernel::boot_with_config(test_config()).expect("Kernel should boot");
+    let kernel = SiliCrewKernel::boot_with_config(test_config()).expect("Kernel should boot");
 
     // Define all 6 agents with different roles and models
     let agents = vec![

@@ -1786,7 +1786,7 @@
               <div class="modal" style="max-width:600px">
                 <div class="modal-header"><h3>Generated TOML</h3><button class="modal-close" @click="showTomlPreview = false">&times;</button></div>
                 <pre class="wf-toml-preview" x-text="tomlOutput"></pre>
-                <button class="btn btn-ghost btn-block mt-2" @click="navigator.clipboard.writeText(tomlOutput); OpenFangToast.success('Copied!')">Copy to Clipboard</button>
+                <button class="btn btn-ghost btn-block mt-2" @click="navigator.clipboard.writeText(tomlOutput); SiliCrewToast.success('Copied!')">Copy to Clipboard</button>
               </div>
             </div>
           </template>
@@ -3750,11 +3750,11 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
           <!-- Network tab -->
           <div x-show="tab === 'network'" x-data="{
             netStatus: null, a2aAgents: [], a2aDiscoverUrl: '', a2aDiscovering: false,
-            async loadNetStatus() { try { this.netStatus = await OpenFangAPI.get('/api/network/status'); } catch(e) {} },
-            async loadA2aAgents() { try { let r = await OpenFangAPI.get('/api/a2a/agents'); this.a2aAgents = r.agents || []; } catch(e) {} },
+            async loadNetStatus() { try { this.netStatus = await SiliCrewAPI.get('/api/network/status'); } catch(e) {} },
+            async loadA2aAgents() { try { let r = await SiliCrewAPI.get('/api/a2a/agents'); this.a2aAgents = r.agents || []; } catch(e) {} },
             async discoverA2a() {
               if (!this.a2aDiscoverUrl) return; this.a2aDiscovering = true;
-              try { await OpenFangAPI.post('/api/a2a/discover', {url:this.a2aDiscoverUrl}); this.a2aDiscoverUrl=''; await this.loadA2aAgents(); } catch(e) {}
+              try { await SiliCrewAPI.post('/api/a2a/discover', {url:this.a2aDiscoverUrl}); this.a2aDiscoverUrl=''; await this.loadA2aAgents(); } catch(e) {}
               this.a2aDiscovering = false;
             }
           }" x-init="loadNetStatus(); loadA2aAgents()">
@@ -3842,8 +3842,8 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
               this.budgetLoading = true;
               try {
                 let [b, a] = await Promise.all([
-                  OpenFangAPI.get('/api/budget'),
-                  OpenFangAPI.get('/api/budget/agents')
+                  SiliCrewAPI.get('/api/budget'),
+                  SiliCrewAPI.get('/api/budget/agents')
                 ]);
                 this.budgetData = b;
                 this.agentRanking = a.agents || [];
@@ -3868,10 +3868,10 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                 let alertVal = (+this.editAlert) / 100;
                 if (Math.abs(alertVal - this.budgetData.alert_threshold) > 0.001) body.alert_threshold = alertVal;
                 if (+this.editTokenLimit !== (this.budgetData.default_max_llm_tokens_per_hour || 0)) body.default_max_llm_tokens_per_hour = +this.editTokenLimit;
-                await OpenFangAPI.put('/api/budget', body);
+                await SiliCrewAPI.put('/api/budget', body);
                 this.editMode = false;
                 await this.loadBudget();
-              } catch(e) { OpenFangToast.error('Failed to save: ' + (e.message || e)); }
+              } catch(e) { SiliCrewToast.error('Failed to save: ' + (e.message || e)); }
               this.saving = false;
             },
             fmtTokens(v) { return v > 0 ? (v >= 1000000 ? (v/1000000).toFixed(1)+'M' : v >= 1000 ? (v/1000).toFixed(0)+'K' : v) : 'per-agent'; },

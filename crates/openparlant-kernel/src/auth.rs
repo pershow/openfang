@@ -6,7 +6,7 @@
 use dashmap::DashMap;
 use openparlant_types::agent::UserId;
 use openparlant_types::config::UserConfig;
-use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::error::{SiliCrewError, SiliCrewResult};
 use std::fmt;
 use tracing::info;
 
@@ -155,17 +155,17 @@ impl AuthManager {
     /// Authorize a user for an action.
     ///
     /// Returns Ok(()) if the user has sufficient permissions, or AuthDenied error.
-    pub fn authorize(&self, user_id: UserId, action: &Action) -> OpenFangResult<()> {
+    pub fn authorize(&self, user_id: UserId, action: &Action) -> SiliCrewResult<()> {
         let identity = self
             .users
             .get(&user_id)
-            .ok_or_else(|| OpenFangError::AuthDenied("Unknown user".to_string()))?;
+            .ok_or_else(|| SiliCrewError::AuthDenied("Unknown user".to_string()))?;
 
         let required = action.required_role();
         if identity.role >= required {
             Ok(())
         } else {
-            Err(OpenFangError::AuthDenied(format!(
+            Err(SiliCrewError::AuthDenied(format!(
                 "User '{}' (role: {}) lacks permission for {:?} (requires: {})",
                 identity.name, identity.role, action, required
             )))

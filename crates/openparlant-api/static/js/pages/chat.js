@@ -192,7 +192,7 @@ function chatPage() {
           self.showSlashMenu = false;
           self.modelPickerFilter = modelMatch[1].toLowerCase();
           if (!self.modelPickerList.length) {
-            OpenFangAPI.get('/api/models').then(function(data) {
+            SiliCrewAPI.get('/api/models').then(function(data) {
               self.modelPickerList = (data.models || []).filter(function(m) { return m.available; });
               self.showModelPicker = true;
               self.modelPickerIdx = 0;
@@ -241,7 +241,7 @@ function chatPage() {
         });
         return;
       }
-      OpenFangAPI.get('/api/models').then(function(data) {
+      SiliCrewAPI.get('/api/models').then(function(data) {
         var models = (data.models || []).filter(function(m) { return m.available; });
         self._modelCache = models;
         self._modelCacheTime = Date.now();
@@ -255,7 +255,7 @@ function chatPage() {
           if (el) el.focus();
         });
       }).catch(function(e) {
-        OpenFangToast.error('Failed to load models: ' + e.message);
+        SiliCrewToast.error('Failed to load models: ' + e.message);
       });
     },
 
@@ -264,15 +264,15 @@ function chatPage() {
       if (model.id === this.currentAgent.model_name) { this.showModelSwitcher = false; return; }
       var self = this;
       this.modelSwitching = true;
-      OpenFangAPI.put('/api/agents/' + this.currentAgent.id + '/model', { model: model.id }).then(function(resp) {
+      SiliCrewAPI.put('/api/agents/' + this.currentAgent.id + '/model', { model: model.id }).then(function(resp) {
         // Use server-resolved model/provider to stay in sync (fixes #387/#466)
         self.currentAgent.model_name = (resp && resp.model) || model.id;
         self.currentAgent.model_provider = (resp && resp.provider) || model.provider;
-        OpenFangToast.success('Switched to ' + (model.display_name || model.id));
+        SiliCrewToast.success('Switched to ' + (model.display_name || model.id));
         self.showModelSwitcher = false;
         self.modelSwitching = false;
       }).catch(function(e) {
-        OpenFangToast.error('Switch failed: ' + e.message);
+        SiliCrewToast.error('Switch failed: ' + e.message);
         self.modelSwitching = false;
       });
     },
@@ -280,7 +280,7 @@ function chatPage() {
     // Fetch dynamic slash commands from server
     fetchCommands: function() {
       var self = this;
-      OpenFangAPI.get('/api/commands').then(function(data) {
+      SiliCrewAPI.get('/api/commands').then(function(data) {
         if (data.commands && data.commands.length) {
           // Build a set of known cmds to avoid duplicates
           var existing = {};
@@ -336,28 +336,28 @@ function chatPage() {
           break;
         case '/new':
           if (self.currentAgent) {
-            OpenFangAPI.post('/api/agents/' + self.currentAgent.id + '/session/reset', {}).then(function() {
+            SiliCrewAPI.post('/api/agents/' + self.currentAgent.id + '/session/reset', {}).then(function() {
               self.messages = [];
-              OpenFangToast.success('Session reset');
-            }).catch(function(e) { OpenFangToast.error('Reset failed: ' + e.message); });
+              SiliCrewToast.success('Session reset');
+            }).catch(function(e) { SiliCrewToast.error('Reset failed: ' + e.message); });
           }
           break;
         case '/compact':
           if (self.currentAgent) {
             self.messages.push({ id: ++msgId, role: 'system', text: 'Compacting session...', meta: '', tools: [] });
-            OpenFangAPI.post('/api/agents/' + self.currentAgent.id + '/session/compact', {}).then(function(res) {
+            SiliCrewAPI.post('/api/agents/' + self.currentAgent.id + '/session/compact', {}).then(function(res) {
               self.messages.push({ id: ++msgId, role: 'system', text: res.message || 'Compaction complete', meta: '', tools: [] });
               self.scrollToBottom();
-            }).catch(function(e) { OpenFangToast.error('Compaction failed: ' + e.message); });
+            }).catch(function(e) { SiliCrewToast.error('Compaction failed: ' + e.message); });
           }
           break;
         case '/stop':
           if (self.currentAgent) {
-            OpenFangAPI.post('/api/agents/' + self.currentAgent.id + '/stop', {}).then(function(res) {
+            SiliCrewAPI.post('/api/agents/' + self.currentAgent.id + '/stop', {}).then(function(res) {
               self.messages.push({ id: ++msgId, role: 'system', text: res.message || 'Run cancelled', meta: '', tools: [] });
               self.sending = false;
               self.scrollToBottom();
-            }).catch(function(e) { OpenFangToast.error('Stop failed: ' + e.message); });
+            }).catch(function(e) { SiliCrewToast.error('Stop failed: ' + e.message); });
           }
           break;
         case '/usage':
@@ -389,31 +389,31 @@ function chatPage() {
           break;
         case '/context':
           // Send via WS command
-          if (self.currentAgent && OpenFangAPI.isWsConnected()) {
-            OpenFangAPI.wsSend({ type: 'command', command: 'context', args: '' });
+          if (self.currentAgent && SiliCrewAPI.isWsConnected()) {
+            SiliCrewAPI.wsSend({ type: 'command', command: 'context', args: '' });
           } else {
             self.messages.push({ id: ++msgId, role: 'system', text: 'Not connected. Connect to an agent first.', meta: '', tools: [] });
             self.scrollToBottom();
           }
           break;
         case '/verbose':
-          if (self.currentAgent && OpenFangAPI.isWsConnected()) {
-            OpenFangAPI.wsSend({ type: 'command', command: 'verbose', args: cmdArgs });
+          if (self.currentAgent && SiliCrewAPI.isWsConnected()) {
+            SiliCrewAPI.wsSend({ type: 'command', command: 'verbose', args: cmdArgs });
           } else {
             self.messages.push({ id: ++msgId, role: 'system', text: 'Not connected. Connect to an agent first.', meta: '', tools: [] });
             self.scrollToBottom();
           }
           break;
         case '/queue':
-          if (self.currentAgent && OpenFangAPI.isWsConnected()) {
-            OpenFangAPI.wsSend({ type: 'command', command: 'queue', args: '' });
+          if (self.currentAgent && SiliCrewAPI.isWsConnected()) {
+            SiliCrewAPI.wsSend({ type: 'command', command: 'queue', args: '' });
           } else {
             self.messages.push({ id: ++msgId, role: 'system', text: 'Not connected.', meta: '', tools: [] });
             self.scrollToBottom();
           }
           break;
         case '/status':
-          OpenFangAPI.get('/api/status').then(function(s) {
+          SiliCrewAPI.get('/api/status').then(function(s) {
             self.messages.push({ id: ++msgId, role: 'system', text: '**System Status**\n- Agents: ' + (s.agent_count || 0) + '\n- Uptime: ' + (s.uptime_seconds || 0) + 's\n- Version: ' + (s.version || '?'), meta: '', tools: [] });
             self.scrollToBottom();
           }).catch(function() {});
@@ -421,7 +421,7 @@ function chatPage() {
         case '/model':
           if (self.currentAgent) {
             if (cmdArgs) {
-              OpenFangAPI.put('/api/agents/' + self.currentAgent.id + '/model', { model: cmdArgs }).then(function(resp) {
+              SiliCrewAPI.put('/api/agents/' + self.currentAgent.id + '/model', { model: cmdArgs }).then(function(resp) {
                 // Use server-resolved model/provider (fixes #387/#466)
                 var resolvedModel = (resp && resp.model) || cmdArgs;
                 var resolvedProvider = (resp && resp.provider) || '';
@@ -429,7 +429,7 @@ function chatPage() {
                 if (resolvedProvider) { self.currentAgent.model_provider = resolvedProvider; }
                 self.messages.push({ id: ++msgId, role: 'system', text: 'Model switched to: `' + resolvedModel + '`' + (resolvedProvider ? ' (provider: `' + resolvedProvider + '`)' : ''), meta: '', tools: [] });
                 self.scrollToBottom();
-              }).catch(function(e) { OpenFangToast.error('Model switch failed: ' + e.message); });
+              }).catch(function(e) { SiliCrewToast.error('Model switch failed: ' + e.message); });
             } else {
               self.messages.push({ id: ++msgId, role: 'system', text: '**Current Model**\n- Provider: `' + (self.currentAgent.model_provider || '?') + '`\n- Model: `' + (self.currentAgent.model_name || '?') + '`', meta: '', tools: [] });
               self.scrollToBottom();
@@ -443,14 +443,14 @@ function chatPage() {
           self.messages = [];
           break;
         case '/exit':
-          OpenFangAPI.wsDisconnect();
+          SiliCrewAPI.wsDisconnect();
           self._wsAgent = null;
           self.currentAgent = null;
           self.messages = [];
           window.dispatchEvent(new Event('close-chat'));
           break;
         case '/budget':
-          OpenFangAPI.get('/api/budget').then(function(b) {
+          SiliCrewAPI.get('/api/budget').then(function(b) {
             var fmt = function(v) { return v > 0 ? '$' + v.toFixed(2) : 'unlimited'; };
             self.messages.push({ id: ++msgId, role: 'system', text: '**Budget Status**\n' +
               '- Hourly: $' + (b.hourly_spend||0).toFixed(4) + ' / ' + fmt(b.hourly_limit) + '\n' +
@@ -460,7 +460,7 @@ function chatPage() {
           }).catch(function() {});
           break;
         case '/peers':
-          OpenFangAPI.get('/api/network/status').then(function(ns) {
+          SiliCrewAPI.get('/api/network/status').then(function(ns) {
             self.messages.push({ id: ++msgId, role: 'system', text: '**OFP Network**\n' +
               '- Status: ' + (ns.enabled ? 'Enabled' : 'Disabled') + '\n' +
               '- Connected peers: ' + (ns.connected_peers||0) + ' / ' + (ns.total_peers||0), meta: '', tools: [] });
@@ -468,7 +468,7 @@ function chatPage() {
           }).catch(function() {});
           break;
         case '/a2a':
-          OpenFangAPI.get('/api/a2a/agents').then(function(res) {
+          SiliCrewAPI.get('/api/a2a/agents').then(function(res) {
             var agents = res.agents || [];
             if (!agents.length) {
               self.messages.push({ id: ++msgId, role: 'system', text: 'No external A2A agents discovered.', meta: '', tools: [] });
@@ -517,7 +517,7 @@ function chatPage() {
     async loadSession(agentId) {
       var self = this;
       try {
-        var data = await OpenFangAPI.get('/api/agents/' + agentId + '/session');
+        var data = await SiliCrewAPI.get('/api/agents/' + agentId + '/session');
         if (data.messages && data.messages.length) {
           self.messages = data.messages.map(function(m) {
             var role = m.role === 'User' ? 'user' : (m.role === 'System' ? 'system' : 'agent');
@@ -549,7 +549,7 @@ function chatPage() {
     // Multi-session: load session list for current agent
     async loadSessions(agentId) {
       try {
-        var data = await OpenFangAPI.get('/api/agents/' + agentId + '/sessions');
+        var data = await SiliCrewAPI.get('/api/agents/' + agentId + '/sessions');
         this.sessions = data.sessions || [];
       } catch(e) { this.sessions = []; }
     },
@@ -560,16 +560,16 @@ function chatPage() {
       var label = prompt('Session name (optional):');
       if (label === null) return; // cancelled
       try {
-        await OpenFangAPI.post('/api/agents/' + this.currentAgent.id + '/sessions', {
+        await SiliCrewAPI.post('/api/agents/' + this.currentAgent.id + '/sessions', {
           label: label.trim() || undefined
         });
         await this.loadSessions(this.currentAgent.id);
         await this.loadSession(this.currentAgent.id);
         this.messages = [];
         this.scrollToBottom();
-        if (typeof OpenFangToast !== 'undefined') OpenFangToast.success('New session created');
+        if (typeof SiliCrewToast !== 'undefined') SiliCrewToast.success('New session created');
       } catch(e) {
-        if (typeof OpenFangToast !== 'undefined') OpenFangToast.error('Failed to create session');
+        if (typeof SiliCrewToast !== 'undefined') SiliCrewToast.error('Failed to create session');
       }
     },
 
@@ -577,7 +577,7 @@ function chatPage() {
     async switchSession(sessionId) {
       if (!this.currentAgent) return;
       try {
-        await OpenFangAPI.post('/api/agents/' + this.currentAgent.id + '/sessions/' + sessionId + '/switch', {});
+        await SiliCrewAPI.post('/api/agents/' + this.currentAgent.id + '/sessions/' + sessionId + '/switch', {});
         this.messages = [];
         await this.loadSession(this.currentAgent.id);
         await this.loadSessions(this.currentAgent.id);
@@ -585,7 +585,7 @@ function chatPage() {
         this._wsAgent = null;
         this.connectWs(this.currentAgent.id);
       } catch(e) {
-        if (typeof OpenFangToast !== 'undefined') OpenFangToast.error('Failed to switch session');
+        if (typeof SiliCrewToast !== 'undefined') SiliCrewToast.error('Failed to switch session');
       }
     },
 
@@ -594,7 +594,7 @@ function chatPage() {
       this._wsAgent = agentId;
       var self = this;
 
-      OpenFangAPI.wsConnect(agentId, {
+      SiliCrewAPI.wsConnect(agentId, {
         onOpen: function() {
           Alpine.store('app').wsConnected = true;
         },
@@ -934,11 +934,11 @@ function chatPage() {
           var att = this.attachments[i];
           att.uploading = true;
           try {
-            var uploadRes = await OpenFangAPI.upload(this.currentAgent.id, att.file);
+            var uploadRes = await SiliCrewAPI.upload(this.currentAgent.id, att.file);
             fileRefs.push('[File: ' + att.file.name + ']');
             uploadedFiles.push({ file_id: uploadRes.file_id, filename: uploadRes.filename, content_type: uploadRes.content_type });
           } catch(e) {
-            OpenFangToast.error('Failed to upload ' + att.file.name);
+            SiliCrewToast.error('Failed to upload ' + att.file.name);
             fileRefs.push('[File: ' + att.file.name + ' (upload failed)]');
           }
           att.uploading = false;
@@ -979,15 +979,15 @@ function chatPage() {
       // Try WebSocket first
       var wsPayload = { type: 'message', content: finalText };
       if (uploadedFiles && uploadedFiles.length) wsPayload.attachments = uploadedFiles;
-      if (OpenFangAPI.wsSend(wsPayload)) {
+      if (SiliCrewAPI.wsSend(wsPayload)) {
         this.messages.push({ id: ++msgId, role: 'agent', text: '', meta: '', thinking: true, streaming: true, tools: [], ts: Date.now() });
         this.scrollToBottom();
         return;
       }
 
       // HTTP fallback
-      if (!OpenFangAPI.isWsConnected()) {
-        OpenFangToast.info('Using HTTP mode (no streaming)');
+      if (!SiliCrewAPI.isWsConnected()) {
+        SiliCrewToast.info('Using HTTP mode (no streaming)');
       }
       this.messages.push({ id: ++msgId, role: 'agent', text: '', meta: '', thinking: true, tools: [], ts: Date.now() });
       this.scrollToBottom();
@@ -995,7 +995,7 @@ function chatPage() {
       try {
         var httpBody = { message: finalText };
         if (uploadedFiles && uploadedFiles.length) httpBody.attachments = uploadedFiles;
-        var res = await OpenFangAPI.post('/api/agents/' + this.currentAgent.id + '/message', httpBody);
+        var res = await SiliCrewAPI.post('/api/agents/' + this.currentAgent.id + '/message', httpBody);
         this.messages = this.messages.filter(function(m) { return !m.thinking; });
         var httpMeta = (res.input_tokens || 0) + ' in / ' + (res.output_tokens || 0) + ' out';
         if (res.cost_usd != null) httpMeta += ' | $' + res.cost_usd.toFixed(4);
@@ -1019,29 +1019,29 @@ function chatPage() {
     stopAgent: function() {
       if (!this.currentAgent) return;
       var self = this;
-      OpenFangAPI.post('/api/agents/' + this.currentAgent.id + '/stop', {}).then(function(res) {
+      SiliCrewAPI.post('/api/agents/' + this.currentAgent.id + '/stop', {}).then(function(res) {
         self.messages.push({ id: ++msgId, role: 'system', text: res.message || 'Run cancelled', meta: '', tools: [], ts: Date.now() });
         self.sending = false;
         self.scrollToBottom();
         self.$nextTick(function() { self._processQueue(); });
-      }).catch(function(e) { OpenFangToast.error('Stop failed: ' + e.message); });
+      }).catch(function(e) { SiliCrewToast.error('Stop failed: ' + e.message); });
     },
 
     killAgent() {
       if (!this.currentAgent) return;
       var self = this;
       var name = this.currentAgent.name;
-      OpenFangToast.confirm('Stop Agent', 'Stop agent "' + name + '"? The agent will be shut down.', async function() {
+      SiliCrewToast.confirm('Stop Agent', 'Stop agent "' + name + '"? The agent will be shut down.', async function() {
         try {
-          await OpenFangAPI.del('/api/agents/' + self.currentAgent.id);
-          OpenFangAPI.wsDisconnect();
+          await SiliCrewAPI.del('/api/agents/' + self.currentAgent.id);
+          SiliCrewAPI.wsDisconnect();
           self._wsAgent = null;
           self.currentAgent = null;
           self.messages = [];
-          OpenFangToast.success('Agent "' + name + '" stopped');
+          SiliCrewToast.success('Agent "' + name + '" stopped');
           Alpine.store('app').refreshAgents();
         } catch(e) {
-          OpenFangToast.error('Failed to stop agent: ' + e.message);
+          SiliCrewToast.error('Failed to stop agent: ' + e.message);
         }
       });
     },
@@ -1066,7 +1066,7 @@ function chatPage() {
       for (var i = 0; i < files.length; i++) {
         var file = files[i];
         if (file.size > 10 * 1024 * 1024) {
-          OpenFangToast.warn('File "' + file.name + '" exceeds 10MB limit');
+          SiliCrewToast.warn('File "' + file.name + '" exceeds 10MB limit');
           continue;
         }
         var typeOk = allowed.indexOf(file.type) !== -1;
@@ -1075,7 +1075,7 @@ function chatPage() {
           typeOk = allowedExts.indexOf(ext) !== -1 || file.type.startsWith('image/');
         }
         if (!typeOk) {
-          OpenFangToast.warn('File type not supported: ' + file.name);
+          SiliCrewToast.warn('File type not supported: ' + file.name);
           continue;
         }
         var preview = null;
@@ -1160,7 +1160,7 @@ function chatPage() {
         this.recordingTime = 0;
         this._recordingTimer = setInterval(function() { self.recordingTime++; }, 1000);
       } catch(e) {
-        if (typeof OpenFangToast !== 'undefined') OpenFangToast.error('Microphone access denied');
+        if (typeof SiliCrewToast !== 'undefined') SiliCrewToast.error('Microphone access denied');
       }
     },
 
@@ -1187,7 +1187,7 @@ function chatPage() {
         // Upload audio file
         var ext = blob.type.includes('webm') ? 'webm' : blob.type.includes('ogg') ? 'ogg' : 'mp3';
         var file = new File([blob], 'voice_' + Date.now() + '.' + ext, { type: blob.type });
-        var upload = await OpenFangAPI.upload(this.currentAgent.id, file);
+        var upload = await SiliCrewAPI.upload(this.currentAgent.id, file);
 
         // Remove the "Transcribing..." message
         this.messages = this.messages.filter(function(m) { return !m.thinking || m.role !== 'system'; });
@@ -1199,7 +1199,7 @@ function chatPage() {
         this._sendPayload(text, [upload], []);
       } catch(e) {
         this.messages = this.messages.filter(function(m) { return !m.thinking || m.role !== 'system'; });
-        if (typeof OpenFangToast !== 'undefined') OpenFangToast.error('Failed to upload audio: ' + (e.message || 'unknown error'));
+        if (typeof SiliCrewToast !== 'undefined') SiliCrewToast.error('Failed to upload audio: ' + (e.message || 'unknown error'));
       }
     },
 
@@ -1227,10 +1227,10 @@ function chatPage() {
       this.controlTraceLoading = true;
       try {
         // Get the current session_id for this agent then fetch trace.
-        var session = await OpenFangAPI.get('/api/agents/' + this.currentAgent.id + '/session');
+        var session = await SiliCrewAPI.get('/api/agents/' + this.currentAgent.id + '/session');
         var sid = session && session.session_id;
         if (sid) {
-          var data = await OpenFangAPI.get('/api/sessions/' + sid + '/control-trace');
+          var data = await SiliCrewAPI.get('/api/sessions/' + sid + '/control-trace');
           this.controlTraces = data && Array.isArray(data) ? data : (data && data.traces) ? data.traces : [];
         }
       } catch(e) {

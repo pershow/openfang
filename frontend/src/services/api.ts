@@ -42,7 +42,7 @@ export async function request<T>(url: string, options: RequestInit = {}): Promis
                 })
                 .join('; ');
         } else {
-            message = error.detail || `HTTP ${res.status}`;
+            message = error.detail || error.error || error.message || `HTTP ${res.status}`;
         }
         throw new Error(message);
     }
@@ -68,6 +68,24 @@ async function uploadFile(url: string, file: File, extraFields?: Record<string, 
     if (!res.ok) {
         const error = await res.json().catch(() => ({ detail: 'Upload failed' }));
         throw new Error(error.detail || `HTTP ${res.status}`);
+    }
+    return res.json();
+}
+
+async function uploadBinaryFile(url: string, file: File): Promise<any> {
+    const token = localStorage.getItem('token');
+    const res = await fetch(`${API_BASE}${url}`, {
+        method: 'POST',
+        headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            'Content-Type': file.type || 'application/octet-stream',
+            'X-Filename': file.name,
+        },
+        body: file,
+    });
+    if (!res.ok) {
+        const error = await res.json().catch(() => ({ detail: 'Upload failed' }));
+        throw new Error(error.detail || error.error || `HTTP ${res.status}`);
     }
     return res.json();
 }
@@ -125,6 +143,48 @@ export function uploadFileWithProgress(
     return { promise, abort: () => xhr.abort() };
 }
 
+export function uploadBinaryFileWithProgress(
+    url: string,
+    file: File,
+    onProgress?: (percent: number) => void,
+    timeoutMs: number = 120_000,
+): { promise: Promise<any>; abort: () => void } {
+    const xhr = new XMLHttpRequest();
+    const promise = new Promise<any>((resolve, reject) => {
+        const token = localStorage.getItem('token');
+        xhr.open('POST', `${API_BASE}${url}`);
+        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+        xhr.setRequestHeader('X-Filename', file.name);
+
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable && onProgress) {
+                onProgress(Math.round((e.loaded / e.total) * 100));
+            }
+        };
+        xhr.upload.onload = () => {
+            if (onProgress) onProgress(101);
+        };
+
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try { resolve(JSON.parse(xhr.responseText)); } catch { resolve(undefined); }
+            } else {
+                try {
+                    const err = JSON.parse(xhr.responseText);
+                    reject(new Error(err.detail || err.error || `HTTP ${xhr.status}`));
+                } catch { reject(new Error(`HTTP ${xhr.status}`)); }
+            }
+        };
+        xhr.onerror = () => reject(new Error('Network error'));
+        xhr.ontimeout = () => reject(new Error('Upload timed out'));
+        xhr.onabort = () => reject(new Error('Upload cancelled'));
+        xhr.timeout = timeoutMs;
+        xhr.send(file);
+    });
+    return { promise, abort: () => xhr.abort() };
+}
+
 // ─── Auth ─────────────────────────────────────────────
 export const authApi = {
     register: (data: { username: string; email: string; password: string; display_name: string }) =>
@@ -175,7 +235,7 @@ export const agentApi = {
     get: (id: string) => request<Agent>(`/agents/${id}`),
 
     create: (data: any) =>
-        request<any>('/agents/', { method: 'POST', body: JSON.stringify(data) }),
+        request<any>('/agents', { method: 'POST', body: JSON.stringify(data) }),
 
     update: (id: string, data: Partial<Agent>) =>
         request<Agent>(`/agents/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
@@ -196,7 +256,7 @@ export const agentApi = {
         request<any[]>(`/agents/${id}/collaborators`),
 
     templates: () =>
-        request<any[]>('/agents/templates'),
+        request<any>('/templates').then(r => r.templates || []),
 
     // OpenClaw gateway
     generateApiKey: (id: string) =>
@@ -231,7 +291,7 @@ export const taskApi = {
 // ─── Files ────────────────────────────────────────────
 export const fileApi = {
     list: (agentId: string, path: string = '') =>
-        request<any[]>(`/agents/${agentId}/files/?path=${encodeURIComponent(path)}`),
+        request<any[]>(`/agents/${agentId}/files?path=${encodeURIComponent(path)}`),
 
     read: (agentId: string, path: string) =>
         request<{ path: string; content: string }>(`/agents/${agentId}/files/content?path=${encodeURIComponent(path)}`),
@@ -249,8 +309,8 @@ export const fileApi = {
 
     upload: (agentId: string, file: File, path: string = 'workspace/knowledge_base', onProgress?: (pct: number) => void) =>
         onProgress
-            ? uploadFileWithProgress(`/agents/${agentId}/files/upload?path=${encodeURIComponent(path)}`, file, onProgress).promise
-            : uploadFile(`/agents/${agentId}/files/upload?path=${encodeURIComponent(path)}`, file),
+            ? uploadBinaryFileWithProgress(`/agents/${agentId}/upload?path=${encodeURIComponent(path)}`, file, onProgress).promise
+            : uploadBinaryFile(`/agents/${agentId}/upload?path=${encodeURIComponent(path)}`, file),
 
     importSkill: (agentId: string, skillId: string) =>
         request<any>(`/agents/${agentId}/files/import-skill`, {
@@ -266,20 +326,20 @@ export const fileApi = {
 
 // ─── Channel Config ───────────────────────────────────
 export const channelApi = {
-    get: (agentId: string) =>
-        request<any>(`/agents/${agentId}/channel`).catch(() => null),
+    get: (_agentId: string) =>
+        request<any>('/channels').then(r => (r.channels || []).find((c: any) => c.name === 'feishu') || null).catch(() => null),
 
-    create: (agentId: string, data: any) =>
-        request<any>(`/agents/${agentId}/channel`, { method: 'POST', body: JSON.stringify(data) }),
+    create: (_agentId: string, data: any) =>
+        request<any>(`/channels/${data.channel_type || 'feishu'}/configure`, { method: 'POST', body: JSON.stringify({ fields: data }) }),
 
-    update: (agentId: string, data: any) =>
-        request<any>(`/agents/${agentId}/channel`, { method: 'PUT', body: JSON.stringify(data) }),
+    update: (_agentId: string, data: any) =>
+        request<any>(`/channels/${data.channel_type || 'feishu'}/configure`, { method: 'POST', body: JSON.stringify({ fields: data }) }),
 
-    delete: (agentId: string) =>
-        request<void>(`/agents/${agentId}/channel`, { method: 'DELETE' }),
+    delete: (_agentId: string) =>
+        request<void>('/channels/feishu/configure', { method: 'DELETE' }),
 
     webhookUrl: (agentId: string) =>
-        request<{ webhook_url: string }>(`/agents/${agentId}/channel/webhook-url`).catch(() => null),
+        Promise.resolve({ webhook_url: `${window.location.origin}/api/channel/feishu/${agentId}/webhook` }),
 };
 
 // ─── Enterprise ───────────────────────────────────────
@@ -288,7 +348,7 @@ export const enterpriseApi = {
         const tid = localStorage.getItem('current_tenant_id');
         return request<any[]>(`/enterprise/llm-models${tid ? `?tenant_id=${tid}` : ''}`);
     },
-    templates: () => request<any[]>('/agents/templates'),
+    templates: () => request<any>('/templates').then(r => r.templates || []),
 
     // Enterprise Knowledge Base
     kbFiles: (path: string = '') =>
@@ -336,30 +396,42 @@ export const messageApi = {
 // ─── Schedules ────────────────────────────────────────
 export const scheduleApi = {
     list: (agentId: string) =>
-        request<any[]>(`/agents/${agentId}/schedules/`),
+        request<any>('/schedules').then(r => (r.schedules || []).filter((s: any) => s.agent_id === agentId)),
 
     create: (agentId: string, data: { name: string; instruction: string; cron_expr: string }) =>
-        request<any>(`/agents/${agentId}/schedules/`, { method: 'POST', body: JSON.stringify(data) }),
+        request<any>('/schedules', {
+            method: 'POST',
+            body: JSON.stringify({ name: data.name, cron: data.cron_expr, agent_id: agentId, message: data.instruction, enabled: true }),
+        }),
 
     update: (agentId: string, scheduleId: string, data: any) =>
-        request<any>(`/agents/${agentId}/schedules/${scheduleId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+        request<any>(`/schedules/${scheduleId}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+                enabled: data.is_enabled,
+                name: data.name,
+                cron: data.cron_expr,
+                agent_id: agentId,
+                message: data.instruction,
+            }),
+        }),
 
     delete: (agentId: string, scheduleId: string) =>
-        request<void>(`/agents/${agentId}/schedules/${scheduleId}`, { method: 'DELETE' }),
+        request<void>(`/schedules/${scheduleId}`, { method: 'DELETE' }),
 
     trigger: (agentId: string, scheduleId: string) =>
-        request<any>(`/agents/${agentId}/schedules/${scheduleId}/run`, { method: 'POST' }),
+        request<any>(`/schedules/${scheduleId}/run`, { method: 'POST' }),
 
     history: (agentId: string, scheduleId: string) =>
-        request<any[]>(`/agents/${agentId}/schedules/${scheduleId}/history`),
+        Promise.resolve([] as any[]),
 };
 
 // ─── Skills ───────────────────────────────────────────
 export const skillApi = {
-    list: () => request<any[]>('/skills/'),
-    get: (id: string) => request<any>(`/skills/${id}`),
+    list: () => request<any>('/skills').then(r => r.skills || []),
+    get: (id: string) => request<any>('/skills').then(r => (r.skills || []).find((s: any) => s.name === id || s.id === id)),
     create: (data: any) =>
-        request<any>('/skills/', { method: 'POST', body: JSON.stringify(data) }),
+        request<any>('/skills/create', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: any) =>
         request<any>(`/skills/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) =>
@@ -375,9 +447,9 @@ export const skillApi = {
     },
     // ClawHub marketplace integration
     clawhub: {
-        search: (q: string) => request<any[]>(`/skills/clawhub/search?q=${encodeURIComponent(q)}`),
-        detail: (slug: string) => request<any>(`/skills/clawhub/detail/${slug}`),
-        install: (slug: string) => request<any>('/skills/clawhub/install', { method: 'POST', body: JSON.stringify({ slug }) }),
+        search: (q: string) => request<any>(`/clawhub/search?q=${encodeURIComponent(q)}`).then(r => r.items || []),
+        detail: (slug: string) => request<any>(`/clawhub/skill/${slug}`),
+        install: (slug: string) => request<any>('/clawhub/install', { method: 'POST', body: JSON.stringify({ slug }) }),
     },
     importFromUrl: (url: string) =>
         request<any>('/skills/import-from-url', { method: 'POST', body: JSON.stringify({ url }) }),
@@ -403,11 +475,11 @@ export const skillApi = {
 // ─── Triggers (Aware Engine) ──────────────────────────
 export const triggerApi = {
     list: (agentId: string) =>
-        request<any[]>(`/agents/${agentId}/triggers`),
+        request<any[]>(`/triggers?agent_id=${encodeURIComponent(agentId)}`),
 
     update: (agentId: string, triggerId: string, data: any) =>
-        request<any>(`/agents/${agentId}/triggers/${triggerId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+        request<any>(`/triggers/${triggerId}`, { method: 'PUT', body: JSON.stringify({ enabled: data.is_enabled ?? data.enabled }) }),
 
     delete: (agentId: string, triggerId: string) =>
-        request<void>(`/agents/${agentId}/triggers/${triggerId}`, { method: 'DELETE' }),
+        request<void>(`/triggers/${triggerId}`, { method: 'DELETE' }),
 };

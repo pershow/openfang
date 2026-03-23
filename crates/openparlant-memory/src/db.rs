@@ -1,4 +1,4 @@
-use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::error::{SiliCrewError, SiliCrewResult};
 use rusqlite::Connection;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
@@ -25,25 +25,25 @@ impl From<Arc<PgPool>> for SharedDb {
 }
 
 impl SharedDb {
-    pub fn open_sqlite(db_path: &Path) -> OpenFangResult<Self> {
-        let conn = Connection::open(db_path).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+    pub fn open_sqlite(db_path: &Path) -> SiliCrewResult<Self> {
+        let conn = Connection::open(db_path).map_err(|e| SiliCrewError::Memory(e.to_string()))?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
         Ok(Self::Sqlite(Arc::new(Mutex::new(conn))))
     }
 
-    pub fn open_sqlite_in_memory() -> OpenFangResult<Self> {
+    pub fn open_sqlite_in_memory() -> SiliCrewResult<Self> {
         let conn =
-            Connection::open_in_memory().map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            Connection::open_in_memory().map_err(|e| SiliCrewError::Memory(e.to_string()))?;
         Ok(Self::Sqlite(Arc::new(Mutex::new(conn))))
     }
 
-    pub async fn open_postgres(database_url: &str) -> OpenFangResult<Self> {
+    pub async fn open_postgres(database_url: &str) -> SiliCrewResult<Self> {
         let pool = PgPoolOptions::new()
             .max_connections(10)
             .connect(database_url)
             .await
-            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+            .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
         Ok(Self::Postgres(Arc::new(pool)))
     }
 

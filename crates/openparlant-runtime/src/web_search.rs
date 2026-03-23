@@ -284,7 +284,7 @@ impl WebSearchEngine {
             .client
             .get("https://html.duckduckgo.com/html/")
             .query(&[("q", query)])
-            .header("User-Agent", "Mozilla/5.0 (compatible; OpenFangAgent/0.1)")
+            .header("User-Agent", "Mozilla/5.0 (compatible; SiliCrewAgent/0.1)")
             .send()
             .await
             .map_err(|e| format!("DuckDuckGo request failed: {e}"))?;

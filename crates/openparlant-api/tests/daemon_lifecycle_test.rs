@@ -9,7 +9,7 @@ use openparlant_api::routes::{self, AppState};
 use openparlant_api::server::{read_daemon_info, DaemonInfo};
 use openparlant_control::{ControlStore, DefaultTurnControlCoordinator};
 use openparlant_journey::{JourneyStore, StoreJourneyRuntime};
-use openparlant_kernel::OpenFangKernel;
+use openparlant_kernel::SiliCrewKernel;
 use openparlant_memory::migration::run_migrations;
 use openparlant_policy::{PolicyStore, StoreObservationMatcher, StorePolicyResolver};
 use openparlant_types::config::{DefaultModelConfig, KernelConfig};
@@ -107,7 +107,7 @@ async fn test_full_daemon_lifecycle() {
         ..KernelConfig::default()
     };
 
-    let kernel = OpenFangKernel::boot_with_config(config).expect("Kernel should boot");
+    let kernel = SiliCrewKernel::boot_with_config(config).expect("Kernel should boot");
     let kernel = Arc::new(kernel);
     kernel.set_self_handle();
 
@@ -259,7 +259,7 @@ async fn test_server_immediate_responsiveness() {
         ..KernelConfig::default()
     };
 
-    let kernel = OpenFangKernel::boot_with_config(config).unwrap();
+    let kernel = SiliCrewKernel::boot_with_config(config).unwrap();
     let kernel = Arc::new(kernel);
 
     let state = Arc::new(AppState {

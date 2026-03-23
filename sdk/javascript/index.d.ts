@@ -1,4 +1,4 @@
-export class OpenFangError extends Error {
+export class SiliCrewError extends Error {
   status: number;
   body: string;
   constructor(message: string, status: number, body: string);

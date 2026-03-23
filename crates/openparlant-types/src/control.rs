@@ -222,6 +222,8 @@ pub struct GuidelineActivation {
     pub guideline_id: GuidelineId,
     pub name: String,
     pub action_text: String,
+    #[serde(default)]
+    pub composition_mode: Option<String>,
     pub priority: i32,
     pub source_observations: Vec<ObservationId>,
 }
@@ -804,6 +806,7 @@ mod tests {
             guideline_id: GuidelineId::new(),
             name: "g1".to_string(),
             action_text: "be polite".to_string(),
+            composition_mode: Some("strict".to_string()),
             priority: 1,
             source_observations: vec![],
         });

@@ -58,8 +58,8 @@ function controlJourneyBuilder() {
     },
 
     notify: function(level, message) {
-      if (typeof OpenFangToast !== 'undefined' && OpenFangToast[level]) {
-        OpenFangToast[level](message);
+      if (typeof SiliCrewToast !== 'undefined' && SiliCrewToast[level]) {
+        SiliCrewToast[level](message);
         return;
       }
       if (level === 'error') console.error(message);
@@ -771,7 +771,7 @@ function controlJourneyBuilder() {
       this.builderError = '';
 
       try {
-        var createdJourney = await OpenFangAPI.post('/api/control/journeys', {
+        var createdJourney = await SiliCrewAPI.post('/api/control/journeys', {
           scope_id: this.scopeId,
           name: this.journeyMeta.name.trim(),
           trigger_config: this.buildTriggerConfig(),
@@ -784,7 +784,7 @@ function controlJourneyBuilder() {
 
         for (var i = 0; i < nodeOrder.length; i++) {
           var node = nodeOrder[i];
-          var createdState = await OpenFangAPI.post('/api/control/journeys/' + createdJourney.journey_id + '/states', {
+          var createdState = await SiliCrewAPI.post('/api/control/journeys/' + createdJourney.journey_id + '/states', {
             name: node.name,
             description: node.description || null,
             required_fields: this.parseCsv(node.requiredFieldsText),
@@ -795,14 +795,14 @@ function controlJourneyBuilder() {
 
         var startNodeId = this.inferStartNodeId();
         if (startNodeId && stateIdByNodeId[startNodeId]) {
-          await OpenFangAPI.post('/api/control/journeys/' + createdJourney.journey_id + '/entry-state', {
+          await SiliCrewAPI.post('/api/control/journeys/' + createdJourney.journey_id + '/entry-state', {
             state_id: stateIdByNodeId[startNodeId]
           });
         }
 
         for (var c = 0; c < this.connections.length; c++) {
           var conn = this.connections[c];
-          await OpenFangAPI.post('/api/control/journeys/' + createdJourney.journey_id + '/transitions', {
+          await SiliCrewAPI.post('/api/control/journeys/' + createdJourney.journey_id + '/transitions', {
             from_state_id: stateIdByNodeId[conn.from],
             to_state_id: stateIdByNodeId[conn.to],
             transition_type: conn.transitionType,

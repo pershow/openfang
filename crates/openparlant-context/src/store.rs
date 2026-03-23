@@ -1,6 +1,6 @@
 use anyhow::Result;
 use openparlant_memory::db::SharedDb;
-use openparlant_types::agent::AgentId;
+use openparlant_types::agent::{AgentId, SessionId};
 use openparlant_types::control::{
     CannedResponseCandidate, ControlEmbedder, GlossaryEntry, ResolvedVariable, RetrievedChunk,
     ScopeId,
@@ -481,6 +481,8 @@ impl ContextStore {
     /// Supported `value_source_type` values:
     /// - `static` / `literal` — `value_source_config` JSON `{"value":"..."}`.
     /// - `agent_kv` — `{"key":"..."}` reads `kv_store` for this agent (same backing store).
+    /// - `session_value` — reads `context_variable_values` using the current session id as the
+    ///   lookup key unless `value_source_config.key` overrides it.
     /// - `disabled` / `noop` — skipped (soft-delete / off-switch without deleting the row).
     /// - Other types — placeholder until wired (`<unresolved:...>`).
     pub async fn load_context_variables(
@@ -489,6 +491,7 @@ impl ContextStore {
         message_text: &str,
         active_journey_state: Option<&str>,
         agent_id: &AgentId,
+        session_id: &SessionId,
     ) -> Result<Vec<ResolvedVariable>> {
         let mut variables = Vec::new();
         match &self.db {
@@ -496,7 +499,7 @@ impl ContextStore {
                 let rows: Vec<_> = {
                     let conn = conn.lock().map_err(|e| anyhow::anyhow!(e.to_string()))?;
                     let mut stmt = conn.prepare(
-                        "SELECT name, value_source_type, value_source_config, visibility_rule
+                        "SELECT variable_id, name, value_source_type, value_source_config, visibility_rule
                          FROM context_variables
                          WHERE scope_id = ?1 AND enabled = 1",
                     )?;
@@ -505,7 +508,8 @@ impl ContextStore {
                             row.get::<_, String>(0)?,
                             row.get::<_, String>(1)?,
                             row.get::<_, String>(2)?,
-                            row.get::<_, Option<String>>(3)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, Option<String>>(4)?,
                         ))
                     })?;
                     rows.filter_map(|r| r.ok()).collect()
@@ -514,12 +518,14 @@ impl ContextStore {
                     if let Some(variable) = resolve_variable_from_parts(
                         &self.db,
                         agent_id,
+                        session_id,
                         message_text,
                         active_journey_state,
                         row.0,
                         row.1,
                         row.2,
                         row.3,
+                        row.4,
                     )
                     .await?
                     {
@@ -529,7 +535,7 @@ impl ContextStore {
             }
             SharedDb::Postgres(pool) => {
                 let rows = sqlx::query(
-                    "SELECT name, value_source_type, value_source_config, visibility_rule
+                    "SELECT variable_id, name, value_source_type, value_source_config, visibility_rule
                      FROM context_variables
                      WHERE scope_id = $1 AND enabled = TRUE",
                 )
@@ -540,8 +546,10 @@ impl ContextStore {
                     if let Some(variable) = resolve_variable_from_parts(
                         &self.db,
                         agent_id,
+                        session_id,
                         message_text,
                         active_journey_state,
+                        row.try_get("variable_id")?,
                         row.try_get("name")?,
                         row.try_get("value_source_type")?,
                         row.try_get("value_source_config")?,
@@ -676,8 +684,10 @@ fn push_glossary_entry(
 async fn resolve_variable_from_parts(
     db: &SharedDb,
     agent_id: &AgentId,
+    session_id: &SessionId,
     message_text: &str,
     active_journey_state: Option<&str>,
+    variable_id: String,
     name: String,
     source_type: String,
     config_json: String,
@@ -744,6 +754,62 @@ async fn resolve_variable_from_parts(
                             Ok(None) => format!("<kv_store:{key}: not set>"),
                             Err(e) => format!("<kv_store read error: {e}>"),
                         }
+                    }
+                }
+            }
+        }
+        "session_value" => {
+            let key = serde_json::from_str::<serde_json::Value>(&config_json)
+                .ok()
+                .and_then(|c| c.get("key").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| session_id.to_string());
+            match db {
+                SharedDb::Sqlite(conn) => {
+                    let conn = conn.lock().map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                    match conn.query_row(
+                        "SELECT data_json
+                         FROM context_variable_values
+                         WHERE variable_id = ?1 AND key = ?2",
+                        params![variable_id.as_str(), key.as_str()],
+                        |row| row.get::<_, String>(0),
+                    ) {
+                        Ok(data_json) => serde_json::from_str::<serde_json::Value>(&data_json)
+                            .map(|v| match v {
+                                serde_json::Value::String(s) => s,
+                                _ => v.to_string(),
+                            })
+                            .unwrap_or(data_json),
+                        Err(rusqlite::Error::QueryReturnedNoRows) => {
+                            format!("<context_variable:{name}:{key}: not set>")
+                        }
+                        Err(e) => format!("<context_variable read error: {e}>"),
+                    }
+                }
+                SharedDb::Postgres(pool) => {
+                    match sqlx::query(
+                        "SELECT data_json
+                         FROM context_variable_values
+                         WHERE variable_id = $1 AND key = $2",
+                    )
+                    .bind(&variable_id)
+                    .bind(&key)
+                    .fetch_optional(&**pool)
+                    .await
+                    {
+                        Ok(Some(r)) => {
+                            let data_json: String = r
+                                .try_get("data_json")
+                                .unwrap_or_else(|_| "null".to_string());
+                            serde_json::from_str::<serde_json::Value>(&data_json)
+                                .map(|v| match v {
+                                    serde_json::Value::String(s) => s,
+                                    _ => v.to_string(),
+                                })
+                                .unwrap_or(data_json)
+                        }
+                        Ok(None) => format!("<context_variable:{name}:{key}: not set>"),
+                        Err(e) => format!("<context_variable read error: {e}>"),
                     }
                 }
             }
@@ -857,6 +923,12 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::cosine_similarity;
+    use super::ContextStore;
+    use openparlant_memory::migration::run_migrations;
+    use openparlant_types::agent::{AgentId, SessionId};
+    use openparlant_types::control::ScopeId;
+    use rusqlite::{params, Connection};
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn identical_vectors_give_score_one() {
@@ -876,5 +948,53 @@ mod tests {
         let a = vec![1.0, 0.0];
         let b = vec![1.0];
         assert_eq!(cosine_similarity(&a, &b), 0.0);
+    }
+
+    #[test]
+    fn session_value_context_variable_reads_current_session_value() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        let session_id = SessionId::new();
+        conn.execute(
+            "INSERT INTO context_variables
+                (variable_id, scope_id, name, value_source_type, value_source_config, visibility_rule, enabled)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                "var-1",
+                "default",
+                "customer_tier",
+                "session_value",
+                "{}",
+                Option::<String>::None,
+                1i64,
+            ],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO context_variable_values (value_id, variable_id, key, data_json, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                "val-1",
+                "var-1",
+                session_id.to_string(),
+                r#"{"tier":"vip"}"#,
+                "2026-03-23T00:00:00Z",
+            ],
+        )
+        .unwrap();
+
+        let store = ContextStore::new(Arc::new(Mutex::new(conn)));
+        let vars = openparlant_memory::db::block_on(store.load_context_variables(
+            &ScopeId::default(),
+            "hello",
+            None,
+            &AgentId::new(),
+            &session_id,
+        ))
+        .unwrap();
+
+        assert_eq!(vars.len(), 1);
+        assert_eq!(vars[0].name, "customer_tier");
+        assert!(vars[0].value.contains("\"tier\":\"vip\""));
     }
 }

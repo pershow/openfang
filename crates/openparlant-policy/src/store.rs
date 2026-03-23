@@ -3,7 +3,7 @@ use openparlant_types::control::{
     GuidelineDefinition, GuidelineId, ObservationDefinition, ObservationId, ScopeId,
     ToolExposurePolicy,
 };
-use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::error::{SiliCrewError, SiliCrewResult};
 use rusqlite::params;
 use sqlx::Row;
 use std::sync::Arc;
@@ -21,14 +21,14 @@ impl PolicyStore {
     }
 
     /// Insert or update an observation definition.
-    pub fn upsert_observation(&self, observation: &ObservationDefinition) -> OpenFangResult<()> {
+    pub fn upsert_observation(&self, observation: &ObservationDefinition) -> SiliCrewResult<()> {
         let matcher_config = serde_json::to_string(&observation.matcher_config)
-            .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+            .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO observations (
                         observation_id, scope_id, name, matcher_type, matcher_config, priority, enabled
@@ -50,7 +50,7 @@ impl PolicyStore {
                         observation.enabled as i64,
                     ],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -83,7 +83,7 @@ impl PolicyStore {
                     .execute(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
@@ -93,18 +93,18 @@ impl PolicyStore {
     pub fn get_observation(
         &self,
         observation_id: ObservationId,
-    ) -> OpenFangResult<Option<ObservationDefinition>> {
+    ) -> SiliCrewResult<Option<ObservationDefinition>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT observation_id, scope_id, name, matcher_type, matcher_config, priority, enabled
                          FROM observations WHERE observation_id = ?1",
                     )
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let row = stmt.query_row(params![observation_id.0.to_string()], |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -120,7 +120,7 @@ impl PolicyStore {
                 match row {
                     Ok(row) => Ok(Some(observation_from_row(row)?)),
                     Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                    Err(e) => Err(OpenFangError::Memory(e.to_string())),
+                    Err(e) => Err(SiliCrewError::Memory(e.to_string())),
                 }
             }
             SharedDb::Postgres(pool) => {
@@ -156,7 +156,7 @@ impl PolicyStore {
                         None => Ok(None),
                     }
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
             }
         }
     }
@@ -166,12 +166,12 @@ impl PolicyStore {
         &self,
         scope_id: &ScopeId,
         enabled_only: bool,
-    ) -> OpenFangResult<Vec<ObservationDefinition>> {
+    ) -> SiliCrewResult<Vec<ObservationDefinition>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let sql = if enabled_only {
                     "SELECT observation_id, scope_id, name, matcher_type, matcher_config, priority, enabled
                      FROM observations
@@ -185,7 +185,7 @@ impl PolicyStore {
                 };
                 let mut stmt = conn
                     .prepare(sql)
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let rows = stmt
                     .query_map(params![scope_id.0.as_str()], |row| {
                         Ok((
@@ -198,12 +198,12 @@ impl PolicyStore {
                             row.get::<_, i64>(6)?,
                         ))
                     })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 let mut observations = Vec::new();
                 for row in rows {
                     observations.push(observation_from_row(
-                        row.map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        row.map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                     )?);
                 }
                 Ok(observations)
@@ -247,18 +247,68 @@ impl PolicyStore {
                     }
                     Ok::<Vec<ObservationDefinition>, sqlx::Error>(observations)
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
+            }
+        }
+    }
+
+    /// Delete an observation definition and dependent tool policies that reference it by name.
+    pub fn delete_observation(&self, observation_id: ObservationId) -> SiliCrewResult<bool> {
+        let Some(existing) = self.get_observation(observation_id)? else {
+            return Ok(false);
+        };
+
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                conn.execute(
+                    "DELETE FROM tool_exposure_policies
+                     WHERE scope_id = ?1 AND observation_ref = ?2",
+                    params![existing.scope_id.0.as_str(), existing.name.as_str()],
+                )
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
+                let rows = conn
+                    .execute(
+                        "DELETE FROM observations WHERE observation_id = ?1",
+                        params![observation_id.0.to_string()],
+                    )
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
+                Ok(rows > 0)
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let observation_id_str = observation_id.0.to_string();
+                let scope_id = existing.scope_id.0;
+                let observation_name = existing.name;
+                block_on(async move {
+                    sqlx::query(
+                        "DELETE FROM tool_exposure_policies
+                         WHERE scope_id = $1 AND observation_ref = $2",
+                    )
+                    .bind(&scope_id)
+                    .bind(&observation_name)
+                    .execute(&*pool)
+                    .await?;
+                    sqlx::query("DELETE FROM observations WHERE observation_id = $1")
+                        .bind(&observation_id_str)
+                        .execute(&*pool)
+                        .await
+                })
+                .map(|rows| rows.rows_affected() > 0)
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
             }
         }
     }
 
     /// Insert or update a guideline definition.
-    pub fn upsert_guideline(&self, guideline: &GuidelineDefinition) -> OpenFangResult<()> {
+    pub fn upsert_guideline(&self, guideline: &GuidelineDefinition) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO guidelines (
                         guideline_id, scope_id, name, condition_ref, action_text, composition_mode, priority, enabled
@@ -282,7 +332,7 @@ impl PolicyStore {
                         guideline.enabled as i64,
                     ],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -319,7 +369,7 @@ impl PolicyStore {
                     .execute(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
@@ -329,18 +379,18 @@ impl PolicyStore {
     pub fn get_guideline(
         &self,
         guideline_id: GuidelineId,
-    ) -> OpenFangResult<Option<GuidelineDefinition>> {
+    ) -> SiliCrewResult<Option<GuidelineDefinition>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT guideline_id, scope_id, name, condition_ref, action_text, composition_mode, priority, enabled
                          FROM guidelines WHERE guideline_id = ?1",
                     )
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let row = stmt.query_row(params![guideline_id.0.to_string()], |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -357,7 +407,7 @@ impl PolicyStore {
                 match row {
                     Ok(row) => Ok(Some(guideline_from_row(row)?)),
                     Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                    Err(e) => Err(OpenFangError::Memory(e.to_string())),
+                    Err(e) => Err(SiliCrewError::Memory(e.to_string())),
                 }
             }
             SharedDb::Postgres(pool) => {
@@ -394,7 +444,7 @@ impl PolicyStore {
                         None => Ok(None),
                     }
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
             }
         }
     }
@@ -404,12 +454,12 @@ impl PolicyStore {
         &self,
         scope_id: &ScopeId,
         enabled_only: bool,
-    ) -> OpenFangResult<Vec<GuidelineDefinition>> {
+    ) -> SiliCrewResult<Vec<GuidelineDefinition>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let sql = if enabled_only {
                     "SELECT guideline_id, scope_id, name, condition_ref, action_text, composition_mode, priority, enabled
                      FROM guidelines
@@ -423,7 +473,7 @@ impl PolicyStore {
                 };
                 let mut stmt = conn
                     .prepare(sql)
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let rows = stmt
                     .query_map(params![scope_id.0.as_str()], |row| {
                         Ok((
@@ -437,12 +487,12 @@ impl PolicyStore {
                             row.get::<_, i64>(7)?,
                         ))
                     })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 let mut guidelines = Vec::new();
                 for row in rows {
                     guidelines.push(guideline_from_row(
-                        row.map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        row.map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                     )?);
                 }
                 Ok(guidelines)
@@ -487,7 +537,70 @@ impl PolicyStore {
                     }
                     Ok::<Vec<GuidelineDefinition>, sqlx::Error>(guidelines)
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
+            }
+        }
+    }
+
+    /// Delete a guideline and dependent control-plane references.
+    pub fn delete_guideline(&self, guideline_id: GuidelineId) -> SiliCrewResult<bool> {
+        let Some(existing) = self.get_guideline(guideline_id)? else {
+            return Ok(false);
+        };
+
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                conn.execute(
+                    "DELETE FROM guideline_relationships
+                     WHERE from_guideline_id = ?1 OR to_guideline_id = ?1",
+                    params![guideline_id.0.to_string()],
+                )
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
+                conn.execute(
+                    "DELETE FROM tool_exposure_policies
+                     WHERE scope_id = ?1 AND guideline_ref = ?2",
+                    params![existing.scope_id.0.as_str(), existing.name.as_str()],
+                )
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
+                let rows = conn
+                    .execute(
+                        "DELETE FROM guidelines WHERE guideline_id = ?1",
+                        params![guideline_id.0.to_string()],
+                    )
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
+                Ok(rows > 0)
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let guideline_id_str = guideline_id.0.to_string();
+                let scope_id = existing.scope_id.0.clone();
+                let guideline_name = existing.name;
+                block_on(async move {
+                    sqlx::query(
+                        "DELETE FROM guideline_relationships
+                         WHERE from_guideline_id = $1 OR to_guideline_id = $1",
+                    )
+                    .bind(&guideline_id_str)
+                    .execute(&*pool)
+                    .await?;
+                    sqlx::query(
+                        "DELETE FROM tool_exposure_policies
+                         WHERE scope_id = $1 AND guideline_ref = $2",
+                    )
+                    .bind(&scope_id)
+                    .bind(&guideline_name)
+                    .execute(&*pool)
+                    .await?;
+                    sqlx::query("DELETE FROM guidelines WHERE guideline_id = $1")
+                        .bind(&guideline_id_str)
+                        .execute(&*pool)
+                        .await
+                })
+                .map(|rows| rows.rows_affected() > 0)
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
             }
         }
     }
@@ -499,19 +612,19 @@ impl PolicyStore {
     pub fn list_guideline_relationships(
         &self,
         scope_id: &ScopeId,
-    ) -> OpenFangResult<Vec<(String, String, String, String)>> {
+    ) -> SiliCrewResult<Vec<(String, String, String, String)>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT relationship_id, from_guideline_id, to_guideline_id, relation_type
                          FROM guideline_relationships
                          WHERE scope_id = ?1",
                     )
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let rows = stmt
                     .query_map(params![scope_id.0.as_str()], |row| {
                         Ok((
@@ -521,10 +634,10 @@ impl PolicyStore {
                             row.get::<_, String>(3)?,
                         ))
                     })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let mut out = Vec::new();
                 for row in rows {
-                    out.push(row.map_err(|e| OpenFangError::Memory(e.to_string()))?);
+                    out.push(row.map_err(|e| SiliCrewError::Memory(e.to_string()))?);
                 }
                 Ok(out)
             }
@@ -552,7 +665,7 @@ impl PolicyStore {
                         })
                         .collect::<Result<Vec<_>, sqlx::Error>>()
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
             }
         }
     }
@@ -560,12 +673,12 @@ impl PolicyStore {
     // ── Tool Exposure Policies ────────────────────────────────────────────────
 
     /// Insert a new tool-exposure policy.
-    pub fn upsert_tool_exposure_policy(&self, policy: &ToolExposurePolicy) -> OpenFangResult<()> {
+    pub fn upsert_tool_exposure_policy(&self, policy: &ToolExposurePolicy) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO tool_exposure_policies
                         (policy_id, scope_id, tool_name, skill_ref, observation_ref,
@@ -591,7 +704,7 @@ impl PolicyStore {
                         policy.enabled as i64,
                     ],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -631,7 +744,7 @@ impl PolicyStore {
                     .execute(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
@@ -641,12 +754,12 @@ impl PolicyStore {
     pub fn list_tool_exposure_policies(
         &self,
         scope_id: &ScopeId,
-    ) -> OpenFangResult<Vec<ToolExposurePolicy>> {
+    ) -> SiliCrewResult<Vec<ToolExposurePolicy>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT policy_id, scope_id, tool_name, skill_ref, observation_ref,
@@ -655,7 +768,7 @@ impl PolicyStore {
                          WHERE scope_id = ?1
                          ORDER BY tool_name ASC",
                     )
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let rows = stmt
                     .query_map(params![scope_id.0.as_str()], |row| {
                         Ok((
@@ -670,12 +783,12 @@ impl PolicyStore {
                             row.get::<_, i64>(8)?,
                         ))
                     })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 let mut result = Vec::new();
                 for row in rows {
                     let (pid, sid, tool, skill, obs, js, gr, am, en) =
-                        row.map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        row.map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     let approval_mode = am
                         .parse::<openparlant_types::control::ApprovalMode>()
                         .unwrap_or_default();
@@ -725,7 +838,7 @@ impl PolicyStore {
                     }
                     Ok::<Vec<ToolExposurePolicy>, sqlx::Error>(result)
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
             }
         }
     }
@@ -734,12 +847,12 @@ impl PolicyStore {
     pub fn get_tool_exposure_policy(
         &self,
         policy_id: &str,
-    ) -> OpenFangResult<Option<ToolExposurePolicy>> {
+    ) -> SiliCrewResult<Option<ToolExposurePolicy>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let row = conn.query_row(
                     "SELECT policy_id, scope_id, tool_name, skill_ref, observation_ref,
                             journey_state_ref, guideline_ref, approval_mode, enabled
@@ -777,7 +890,7 @@ impl PolicyStore {
                         }))
                     }
                     Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                    Err(e) => Err(OpenFangError::Memory(e.to_string())),
+                    Err(e) => Err(SiliCrewError::Memory(e.to_string())),
                 }
             }
             SharedDb::Postgres(pool) => {
@@ -813,7 +926,7 @@ impl PolicyStore {
                         None => Ok(None),
                     }
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
             }
         }
     }
@@ -821,7 +934,7 @@ impl PolicyStore {
 
 fn observation_from_row(
     row: (String, String, String, String, String, i32, i64),
-) -> OpenFangResult<ObservationDefinition> {
+) -> SiliCrewResult<ObservationDefinition> {
     Ok(ObservationDefinition {
         observation_id: parse_uuid(&row.0)
             .map(ObservationId)
@@ -830,7 +943,7 @@ fn observation_from_row(
         name: row.2,
         matcher_type: row.3,
         matcher_config: serde_json::from_str(&row.4)
-            .map_err(|e| OpenFangError::Serialization(e.to_string()))?,
+            .map_err(|e| SiliCrewError::Serialization(e.to_string()))?,
         priority: row.5,
         enabled: row.6 != 0,
     })
@@ -838,7 +951,7 @@ fn observation_from_row(
 
 fn guideline_from_row(
     row: (String, String, String, String, String, String, i32, i64),
-) -> OpenFangResult<GuidelineDefinition> {
+) -> SiliCrewResult<GuidelineDefinition> {
     Ok(GuidelineDefinition {
         guideline_id: parse_uuid(&row.0)
             .map(GuidelineId)
@@ -857,8 +970,8 @@ fn parse_uuid(value: &str) -> Result<uuid::Uuid, uuid::Error> {
     uuid::Uuid::parse_str(value)
 }
 
-fn memory_parse_error<E: std::fmt::Display>(error: E) -> OpenFangError {
-    OpenFangError::Memory(error.to_string())
+fn memory_parse_error<E: std::fmt::Display>(error: E) -> SiliCrewError {
+    SiliCrewError::Memory(error.to_string())
 }
 
 #[cfg(test)]
@@ -915,6 +1028,53 @@ mod tests {
     }
 
     #[test]
+    fn deleting_observation_removes_tool_policies_for_observation_name() {
+        let store = test_store();
+        let scope_id = ScopeId::from("default");
+        let observation = ObservationDefinition {
+            observation_id: ObservationId::new(),
+            scope_id: scope_id.clone(),
+            name: "vip_user".to_string(),
+            matcher_type: "keyword".to_string(),
+            matcher_config: json!({ "contains": ["vip"] }),
+            priority: 100,
+            enabled: true,
+        };
+
+        store.upsert_observation(&observation).unwrap();
+        {
+            let conn = store.db.sqlite().unwrap();
+            let conn = conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO tool_exposure_policies
+                    (policy_id, scope_id, tool_name, skill_ref, observation_ref,
+                     journey_state_ref, guideline_ref, approval_mode, enabled)
+                 VALUES (?1, ?2, ?3, NULL, ?4, NULL, NULL, ?5, 1)",
+                params![
+                    "policy-observation",
+                    scope_id.0.as_str(),
+                    "browser_navigate",
+                    observation.name.as_str(),
+                    "none",
+                ],
+            )
+            .unwrap();
+        }
+
+        assert!(store
+            .delete_observation(observation.observation_id)
+            .unwrap());
+        assert!(store
+            .get_observation(observation.observation_id)
+            .unwrap()
+            .is_none());
+        assert!(store
+            .list_tool_exposure_policies(&scope_id)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
     fn guidelines_round_trip_and_filter_enabled() {
         let store = test_store();
         let scope_id = ScopeId::from("default");
@@ -952,5 +1112,76 @@ mod tests {
         assert_eq!(loaded.action_text, "Offer human handoff immediately.");
         assert_eq!(enabled.len(), 1);
         assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn deleting_guideline_removes_relationships_and_tool_policies() {
+        let store = test_store();
+        let scope_id = ScopeId::from("default");
+        let primary = GuidelineDefinition {
+            guideline_id: GuidelineId::new(),
+            scope_id: scope_id.clone(),
+            name: "primary".to_string(),
+            condition_ref: "vip_user".to_string(),
+            action_text: "Offer human handoff immediately.".to_string(),
+            composition_mode: "append".to_string(),
+            priority: 90,
+            enabled: true,
+        };
+        let secondary = GuidelineDefinition {
+            guideline_id: GuidelineId::new(),
+            scope_id: scope_id.clone(),
+            name: "secondary".to_string(),
+            condition_ref: "vip_user".to_string(),
+            action_text: "Ask for clarification.".to_string(),
+            composition_mode: "append".to_string(),
+            priority: 80,
+            enabled: true,
+        };
+
+        store.upsert_guideline(&primary).unwrap();
+        store.upsert_guideline(&secondary).unwrap();
+        {
+            let conn = store.db.sqlite().unwrap();
+            let conn = conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO guideline_relationships
+                    (relationship_id, scope_id, from_guideline_id, to_guideline_id, relation_type)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    uuid::Uuid::new_v4().to_string(),
+                    scope_id.0.as_str(),
+                    primary.guideline_id.0.to_string(),
+                    secondary.guideline_id.0.to_string(),
+                    "overrides",
+                ],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO tool_exposure_policies
+                    (policy_id, scope_id, tool_name, skill_ref, observation_ref,
+                     journey_state_ref, guideline_ref, approval_mode, enabled)
+                 VALUES (?1, ?2, ?3, NULL, NULL, NULL, ?4, ?5, 1)",
+                params![
+                    "policy-1",
+                    scope_id.0.as_str(),
+                    "browser_navigate",
+                    primary.name.as_str(),
+                    "none",
+                ],
+            )
+            .unwrap();
+        }
+
+        assert!(store.delete_guideline(primary.guideline_id).unwrap());
+        assert!(store.get_guideline(primary.guideline_id).unwrap().is_none());
+        assert!(store
+            .list_guideline_relationships(&scope_id)
+            .unwrap()
+            .is_empty());
+        assert!(store
+            .list_tool_exposure_policies(&scope_id)
+            .unwrap()
+            .is_empty());
     }
 }

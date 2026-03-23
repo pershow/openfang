@@ -9,7 +9,7 @@ import Dashboard from './pages/Dashboard';
 import Plaza from './pages/Plaza';
 import AgentDetail from './pages/AgentDetail';
 import AgentCreate from './pages/AgentCreate';
-import Chat from './pages/Chat';
+import AgentChatRedirect from './pages/AgentChatRedirect';
 import Messages from './pages/Messages';
 import EnterpriseSettings from './pages/EnterpriseSettings';
 import InvitationCodes from './pages/InvitationCodes';
@@ -127,7 +127,7 @@ export default function App() {
                     <Route path="plaza" element={<Plaza />} />
                     <Route path="agents/new" element={<AgentCreate />} />
                     <Route path="agents/:id" element={<AgentDetail />} />
-                    <Route path="agents/:id/chat" element={<Chat />} />
+                    <Route path="agents/:id/chat" element={<AgentChatRedirect />} />
                     <Route path="sessions" element={<Sessions />} />
                     <Route path="approvals" element={<Approvals />} />
                     <Route path="comms" element={<Comms />} />

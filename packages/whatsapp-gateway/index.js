@@ -163,7 +163,7 @@ async function startConnection() {
 
       // Forward to OpenParlant agent
       try {
-        const response = await forwardToOpenFang(text, phone, pushName, metadata);
+        const response = await forwardToSiliCrew(text, phone, pushName, metadata);
         if (response && sock) {
           // Reply in the same context: group → group, DM → DM
           const replyJid = isGroup ? remoteJid : senderJid.replace(/@.*$/, '') + '@s.whatsapp.net';
@@ -180,7 +180,7 @@ async function startConnection() {
 // ---------------------------------------------------------------------------
 // Forward incoming message to OpenParlant API, return agent response
 // ---------------------------------------------------------------------------
-function forwardToOpenFang(text, phone, pushName, metadata) {
+function forwardToSiliCrew(text, phone, pushName, metadata) {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify({
       message: text,

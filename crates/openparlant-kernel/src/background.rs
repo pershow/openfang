@@ -44,7 +44,7 @@ impl BackgroundExecutor {
     /// For `Proactive` mode, registers triggers — no dedicated task needed.
     ///
     /// `send_message` is a closure that sends a message to the given agent
-    /// and returns a result. It captures an `Arc<OpenFangKernel>` from the caller.
+    /// and returns a result. It captures an `Arc<SiliCrewKernel>` from the caller.
     pub fn start_agent<F>(
         &self,
         agent_id: AgentId,

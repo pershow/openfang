@@ -2,7 +2,7 @@
 
 use dashmap::DashMap;
 use openparlant_types::agent::{AgentEntry, AgentId, AgentMode, AgentState};
-use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::error::{SiliCrewError, SiliCrewResult};
 use serde_json::json;
 
 /// Registry of all agents in the kernel.
@@ -26,9 +26,9 @@ impl AgentRegistry {
     }
 
     /// Register a new agent.
-    pub fn register(&self, entry: AgentEntry) -> OpenFangResult<()> {
+    pub fn register(&self, entry: AgentEntry) -> SiliCrewResult<()> {
         if self.name_index.contains_key(&entry.name) {
-            return Err(OpenFangError::AgentAlreadyExists(entry.name.clone()));
+            return Err(SiliCrewError::AgentAlreadyExists(entry.name.clone()));
         }
         let id = entry.id;
         self.name_index.insert(entry.name.clone(), id);
@@ -52,33 +52,33 @@ impl AgentRegistry {
     }
 
     /// Update agent state.
-    pub fn set_state(&self, id: AgentId, state: AgentState) -> OpenFangResult<()> {
+    pub fn set_state(&self, id: AgentId, state: AgentState) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
             .get_mut(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         entry.state = state;
         entry.last_active = chrono::Utc::now();
         Ok(())
     }
 
     /// Update agent operational mode.
-    pub fn set_mode(&self, id: AgentId, mode: AgentMode) -> OpenFangResult<()> {
+    pub fn set_mode(&self, id: AgentId, mode: AgentMode) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
             .get_mut(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         entry.mode = mode;
         entry.last_active = chrono::Utc::now();
         Ok(())
     }
 
     /// Remove an agent from the registry.
-    pub fn remove(&self, id: AgentId) -> OpenFangResult<AgentEntry> {
+    pub fn remove(&self, id: AgentId) -> SiliCrewResult<AgentEntry> {
         let (_, entry) = self
             .agents
             .remove(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         self.name_index.remove(&entry.name);
         for tag in &entry.tags {
             if let Some(mut ids) = self.tag_index.get_mut(tag) {
@@ -110,11 +110,11 @@ impl AgentRegistry {
         &self,
         id: AgentId,
         new_session_id: openparlant_types::agent::SessionId,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
             .get_mut(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         entry.session_id = new_session_id;
         entry.last_active = chrono::Utc::now();
         Ok(())
@@ -125,11 +125,11 @@ impl AgentRegistry {
         &self,
         id: AgentId,
         workspace: Option<std::path::PathBuf>,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
             .get_mut(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         entry.manifest.workspace = workspace;
         entry.last_active = chrono::Utc::now();
         Ok(())
@@ -140,22 +140,22 @@ impl AgentRegistry {
         &self,
         id: AgentId,
         identity: openparlant_types::agent::AgentIdentity,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
             .get_mut(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         entry.identity = identity;
         entry.last_active = chrono::Utc::now();
         Ok(())
     }
 
     /// Update an agent's model configuration.
-    pub fn update_model(&self, id: AgentId, new_model: String) -> OpenFangResult<()> {
+    pub fn update_model(&self, id: AgentId, new_model: String) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
             .get_mut(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         entry.manifest.model.model = new_model;
         entry.last_active = chrono::Utc::now();
         Ok(())
@@ -167,11 +167,11 @@ impl AgentRegistry {
         id: AgentId,
         new_model: String,
         new_provider: String,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
             .get_mut(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         entry.manifest.model.model = new_model;
         entry.manifest.model.provider = new_provider;
         entry.last_active = chrono::Utc::now();
@@ -186,11 +186,11 @@ impl AgentRegistry {
         new_provider: String,
         api_key_env: Option<String>,
         base_url: Option<String>,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
             .get_mut(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         entry.manifest.model.model = new_model;
         entry.manifest.model.provider = new_provider;
         entry.manifest.model.api_key_env = api_key_env;
@@ -204,33 +204,33 @@ impl AgentRegistry {
         &self,
         id: AgentId,
         fallback_models: Vec<openparlant_types::agent::FallbackModel>,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
             .get_mut(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         entry.manifest.fallback_models = fallback_models;
         entry.last_active = chrono::Utc::now();
         Ok(())
     }
 
     /// Update an agent's skill allowlist.
-    pub fn update_skills(&self, id: AgentId, skills: Vec<String>) -> OpenFangResult<()> {
+    pub fn update_skills(&self, id: AgentId, skills: Vec<String>) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
             .get_mut(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         entry.manifest.skills = skills;
         entry.last_active = chrono::Utc::now();
         Ok(())
     }
 
     /// Update an agent's MCP server allowlist.
-    pub fn update_mcp_servers(&self, id: AgentId, servers: Vec<String>) -> OpenFangResult<()> {
+    pub fn update_mcp_servers(&self, id: AgentId, servers: Vec<String>) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
             .get_mut(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         entry.manifest.mcp_servers = servers;
         entry.last_active = chrono::Utc::now();
         Ok(())
@@ -242,11 +242,11 @@ impl AgentRegistry {
         id: AgentId,
         allowlist: Option<Vec<String>>,
         blocklist: Option<Vec<String>>,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
             .get_mut(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         if let Some(al) = allowlist {
             entry.manifest.tool_allowlist = al;
         }
@@ -258,21 +258,21 @@ impl AgentRegistry {
     }
 
     /// Update an agent's system prompt (hot-swap, takes effect on next message).
-    pub fn update_system_prompt(&self, id: AgentId, new_prompt: String) -> OpenFangResult<()> {
+    pub fn update_system_prompt(&self, id: AgentId, new_prompt: String) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
             .get_mut(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         entry.manifest.model.system_prompt = new_prompt;
         entry.last_active = chrono::Utc::now();
         Ok(())
     }
 
     /// Update an agent's name (also updates the name index).
-    pub fn update_name(&self, id: AgentId, new_name: String) -> OpenFangResult<()> {
+    pub fn update_name(&self, id: AgentId, new_name: String) -> SiliCrewResult<()> {
         if let Some(existing_id) = self.name_index.get(&new_name).as_deref().copied() {
             if existing_id != id {
-                return Err(OpenFangError::AgentAlreadyExists(new_name));
+                return Err(SiliCrewError::AgentAlreadyExists(new_name));
             }
             // Same agent owns this name — no-op
             return Ok(());
@@ -280,7 +280,7 @@ impl AgentRegistry {
         let mut entry = self
             .agents
             .get_mut(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         let old_name = entry.name.clone();
         entry.name = new_name.clone();
         entry.manifest.name = new_name.clone();
@@ -293,11 +293,11 @@ impl AgentRegistry {
     }
 
     /// Update an agent's description.
-    pub fn update_description(&self, id: AgentId, new_desc: String) -> OpenFangResult<()> {
+    pub fn update_description(&self, id: AgentId, new_desc: String) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
             .get_mut(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         entry.manifest.description = new_desc;
         entry.last_active = chrono::Utc::now();
         Ok(())
@@ -311,11 +311,11 @@ impl AgentRegistry {
         daily: Option<f64>,
         monthly: Option<f64>,
         tokens_per_hour: Option<u64>,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
             .get_mut(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         if let Some(v) = hourly {
             entry.manifest.resources.max_cost_per_hour_usd = v;
         }
@@ -333,11 +333,11 @@ impl AgentRegistry {
     }
 
     /// Mark an agent's onboarding as complete.
-    pub fn mark_onboarding_complete(&self, id: AgentId) -> OpenFangResult<()> {
+    pub fn mark_onboarding_complete(&self, id: AgentId) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
             .get_mut(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         entry.onboarding_completed = true;
         entry.onboarding_completed_at = Some(chrono::Utc::now());
         entry.last_active = chrono::Utc::now();
@@ -352,11 +352,11 @@ impl AgentRegistry {
         id: AgentId,
         key: &str,
         value: Option<String>,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
             .get_mut(&id)
-            .ok_or_else(|| OpenFangError::AgentNotFound(id.to_string()))?;
+            .ok_or_else(|| SiliCrewError::AgentNotFound(id.to_string()))?;
         match value {
             None => {
                 entry.manifest.metadata.remove(key);

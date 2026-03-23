@@ -5,7 +5,7 @@
 
 use crate::db::{block_on, SharedDb};
 use chrono::Utc;
-use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::error::{SiliCrewError, SiliCrewResult};
 use openparlant_types::memory::ConsolidationReport;
 #[cfg(test)]
 use rusqlite::Connection;
@@ -30,7 +30,7 @@ impl ConsolidationEngine {
     }
 
     /// Run a consolidation cycle: decay old memories.
-    pub fn consolidate(&self) -> OpenFangResult<ConsolidationReport> {
+    pub fn consolidate(&self) -> SiliCrewResult<ConsolidationReport> {
         let start = std::time::Instant::now();
         // Decay confidence of memories not accessed in the last 7 days
         let cutoff = (Utc::now() - chrono::Duration::days(7)).to_rfc3339();
@@ -39,13 +39,13 @@ impl ConsolidationEngine {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "UPDATE memories SET confidence = MAX(0.1, confidence * ?1)
                      WHERE deleted = 0 AND accessed_at < ?2 AND confidence > 0.1",
                     rusqlite::params![decay_factor, cutoff],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?
             }
             SharedDb::Postgres(pool) => {
                 let pool = pool.clone();
@@ -60,7 +60,7 @@ impl ConsolidationEngine {
                     .execute(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 result.rows_affected() as usize
             }
         };

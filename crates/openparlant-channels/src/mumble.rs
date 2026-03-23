@@ -526,7 +526,7 @@ mod tests {
             "mumble.example.com".to_string(),
             0,
             "secret".to_string(),
-            "OpenFangBot".to_string(),
+            "SiliCrewBot".to_string(),
             "General".to_string(),
         );
         assert_eq!(adapter.name(), "mumble");

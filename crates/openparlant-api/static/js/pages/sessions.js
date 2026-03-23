@@ -32,7 +32,7 @@ function sessionsPage() {
       this.loading = true;
       this.loadError = '';
       try {
-        var data = await OpenFangAPI.get('/api/sessions');
+        var data = await SiliCrewAPI.get('/api/sessions');
         var sessions = data.sessions || [];
         var agents = Alpine.store('app').agents;
         var agentMap = {};
@@ -74,7 +74,7 @@ function sessionsPage() {
       this.replayError = '';
       this.replayData = null;
       try {
-        this.replayData = await OpenFangAPI.get('/api/sessions/' + s.session_id + '/replay');
+        this.replayData = await SiliCrewAPI.get('/api/sessions/' + s.session_id + '/replay');
       } catch (e) {
         this.replayError = e.message || 'Could not load session replay.';
       }
@@ -89,13 +89,13 @@ function sessionsPage() {
 
     deleteSession(sessionId) {
       var self = this;
-      OpenFangToast.confirm('Delete Session', 'This will permanently remove the session and its messages.', async function() {
+      SiliCrewToast.confirm('Delete Session', 'This will permanently remove the session and its messages.', async function() {
         try {
-          await OpenFangAPI.del('/api/sessions/' + sessionId);
+          await SiliCrewAPI.del('/api/sessions/' + sessionId);
           self.sessions = self.sessions.filter(function(s) { return s.session_id !== sessionId; });
-          OpenFangToast.success('Session deleted');
+          SiliCrewToast.success('Session deleted');
         } catch(e) {
-          OpenFangToast.error('Failed to delete session: ' + e.message);
+          SiliCrewToast.error('Failed to delete session: ' + e.message);
         }
       });
     },
@@ -106,7 +106,7 @@ function sessionsPage() {
       this.memLoading = true;
       this.memLoadError = '';
       try {
-        var data = await OpenFangAPI.get('/api/memory/agents/' + this.memAgentId + '/kv');
+        var data = await SiliCrewAPI.get('/api/memory/agents/' + this.memAgentId + '/kv');
         this.kvPairs = data.kv_pairs || [];
       } catch(e) {
         this.kvPairs = [];
@@ -120,26 +120,26 @@ function sessionsPage() {
       var value;
       try { value = JSON.parse(this.newValue); } catch(e) { value = this.newValue; }
       try {
-        await OpenFangAPI.put('/api/memory/agents/' + this.memAgentId + '/kv/' + encodeURIComponent(this.newKey), { value: value });
+        await SiliCrewAPI.put('/api/memory/agents/' + this.memAgentId + '/kv/' + encodeURIComponent(this.newKey), { value: value });
         this.showAdd = false;
-        OpenFangToast.success('Key "' + this.newKey + '" saved');
+        SiliCrewToast.success('Key "' + this.newKey + '" saved');
         this.newKey = '';
         this.newValue = '""';
         await this.loadKv();
       } catch(e) {
-        OpenFangToast.error('Failed to save key: ' + e.message);
+        SiliCrewToast.error('Failed to save key: ' + e.message);
       }
     },
 
     deleteKey(key) {
       var self = this;
-      OpenFangToast.confirm('Delete Key', 'Delete key "' + key + '"? This cannot be undone.', async function() {
+      SiliCrewToast.confirm('Delete Key', 'Delete key "' + key + '"? This cannot be undone.', async function() {
         try {
-          await OpenFangAPI.del('/api/memory/agents/' + self.memAgentId + '/kv/' + encodeURIComponent(key));
-          OpenFangToast.success('Key "' + key + '" deleted');
+          await SiliCrewAPI.del('/api/memory/agents/' + self.memAgentId + '/kv/' + encodeURIComponent(key));
+          SiliCrewToast.success('Key "' + key + '" deleted');
           await self.loadKv();
         } catch(e) {
-          OpenFangToast.error('Failed to delete key: ' + e.message);
+          SiliCrewToast.error('Failed to delete key: ' + e.message);
         }
       });
     },
@@ -159,13 +159,13 @@ function sessionsPage() {
       var value;
       try { value = JSON.parse(this.editingValue); } catch(e) { value = this.editingValue; }
       try {
-        await OpenFangAPI.put('/api/memory/agents/' + this.memAgentId + '/kv/' + encodeURIComponent(this.editingKey), { value: value });
-        OpenFangToast.success('Key "' + this.editingKey + '" updated');
+        await SiliCrewAPI.put('/api/memory/agents/' + this.memAgentId + '/kv/' + encodeURIComponent(this.editingKey), { value: value });
+        SiliCrewToast.success('Key "' + this.editingKey + '" updated');
         this.editingKey = null;
         this.editingValue = '';
         await this.loadKv();
       } catch(e) {
-        OpenFangToast.error('Failed to save: ' + e.message);
+        SiliCrewToast.error('Failed to save: ' + e.message);
       }
     }
   };

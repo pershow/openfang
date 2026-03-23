@@ -1,28 +1,37 @@
 use crate::store::{ControlStore, PlazaCommentRecord, PlazaPostRecord};
 use chrono::{DateTime, Utc};
 use openparlant_memory::db::{block_on, SharedDb};
-use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::error::{SiliCrewError, SiliCrewResult};
 use rusqlite::params;
 use sqlx::Row;
 use std::collections::HashMap;
 
-fn parse_timestamp(value: &str) -> OpenFangResult<DateTime<Utc>> {
+fn parse_timestamp(value: &str) -> SiliCrewResult<DateTime<Utc>> {
     chrono::DateTime::parse_from_rfc3339(value)
         .map(|dt| dt.with_timezone(&Utc))
         .or_else(|_| {
-            chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
-                .map(|dt| dt.and_utc())
+            chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S").map(|dt| dt.and_utc())
         })
         .map_err(memory_error)
 }
 
-fn memory_error<E: std::fmt::Display>(error: E) -> OpenFangError {
-    OpenFangError::Memory(error.to_string())
+fn memory_error<E: std::fmt::Display>(error: E) -> SiliCrewError {
+    SiliCrewError::Memory(error.to_string())
 }
 
 fn post_from_sqlite_row(
-    row: (String, String, String, String, String, Option<String>, i32, i32, String),
-) -> OpenFangResult<PlazaPostRecord> {
+    row: (
+        String,
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        i32,
+        i32,
+        String,
+    ),
+) -> SiliCrewResult<PlazaPostRecord> {
     Ok(PlazaPostRecord {
         id: row.0,
         author_id: row.1,
@@ -38,8 +47,20 @@ fn post_from_sqlite_row(
 
 fn post_row_sqlite(
     row: &rusqlite::Row<'_>,
-) -> Result<(String, String, String, String, String, Option<String>, i32, i32, String), rusqlite::Error>
-{
+) -> Result<
+    (
+        String,
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        i32,
+        i32,
+        String,
+    ),
+    rusqlite::Error,
+> {
     Ok((
         row.get::<_, String>(0)?,
         row.get::<_, String>(1)?,
@@ -53,7 +74,7 @@ fn post_row_sqlite(
     ))
 }
 
-fn post_from_pg_row(row: sqlx::postgres::PgRow) -> OpenFangResult<PlazaPostRecord> {
+fn post_from_pg_row(row: sqlx::postgres::PgRow) -> SiliCrewResult<PlazaPostRecord> {
     Ok(PlazaPostRecord {
         id: row.try_get("id").map_err(memory_error)?,
         author_id: row.try_get("author_id").map_err(memory_error)?,
@@ -63,13 +84,16 @@ fn post_from_pg_row(row: sqlx::postgres::PgRow) -> OpenFangResult<PlazaPostRecor
         tenant_id: row.try_get("tenant_id").map_err(memory_error)?,
         likes_count: row.try_get("likes_count").map_err(memory_error)?,
         comments_count: row.try_get("comments_count").map_err(memory_error)?,
-        created_at: parse_timestamp(&row.try_get::<String, _>("created_at").map_err(memory_error)?)?,
+        created_at: parse_timestamp(
+            &row.try_get::<String, _>("created_at")
+                .map_err(memory_error)?,
+        )?,
     })
 }
 
 fn comment_from_sqlite_row(
     row: (String, String, String, String, String, String, String),
-) -> OpenFangResult<PlazaCommentRecord> {
+) -> SiliCrewResult<PlazaCommentRecord> {
     Ok(PlazaCommentRecord {
         id: row.0,
         post_id: row.1,
@@ -81,7 +105,7 @@ fn comment_from_sqlite_row(
     })
 }
 
-fn comment_from_pg_row(row: sqlx::postgres::PgRow) -> OpenFangResult<PlazaCommentRecord> {
+fn comment_from_pg_row(row: sqlx::postgres::PgRow) -> SiliCrewResult<PlazaCommentRecord> {
     Ok(PlazaCommentRecord {
         id: row.try_get("id").map_err(memory_error)?,
         post_id: row.try_get("post_id").map_err(memory_error)?,
@@ -89,7 +113,10 @@ fn comment_from_pg_row(row: sqlx::postgres::PgRow) -> OpenFangResult<PlazaCommen
         author_type: row.try_get("author_type").map_err(memory_error)?,
         author_name: row.try_get("author_name").map_err(memory_error)?,
         content: row.try_get("content").map_err(memory_error)?,
-        created_at: parse_timestamp(&row.try_get::<String, _>("created_at").map_err(memory_error)?)?,
+        created_at: parse_timestamp(
+            &row.try_get::<String, _>("created_at")
+                .map_err(memory_error)?,
+        )?,
     })
 }
 
@@ -99,10 +126,12 @@ impl ControlStore {
         tenant_id: Option<&str>,
         limit: usize,
         offset: usize,
-    ) -> OpenFangResult<Vec<PlazaPostRecord>> {
+    ) -> SiliCrewResult<Vec<PlazaPostRecord>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
-                let conn = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let (sql, bind_tenant) = if tenant_id.is_some() {
                     (
                         "SELECT id, author_id, author_type, author_name, content, tenant_id, likes_count, comments_count, created_at
@@ -169,10 +198,12 @@ impl ControlStore {
         }
     }
 
-    pub fn get_plaza_post(&self, post_id: &str) -> OpenFangResult<Option<PlazaPostRecord>> {
+    pub fn get_plaza_post(&self, post_id: &str) -> SiliCrewResult<Option<PlazaPostRecord>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
-                let conn = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let row = conn.query_row(
                     "SELECT id, author_id, author_type, author_name, content, tenant_id, likes_count, comments_count, created_at
                      FROM plaza_posts WHERE id = ?1",
@@ -218,10 +249,12 @@ impl ControlStore {
         }
     }
 
-    pub fn create_plaza_post(&self, post: &PlazaPostRecord) -> OpenFangResult<()> {
+    pub fn create_plaza_post(&self, post: &PlazaPostRecord) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
-                let conn = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO plaza_posts (id, author_id, author_type, author_name, content, tenant_id, likes_count, comments_count, created_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -265,14 +298,22 @@ impl ControlStore {
         Ok(())
     }
 
-    pub fn delete_plaza_post(&self, post_id: &str) -> OpenFangResult<bool> {
+    pub fn delete_plaza_post(&self, post_id: &str) -> SiliCrewResult<bool> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
-                let conn = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
-                conn.execute("DELETE FROM plaza_comments WHERE post_id = ?1", params![post_id])
-                    .map_err(memory_error)?;
-                conn.execute("DELETE FROM plaza_likes WHERE post_id = ?1", params![post_id])
-                    .map_err(memory_error)?;
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                conn.execute(
+                    "DELETE FROM plaza_comments WHERE post_id = ?1",
+                    params![post_id],
+                )
+                .map_err(memory_error)?;
+                conn.execute(
+                    "DELETE FROM plaza_likes WHERE post_id = ?1",
+                    params![post_id],
+                )
+                .map_err(memory_error)?;
                 Ok(conn
                     .execute("DELETE FROM plaza_posts WHERE id = ?1", params![post_id])
                     .map_err(memory_error)?
@@ -301,10 +342,12 @@ impl ControlStore {
         }
     }
 
-    pub fn list_plaza_comments(&self, post_id: &str) -> OpenFangResult<Vec<PlazaCommentRecord>> {
+    pub fn list_plaza_comments(&self, post_id: &str) -> SiliCrewResult<Vec<PlazaCommentRecord>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
-                let conn = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn.prepare(
                     "SELECT id, post_id, author_id, author_type, author_name, content, created_at
                      FROM plaza_comments WHERE post_id = ?1 ORDER BY created_at ASC",
@@ -353,10 +396,12 @@ impl ControlStore {
         }
     }
 
-    pub fn create_plaza_comment(&self, comment: &PlazaCommentRecord) -> OpenFangResult<()> {
+    pub fn create_plaza_comment(&self, comment: &PlazaCommentRecord) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
-                let conn = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO plaza_comments (id, post_id, author_id, author_type, author_name, content, created_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -410,10 +455,12 @@ impl ControlStore {
         post_id: &str,
         author_id: &str,
         author_type: &str,
-    ) -> OpenFangResult<bool> {
+    ) -> SiliCrewResult<bool> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
-                let conn = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let existing: i64 = conn
                     .query_row(
                         "SELECT COUNT(*) FROM plaza_likes WHERE post_id = ?1 AND author_id = ?2 AND author_type = ?3",
@@ -506,7 +553,7 @@ impl ControlStore {
         }
     }
 
-    pub fn plaza_stats(&self, tenant_id: Option<&str>) -> OpenFangResult<serde_json::Value> {
+    pub fn plaza_stats(&self, tenant_id: Option<&str>) -> SiliCrewResult<serde_json::Value> {
         let posts = self.list_plaza_posts(tenant_id, 10_000, 0)?;
         let total_posts = posts.len() as i64;
         let today = Utc::now().date_naive();
@@ -514,7 +561,10 @@ impl ControlStore {
             .iter()
             .filter(|post| post.created_at.date_naive() == today)
             .count() as i64;
-        let total_comments = posts.iter().map(|post| i64::from(post.comments_count)).sum::<i64>();
+        let total_comments = posts
+            .iter()
+            .map(|post| i64::from(post.comments_count))
+            .sum::<i64>();
 
         let mut contributors: HashMap<(String, String), i64> = HashMap::new();
         for post in &posts {
@@ -524,11 +574,13 @@ impl ControlStore {
         }
         let mut top_contributors = contributors
             .into_iter()
-            .map(|((name, author_type), count)| serde_json::json!({
-                "name": name,
-                "type": author_type,
-                "posts": count,
-            }))
+            .map(|((name, author_type), count)| {
+                serde_json::json!({
+                    "name": name,
+                    "type": author_type,
+                    "posts": count,
+                })
+            })
             .collect::<Vec<_>>();
         top_contributors.sort_by(|a, b| b["posts"].as_i64().cmp(&a["posts"].as_i64()));
         top_contributors.truncate(5);

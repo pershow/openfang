@@ -14,7 +14,7 @@ use crate::usage::UsageStore;
 
 use async_trait::async_trait;
 use openparlant_types::agent::{AgentEntry, AgentId, SessionId};
-use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::error::{SiliCrewError, SiliCrewResult};
 use openparlant_types::memory::{
     ConsolidationReport, Entity, ExportFormat, GraphMatch, GraphPattern, ImportReport, Memory,
     MemoryFilter, MemoryFragment, MemoryId, MemorySource, Relation,
@@ -38,41 +38,41 @@ pub struct MemorySubstrate {
 
 impl MemorySubstrate {
     /// Open or create a memory substrate at the given database path.
-    pub fn open(db_path: &Path, decay_rate: f32) -> OpenFangResult<Self> {
+    pub fn open(db_path: &Path, decay_rate: f32) -> SiliCrewResult<Self> {
         let db = SharedDb::open_sqlite(db_path)?;
         if let Some(conn) = db.sqlite() {
             let conn = conn
                 .lock()
-                .map_err(|e| OpenFangError::Internal(e.to_string()))?;
-            run_migrations(&conn).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+            run_migrations(&conn).map_err(|e| SiliCrewError::Memory(e.to_string()))?;
         }
         Self::from_db(db, decay_rate)
     }
 
     /// Open or create a memory substrate backed by PostgreSQL.
-    pub async fn open_postgres(database_url: &str, decay_rate: f32) -> OpenFangResult<Self> {
+    pub async fn open_postgres(database_url: &str, decay_rate: f32) -> SiliCrewResult<Self> {
         let db = SharedDb::open_postgres(database_url).await?;
         if let Some(pool) = db.postgres() {
             run_postgres_migrations(&pool)
                 .await
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
         }
         Self::from_db(db, decay_rate)
     }
 
     /// Create an in-memory substrate (for testing).
-    pub fn open_in_memory(decay_rate: f32) -> OpenFangResult<Self> {
+    pub fn open_in_memory(decay_rate: f32) -> SiliCrewResult<Self> {
         let db = SharedDb::open_sqlite_in_memory()?;
         if let Some(conn) = db.sqlite() {
             let conn = conn
                 .lock()
-                .map_err(|e| OpenFangError::Internal(e.to_string()))?;
-            run_migrations(&conn).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+            run_migrations(&conn).map_err(|e| SiliCrewError::Memory(e.to_string()))?;
         }
         Self::from_db(db, decay_rate)
     }
 
-    fn from_db(db: SharedDb, decay_rate: f32) -> OpenFangResult<Self> {
+    fn from_db(db: SharedDb, decay_rate: f32) -> SiliCrewResult<Self> {
         Ok(Self {
             db: db.clone(),
             structured: StructuredStore::new(db.clone()),
@@ -95,29 +95,29 @@ impl MemorySubstrate {
     }
 
     /// Save an agent entry to persistent storage.
-    pub fn save_agent(&self, entry: &AgentEntry) -> OpenFangResult<()> {
+    pub fn save_agent(&self, entry: &AgentEntry) -> SiliCrewResult<()> {
         self.structured.save_agent(entry)
     }
 
     /// Load an agent entry from persistent storage.
-    pub fn load_agent(&self, agent_id: AgentId) -> OpenFangResult<Option<AgentEntry>> {
+    pub fn load_agent(&self, agent_id: AgentId) -> SiliCrewResult<Option<AgentEntry>> {
         self.structured.load_agent(agent_id)
     }
 
     /// Remove an agent from persistent storage and cascade-delete sessions.
-    pub fn remove_agent(&self, agent_id: AgentId) -> OpenFangResult<()> {
+    pub fn remove_agent(&self, agent_id: AgentId) -> SiliCrewResult<()> {
         // Delete associated sessions first
         let _ = self.sessions.delete_agent_sessions(agent_id);
         self.structured.remove_agent(agent_id)
     }
 
     /// Load all agent entries from persistent storage.
-    pub fn load_all_agents(&self) -> OpenFangResult<Vec<AgentEntry>> {
+    pub fn load_all_agents(&self) -> SiliCrewResult<Vec<AgentEntry>> {
         self.structured.load_all_agents()
     }
 
     /// List all saved agents.
-    pub fn list_agents(&self) -> OpenFangResult<Vec<(String, String, String)>> {
+    pub fn list_agents(&self) -> SiliCrewResult<Vec<(String, String, String)>> {
         self.structured.list_agents()
     }
 
@@ -126,17 +126,17 @@ impl MemorySubstrate {
         &self,
         agent_id: AgentId,
         key: &str,
-    ) -> OpenFangResult<Option<serde_json::Value>> {
+    ) -> SiliCrewResult<Option<serde_json::Value>> {
         self.structured.get(agent_id, key)
     }
 
     /// List all KV pairs for an agent.
-    pub fn list_kv(&self, agent_id: AgentId) -> OpenFangResult<Vec<(String, serde_json::Value)>> {
+    pub fn list_kv(&self, agent_id: AgentId) -> SiliCrewResult<Vec<(String, serde_json::Value)>> {
         self.structured.list_kv(agent_id)
     }
 
     /// Delete a KV entry for an agent.
-    pub fn structured_delete(&self, agent_id: AgentId, key: &str) -> OpenFangResult<()> {
+    pub fn structured_delete(&self, agent_id: AgentId, key: &str) -> SiliCrewResult<()> {
         self.structured.delete(agent_id, key)
     }
 
@@ -146,52 +146,52 @@ impl MemorySubstrate {
         agent_id: AgentId,
         key: &str,
         value: serde_json::Value,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         self.structured.set(agent_id, key, value)
     }
 
     /// Get a session by ID.
-    pub fn get_session(&self, session_id: SessionId) -> OpenFangResult<Option<Session>> {
+    pub fn get_session(&self, session_id: SessionId) -> SiliCrewResult<Option<Session>> {
         self.sessions.get_session(session_id)
     }
 
     /// Save a session.
-    pub fn save_session(&self, session: &Session) -> OpenFangResult<()> {
+    pub fn save_session(&self, session: &Session) -> SiliCrewResult<()> {
         self.sessions.save_session(session)
     }
 
     /// Save a session asynchronously — runs the SQLite write in a blocking
     /// thread so the tokio runtime stays responsive.
-    pub async fn save_session_async(&self, session: &Session) -> OpenFangResult<()> {
+    pub async fn save_session_async(&self, session: &Session) -> SiliCrewResult<()> {
         let sessions = self.sessions.clone();
         let session = session.clone();
         tokio::task::spawn_blocking(move || sessions.save_session(&session))
             .await
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?
+            .map_err(|e| SiliCrewError::Internal(e.to_string()))?
     }
 
     /// Create a new empty session for an agent.
-    pub fn create_session(&self, agent_id: AgentId) -> OpenFangResult<Session> {
+    pub fn create_session(&self, agent_id: AgentId) -> SiliCrewResult<Session> {
         self.sessions.create_session(agent_id)
     }
 
     /// List all sessions with metadata.
-    pub fn list_sessions(&self) -> OpenFangResult<Vec<serde_json::Value>> {
+    pub fn list_sessions(&self) -> SiliCrewResult<Vec<serde_json::Value>> {
         self.sessions.list_sessions()
     }
 
     /// Delete a session by ID.
-    pub fn delete_session(&self, session_id: SessionId) -> OpenFangResult<()> {
+    pub fn delete_session(&self, session_id: SessionId) -> SiliCrewResult<()> {
         self.sessions.delete_session(session_id)
     }
 
     /// Delete all sessions belonging to an agent.
-    pub fn delete_agent_sessions(&self, agent_id: AgentId) -> OpenFangResult<()> {
+    pub fn delete_agent_sessions(&self, agent_id: AgentId) -> SiliCrewResult<()> {
         self.sessions.delete_agent_sessions(agent_id)
     }
 
     /// Delete the canonical (cross-channel) session for an agent.
-    pub fn delete_canonical_session(&self, agent_id: AgentId) -> OpenFangResult<()> {
+    pub fn delete_canonical_session(&self, agent_id: AgentId) -> SiliCrewResult<()> {
         self.sessions.delete_canonical_session(agent_id)
     }
 
@@ -200,7 +200,7 @@ impl MemorySubstrate {
         &self,
         session_id: SessionId,
         label: Option<&str>,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         self.sessions.set_session_label(session_id, label)
     }
 
@@ -209,12 +209,12 @@ impl MemorySubstrate {
         &self,
         agent_id: AgentId,
         label: &str,
-    ) -> OpenFangResult<Option<Session>> {
+    ) -> SiliCrewResult<Option<Session>> {
         self.sessions.find_session_by_label(agent_id, label)
     }
 
     /// List all sessions for a specific agent.
-    pub fn list_agent_sessions(&self, agent_id: AgentId) -> OpenFangResult<Vec<serde_json::Value>> {
+    pub fn list_agent_sessions(&self, agent_id: AgentId) -> SiliCrewResult<Vec<serde_json::Value>> {
         self.sessions.list_agent_sessions(agent_id)
     }
 
@@ -223,7 +223,7 @@ impl MemorySubstrate {
         &self,
         agent_id: AgentId,
         label: Option<&str>,
-    ) -> OpenFangResult<Session> {
+    ) -> SiliCrewResult<Session> {
         self.sessions.create_session_with_label(agent_id, label)
     }
 
@@ -235,7 +235,7 @@ impl MemorySubstrate {
         &self,
         agent_id: AgentId,
         window_size: Option<usize>,
-    ) -> OpenFangResult<(Option<String>, Vec<openparlant_types::message::Message>)> {
+    ) -> SiliCrewResult<(Option<String>, Vec<openparlant_types::message::Message>)> {
         self.sessions.canonical_context(agent_id, window_size)
     }
 
@@ -248,7 +248,7 @@ impl MemorySubstrate {
         agent_id: AgentId,
         summary: &str,
         kept_messages: Vec<openparlant_types::message::Message>,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         self.sessions
             .store_llm_summary(agent_id, summary, kept_messages)
     }
@@ -271,7 +271,7 @@ impl MemorySubstrate {
         agent_id: AgentId,
         messages: &[openparlant_types::message::Message],
         compaction_threshold: Option<usize>,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         self.sessions
             .append_canonical(agent_id, messages, compaction_threshold)?;
         Ok(())
@@ -282,15 +282,15 @@ impl MemorySubstrate {
     // -----------------------------------------------------------------
 
     /// Load all paired devices from the database.
-    pub fn load_paired_devices(&self) -> OpenFangResult<Vec<serde_json::Value>> {
+    pub fn load_paired_devices(&self) -> SiliCrewResult<Vec<serde_json::Value>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let mut stmt = conn.prepare(
                     "SELECT device_id, display_name, platform, paired_at, last_seen, push_token FROM paired_devices"
-                ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                ).map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let rows = stmt
                     .query_map([], |row| {
                         Ok(serde_json::json!({
@@ -302,10 +302,10 @@ impl MemorySubstrate {
                             "push_token": row.get::<_, Option<String>>(5)?,
                         }))
                     })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let mut devices = Vec::new();
                 for row in rows {
-                    devices.push(row.map_err(|e| OpenFangError::Memory(e.to_string()))?);
+                    devices.push(row.map_err(|e| SiliCrewError::Memory(e.to_string()))?);
                 }
                 Ok(devices)
             }
@@ -318,16 +318,16 @@ impl MemorySubstrate {
                     .fetch_all(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let mut devices = Vec::with_capacity(rows.len());
                 for row in rows {
                     devices.push(serde_json::json!({
-                        "device_id": row.try_get::<String, _>("device_id").map_err(|e| OpenFangError::Memory(e.to_string()))?,
-                        "display_name": row.try_get::<String, _>("display_name").map_err(|e| OpenFangError::Memory(e.to_string()))?,
-                        "platform": row.try_get::<String, _>("platform").map_err(|e| OpenFangError::Memory(e.to_string()))?,
-                        "paired_at": row.try_get::<String, _>("paired_at").map_err(|e| OpenFangError::Memory(e.to_string()))?,
-                        "last_seen": row.try_get::<String, _>("last_seen").map_err(|e| OpenFangError::Memory(e.to_string()))?,
-                        "push_token": row.try_get::<Option<String>, _>("push_token").map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        "device_id": row.try_get::<String, _>("device_id").map_err(|e| SiliCrewError::Memory(e.to_string()))?,
+                        "display_name": row.try_get::<String, _>("display_name").map_err(|e| SiliCrewError::Memory(e.to_string()))?,
+                        "platform": row.try_get::<String, _>("platform").map_err(|e| SiliCrewError::Memory(e.to_string()))?,
+                        "paired_at": row.try_get::<String, _>("paired_at").map_err(|e| SiliCrewError::Memory(e.to_string()))?,
+                        "last_seen": row.try_get::<String, _>("last_seen").map_err(|e| SiliCrewError::Memory(e.to_string()))?,
+                        "push_token": row.try_get::<Option<String>, _>("push_token").map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                     }));
                 }
                 Ok(devices)
@@ -344,16 +344,16 @@ impl MemorySubstrate {
         paired_at: &str,
         last_seen: &str,
         push_token: Option<&str>,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 conn.execute(
                     "INSERT OR REPLACE INTO paired_devices (device_id, display_name, platform, paired_at, last_seen, push_token) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                     rusqlite::params![device_id, display_name, platform, paired_at, last_seen, push_token],
-                ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                ).map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -383,24 +383,24 @@ impl MemorySubstrate {
                     .execute(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
     }
 
     /// Remove a paired device from the database.
-    pub fn remove_paired_device(&self, device_id: &str) -> OpenFangResult<()> {
+    pub fn remove_paired_device(&self, device_id: &str) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 conn.execute(
                     "DELETE FROM paired_devices WHERE device_id = ?1",
                     rusqlite::params![device_id],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -411,7 +411,7 @@ impl MemorySubstrate {
                         .execute(&*pool)
                         .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
@@ -430,7 +430,7 @@ impl MemorySubstrate {
         scope: &str,
         metadata: HashMap<String, serde_json::Value>,
         embedding: Option<&[f32]>,
-    ) -> OpenFangResult<MemoryId> {
+    ) -> SiliCrewResult<MemoryId> {
         self.semantic
             .remember_with_embedding(agent_id, content, source, scope, metadata, embedding)
     }
@@ -442,13 +442,13 @@ impl MemorySubstrate {
         limit: usize,
         filter: Option<MemoryFilter>,
         query_embedding: Option<&[f32]>,
-    ) -> OpenFangResult<Vec<MemoryFragment>> {
+    ) -> SiliCrewResult<Vec<MemoryFragment>> {
         self.semantic
             .recall_with_embedding(query, limit, filter, query_embedding)
     }
 
     /// Update the embedding for an existing memory.
-    pub fn update_embedding(&self, id: MemoryId, embedding: &[f32]) -> OpenFangResult<()> {
+    pub fn update_embedding(&self, id: MemoryId, embedding: &[f32]) -> SiliCrewResult<()> {
         self.semantic.update_embedding(id, embedding)
     }
 
@@ -459,7 +459,7 @@ impl MemorySubstrate {
         limit: usize,
         filter: Option<MemoryFilter>,
         query_embedding: Option<&[f32]>,
-    ) -> OpenFangResult<Vec<MemoryFragment>> {
+    ) -> SiliCrewResult<Vec<MemoryFragment>> {
         let store = self.semantic.clone();
         let query = query.to_string();
         let embedding_owned = query_embedding.map(|e| e.to_vec());
@@ -467,7 +467,7 @@ impl MemorySubstrate {
             store.recall_with_embedding(&query, limit, filter, embedding_owned.as_deref())
         })
         .await
-        .map_err(|e| OpenFangError::Internal(e.to_string()))?
+        .map_err(|e| SiliCrewError::Internal(e.to_string()))?
     }
 
     /// Async wrapper for `remember_with_embedding` — runs in a blocking thread.
@@ -479,7 +479,7 @@ impl MemorySubstrate {
         scope: &str,
         metadata: HashMap<String, serde_json::Value>,
         embedding: Option<&[f32]>,
-    ) -> OpenFangResult<MemoryId> {
+    ) -> SiliCrewResult<MemoryId> {
         let store = self.semantic.clone();
         let content = content.to_string();
         let scope = scope.to_string();
@@ -495,7 +495,7 @@ impl MemorySubstrate {
             )
         })
         .await
-        .map_err(|e| OpenFangError::Internal(e.to_string()))?
+        .map_err(|e| SiliCrewError::Internal(e.to_string()))?
     }
 
     // -----------------------------------------------------------------
@@ -509,7 +509,7 @@ impl MemorySubstrate {
         description: &str,
         assigned_to: Option<&str>,
         created_by: Option<&str>,
-    ) -> OpenFangResult<String> {
+    ) -> SiliCrewResult<String> {
         let title = title.to_string();
         let description = description.to_string();
         let assigned_to = assigned_to.unwrap_or("").to_string();
@@ -521,17 +521,17 @@ impl MemorySubstrate {
                 let conn = Arc::clone(conn);
                 let inserted_id = id.clone();
                 tokio::task::spawn_blocking(move || {
-                    let db = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    let db = conn.lock().map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                     db.execute(
                         "INSERT INTO task_queue (id, agent_id, task_type, payload, status, priority, created_at, title, description, assigned_to, created_by)
                          VALUES (?1, ?2, ?3, ?4, 'pending', 0, ?5, ?6, ?7, ?8, ?9)",
                         rusqlite::params![inserted_id, &created_by, &title, b"", now, title, description, assigned_to, created_by],
                     )
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
-                    Ok::<_, OpenFangError>(id)
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
+                    Ok::<_, SiliCrewError>(id)
                 })
                 .await
-                .map_err(|e| OpenFangError::Internal(e.to_string()))?
+                .map_err(|e| SiliCrewError::Internal(e.to_string()))?
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -551,27 +551,27 @@ impl MemorySubstrate {
                 .bind(created_by)
                 .execute(&*pool)
                 .await
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 Ok(id)
             }
         }
     }
 
     /// Claim the next pending task (optionally for a specific assignee). Returns task JSON or None.
-    pub async fn task_claim(&self, agent_id: &str) -> OpenFangResult<Option<serde_json::Value>> {
+    pub async fn task_claim(&self, agent_id: &str) -> SiliCrewResult<Option<serde_json::Value>> {
         let agent_id = agent_id.to_string();
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = Arc::clone(conn);
                 tokio::task::spawn_blocking(move || {
-                    let db = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    let db = conn.lock().map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                     let mut stmt = db.prepare(
                         "SELECT id, title, description, assigned_to, created_by, created_at
                          FROM task_queue
                          WHERE status = 'pending' AND (assigned_to = ?1 OR assigned_to = '')
                          ORDER BY priority DESC, created_at ASC
                          LIMIT 1"
-                    ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    ).map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     let result = stmt.query_row(rusqlite::params![agent_id], |row| {
                         Ok((
                             row.get::<_, String>(0)?,
@@ -587,15 +587,15 @@ impl MemorySubstrate {
                             db.execute(
                                 "UPDATE task_queue SET status = 'in_progress', assigned_to = ?2 WHERE id = ?1",
                                 rusqlite::params![id, agent_id],
-                            ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                            ).map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                             Ok(Some(task_json(id, title, description, assigned, created_by, created_at, "in_progress", None)))
                         }
                         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                        Err(e) => Err(OpenFangError::Memory(e.to_string())),
+                        Err(e) => Err(SiliCrewError::Memory(e.to_string())),
                     }
                 })
                 .await
-                .map_err(|e| OpenFangError::Internal(e.to_string()))?
+                .map_err(|e| SiliCrewError::Internal(e.to_string()))?
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -609,18 +609,18 @@ impl MemorySubstrate {
                 .bind(&agent_id)
                 .fetch_optional(&*pool)
                 .await
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 match row {
                     Some(row) => {
                         let id: String = row
                             .try_get("id")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                         let title: String = row
                             .try_get("title")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                         let description: String = row
                             .try_get("description")
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                         let assigned: String = row.try_get("assigned_to").unwrap_or_default();
                         let created_by: String = row.try_get("created_by").unwrap_or_default();
                         let created_at: String = row.try_get("created_at").unwrap_or_default();
@@ -631,7 +631,7 @@ impl MemorySubstrate {
                         .bind(&agent_id)
                         .execute(&*pool)
                         .await
-                        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                         Ok(Some(task_json(
                             id,
                             title,
@@ -650,7 +650,7 @@ impl MemorySubstrate {
     }
 
     /// Mark a task as completed with a result string.
-    pub async fn task_complete(&self, task_id: &str, result: &str) -> OpenFangResult<()> {
+    pub async fn task_complete(&self, task_id: &str, result: &str) -> SiliCrewResult<()> {
         let task_id = task_id.to_string();
         let result = result.to_string();
         let now = chrono::Utc::now().to_rfc3339();
@@ -658,18 +658,18 @@ impl MemorySubstrate {
             SharedDb::Sqlite(conn) => {
                 let conn = Arc::clone(conn);
                 tokio::task::spawn_blocking(move || {
-                    let db = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    let db = conn.lock().map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                     let rows = db.execute(
                         "UPDATE task_queue SET status = 'completed', result = ?2, completed_at = ?3 WHERE id = ?1",
                         rusqlite::params![task_id, result, now],
-                    ).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    ).map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     if rows == 0 {
-                        return Err(OpenFangError::Internal(format!("Task not found: {task_id}")));
+                        return Err(SiliCrewError::Internal(format!("Task not found: {task_id}")));
                     }
                     Ok(())
                 })
                 .await
-                .map_err(|e| OpenFangError::Internal(e.to_string()))?
+                .map_err(|e| SiliCrewError::Internal(e.to_string()))?
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -681,9 +681,9 @@ impl MemorySubstrate {
                 .bind(&now)
                 .execute(&*pool)
                 .await
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 if rows.rows_affected() == 0 {
-                    Err(OpenFangError::Internal(format!(
+                    Err(SiliCrewError::Internal(format!(
                         "Task not found: {task_id}"
                     )))
                 } else {
@@ -694,13 +694,13 @@ impl MemorySubstrate {
     }
 
     /// List tasks, optionally filtered by status.
-    pub async fn task_list(&self, status: Option<&str>) -> OpenFangResult<Vec<serde_json::Value>> {
+    pub async fn task_list(&self, status: Option<&str>) -> SiliCrewResult<Vec<serde_json::Value>> {
         let status = status.map(|s| s.to_string());
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = Arc::clone(conn);
                 tokio::task::spawn_blocking(move || {
-                    let db = conn.lock().map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    let db = conn.lock().map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                     let (sql, params): (&str, Vec<Box<dyn rusqlite::types::ToSql>>) = match &status {
                         Some(s) => (
                             "SELECT id, title, description, status, assigned_to, created_by, created_at, completed_at, result FROM task_queue WHERE status = ?1 ORDER BY created_at DESC",
@@ -711,7 +711,7 @@ impl MemorySubstrate {
                             vec![],
                         ),
                     };
-                    let mut stmt = db.prepare(sql).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    let mut stmt = db.prepare(sql).map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     let params_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
                     let rows = stmt.query_map(params_refs.as_slice(), |row| {
                         Ok(task_list_json(
@@ -725,15 +725,15 @@ impl MemorySubstrate {
                             row.get::<_, Option<String>>(7).unwrap_or(None),
                             row.get::<_, Option<String>>(8).unwrap_or(None),
                         ))
-                    }).map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    }).map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     let mut tasks = Vec::new();
                     for row in rows {
-                        tasks.push(row.map_err(|e| OpenFangError::Memory(e.to_string()))?);
+                        tasks.push(row.map_err(|e| SiliCrewError::Memory(e.to_string()))?);
                     }
                     Ok(tasks)
                 })
                 .await
-                .map_err(|e| OpenFangError::Internal(e.to_string()))?
+                .map_err(|e| SiliCrewError::Internal(e.to_string()))?
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -744,23 +744,23 @@ impl MemorySubstrate {
                     .bind(status)
                     .fetch_all(&*pool)
                     .await
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                     None => sqlx::query(
                         "SELECT id, title, description, status, assigned_to, created_by, created_at, completed_at, result FROM task_queue ORDER BY created_at DESC",
                     )
                     .fetch_all(&*pool)
                     .await
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                 };
                 let mut tasks = Vec::with_capacity(rows.len());
                 for row in rows {
                     tasks.push(task_list_json(
                         row.try_get(0)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get(1).unwrap_or_default(),
                         row.try_get(2).unwrap_or_default(),
                         row.try_get(3)
-                            .map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                            .map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                         row.try_get(4).unwrap_or_default(),
                         row.try_get(5).unwrap_or_default(),
                         row.try_get(6).unwrap_or_default(),
@@ -826,12 +826,12 @@ fn task_list_json(
 
 #[async_trait]
 impl Memory for MemorySubstrate {
-    async fn get(&self, agent_id: AgentId, key: &str) -> OpenFangResult<Option<serde_json::Value>> {
+    async fn get(&self, agent_id: AgentId, key: &str) -> SiliCrewResult<Option<serde_json::Value>> {
         let store = self.structured.clone();
         let key = key.to_string();
         tokio::task::spawn_blocking(move || store.get(agent_id, &key))
             .await
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?
+            .map_err(|e| SiliCrewError::Internal(e.to_string()))?
     }
 
     async fn set(
@@ -839,20 +839,20 @@ impl Memory for MemorySubstrate {
         agent_id: AgentId,
         key: &str,
         value: serde_json::Value,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         let store = self.structured.clone();
         let key = key.to_string();
         tokio::task::spawn_blocking(move || store.set(agent_id, &key, value))
             .await
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?
+            .map_err(|e| SiliCrewError::Internal(e.to_string()))?
     }
 
-    async fn delete(&self, agent_id: AgentId, key: &str) -> OpenFangResult<()> {
+    async fn delete(&self, agent_id: AgentId, key: &str) -> SiliCrewResult<()> {
         let store = self.structured.clone();
         let key = key.to_string();
         tokio::task::spawn_blocking(move || store.delete(agent_id, &key))
             .await
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?
+            .map_err(|e| SiliCrewError::Internal(e.to_string()))?
     }
 
     async fn remember(
@@ -862,7 +862,7 @@ impl Memory for MemorySubstrate {
         source: MemorySource,
         scope: &str,
         metadata: HashMap<String, serde_json::Value>,
-    ) -> OpenFangResult<MemoryId> {
+    ) -> SiliCrewResult<MemoryId> {
         let store = self.semantic.clone();
         let content = content.to_string();
         let scope = scope.to_string();
@@ -870,7 +870,7 @@ impl Memory for MemorySubstrate {
             store.remember(agent_id, &content, source, &scope, metadata)
         })
         .await
-        .map_err(|e| OpenFangError::Internal(e.to_string()))?
+        .map_err(|e| SiliCrewError::Internal(e.to_string()))?
     }
 
     async fn recall(
@@ -878,55 +878,55 @@ impl Memory for MemorySubstrate {
         query: &str,
         limit: usize,
         filter: Option<MemoryFilter>,
-    ) -> OpenFangResult<Vec<MemoryFragment>> {
+    ) -> SiliCrewResult<Vec<MemoryFragment>> {
         let store = self.semantic.clone();
         let query = query.to_string();
         tokio::task::spawn_blocking(move || store.recall(&query, limit, filter))
             .await
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?
+            .map_err(|e| SiliCrewError::Internal(e.to_string()))?
     }
 
-    async fn forget(&self, id: MemoryId) -> OpenFangResult<()> {
+    async fn forget(&self, id: MemoryId) -> SiliCrewResult<()> {
         let store = self.semantic.clone();
         tokio::task::spawn_blocking(move || store.forget(id))
             .await
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?
+            .map_err(|e| SiliCrewError::Internal(e.to_string()))?
     }
 
-    async fn add_entity(&self, entity: Entity) -> OpenFangResult<String> {
+    async fn add_entity(&self, entity: Entity) -> SiliCrewResult<String> {
         let store = self.knowledge.clone();
         tokio::task::spawn_blocking(move || store.add_entity(entity))
             .await
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?
+            .map_err(|e| SiliCrewError::Internal(e.to_string()))?
     }
 
-    async fn add_relation(&self, relation: Relation) -> OpenFangResult<String> {
+    async fn add_relation(&self, relation: Relation) -> SiliCrewResult<String> {
         let store = self.knowledge.clone();
         tokio::task::spawn_blocking(move || store.add_relation(relation))
             .await
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?
+            .map_err(|e| SiliCrewError::Internal(e.to_string()))?
     }
 
-    async fn query_graph(&self, pattern: GraphPattern) -> OpenFangResult<Vec<GraphMatch>> {
+    async fn query_graph(&self, pattern: GraphPattern) -> SiliCrewResult<Vec<GraphMatch>> {
         let store = self.knowledge.clone();
         tokio::task::spawn_blocking(move || store.query_graph(pattern))
             .await
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?
+            .map_err(|e| SiliCrewError::Internal(e.to_string()))?
     }
 
-    async fn consolidate(&self) -> OpenFangResult<ConsolidationReport> {
+    async fn consolidate(&self) -> SiliCrewResult<ConsolidationReport> {
         let engine = self.consolidation.clone();
         tokio::task::spawn_blocking(move || engine.consolidate())
             .await
-            .map_err(|e| OpenFangError::Internal(e.to_string()))?
+            .map_err(|e| SiliCrewError::Internal(e.to_string()))?
     }
 
-    async fn export(&self, format: ExportFormat) -> OpenFangResult<Vec<u8>> {
+    async fn export(&self, format: ExportFormat) -> SiliCrewResult<Vec<u8>> {
         let _ = format;
         Ok(Vec::new())
     }
 
-    async fn import(&self, _data: &[u8], _format: ExportFormat) -> OpenFangResult<ImportReport> {
+    async fn import(&self, _data: &[u8], _format: ExportFormat) -> SiliCrewResult<ImportReport> {
         Ok(ImportReport {
             entities_imported: 0,
             relations_imported: 0,

@@ -22,6 +22,11 @@ pub struct BroadcastRequest {
     pub body: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct TenantScopedQuery {
+    pub tenant_id: Option<String>,
+}
+
 pub(crate) fn notification_json(notification: &NotificationRecord) -> serde_json::Value {
     serde_json::json!({
         "id": notification.id,
@@ -65,7 +70,10 @@ pub async fn list_notifications(
     {
         Ok(items) => (
             StatusCode::OK,
-            Json(serde_json::json!(items.into_iter().map(|n| notification_json(&n)).collect::<Vec<_>>())),
+            Json(serde_json::json!(items
+                .into_iter()
+                .map(|n| notification_json(&n))
+                .collect::<Vec<_>>())),
         ),
         Err(error) => internal_error(error),
     }
@@ -97,7 +105,10 @@ pub async fn notification_mark_read(
         Ok(user) => user,
         Err(error) => return error,
     };
-    match state.control_store.mark_notification_read(&id, &user.user_id) {
+    match state
+        .control_store
+        .mark_notification_read(&id, &user.user_id)
+    {
         Ok(true) => (StatusCode::OK, Json(serde_json::json!({ "status": "ok" }))),
         Ok(false) => (
             StatusCode::NOT_FOUND,
@@ -115,7 +126,10 @@ pub async fn notifications_mark_all_read(
         Ok(user) => user,
         Err(error) => return error,
     };
-    match state.control_store.mark_all_notifications_read(&user.user_id) {
+    match state
+        .control_store
+        .mark_all_notifications_read(&user.user_id)
+    {
         Ok(count) => (
             StatusCode::OK,
             Json(serde_json::json!({ "status": "ok", "count": count })),
@@ -140,17 +154,20 @@ pub async fn messages_inbox(
     {
         Ok(items) => (
             StatusCode::OK,
-            Json(serde_json::json!(items.into_iter().map(|n| {
-                serde_json::json!({
-                    "id": n.id,
-                    "msg_type": n.notification_type,
-                    "sender_name": n.sender_name.unwrap_or_else(|| "System".to_string()),
-                    "receiver_name": user.display_name,
-                    "content": n.body.unwrap_or_else(|| n.title.clone()),
-                    "created_at": n.created_at.to_rfc3339(),
-                    "read_at": n.read_at.map(|dt| dt.to_rfc3339()),
+            Json(serde_json::json!(items
+                .into_iter()
+                .map(|n| {
+                    serde_json::json!({
+                        "id": n.id,
+                        "msg_type": n.notification_type,
+                        "sender_name": n.sender_name.unwrap_or_else(|| "System".to_string()),
+                        "receiver_name": user.display_name,
+                        "content": n.body.unwrap_or_else(|| n.title.clone()),
+                        "created_at": n.created_at.to_rfc3339(),
+                        "read_at": n.read_at.map(|dt| dt.to_rfc3339()),
+                    })
                 })
-            }).collect::<Vec<_>>())),
+                .collect::<Vec<_>>())),
         ),
         Err(error) => internal_error(error),
     }
@@ -181,6 +198,7 @@ pub async fn messages_mark_all_read(
 pub async fn notifications_broadcast(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
+    Query(query): Query<TenantScopedQuery>,
     Json(req): Json<BroadcastRequest>,
 ) -> impl IntoResponse {
     let user = match current_dashboard_user(&state, &headers) {
@@ -190,7 +208,7 @@ pub async fn notifications_broadcast(
     if let Err(error) = require_roles(&user, &["platform_admin", "org_admin"]) {
         return error;
     }
-    let tenant_id = match resolve_tenant_scope(&user, None) {
+    let tenant_id = match resolve_tenant_scope(&user, query.tenant_id.as_deref()) {
         Ok(tenant_id) => tenant_id,
         Err(error) => return error,
     };

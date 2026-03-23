@@ -1,4 +1,5 @@
 use crate::channel_bridge;
+use crate::compat_routes;
 use crate::control_routes;
 use crate::dashboard_routes;
 use crate::middleware;
@@ -11,7 +12,7 @@ use axum::Router;
 use openparlant_context::StoreKnowledgeCompiler;
 use openparlant_control::{ControlStore, DefaultTurnControlCoordinator};
 use openparlant_journey::{JourneyStore, StoreJourneyRuntime};
-use openparlant_kernel::OpenFangKernel;
+use openparlant_kernel::SiliCrewKernel;
 use openparlant_memory::db::SharedDb;
 use openparlant_memory::migration::{run_migrations, run_postgres_migrations};
 use openparlant_policy::{
@@ -146,7 +147,7 @@ impl openparlant_types::control::ControlEmbedder for KernelEmbedder {
 /// Returns `(router, shared_state)`. The caller can use `state.bridge_manager`
 /// to shut down the bridge on exit.
 pub async fn build_router(
-    kernel: Arc<OpenFangKernel>,
+    kernel: Arc<SiliCrewKernel>,
     listen_addr: SocketAddr,
 ) -> (Router<()>, Arc<AppState>) {
     let channels_config = kernel.config.channels.clone();
@@ -449,8 +450,30 @@ pub async fn build_router(
             axum::routing::get(routes::list_agent_files),
         )
         .route(
+            "/api/agents/{id}/files/content",
+            axum::routing::get(routes::get_agent_file_content)
+                .put(routes::set_agent_file_content)
+                .delete(routes::delete_agent_file_content),
+        )
+        .route(
+            "/api/agents/{id}/files/download",
+            axum::routing::get(routes::download_agent_file_content),
+        )
+        .route(
             "/api/agents/{id}/files/{filename}",
             axum::routing::get(routes::get_agent_file).put(routes::set_agent_file),
+        )
+        .route(
+            "/api/agents/{id}/files/import-skill",
+            axum::routing::post(compat_routes::import_skill_to_agent),
+        )
+        .route(
+            "/api/agents/{id}/files/import-from-clawhub",
+            axum::routing::post(compat_routes::import_clawhub_skill_to_agent),
+        )
+        .route(
+            "/api/agents/{id}/files/import-from-url",
+            axum::routing::post(compat_routes::import_skill_from_url_to_agent),
         )
         .route(
             "/api/agents/{id}/deliveries",
@@ -459,6 +482,26 @@ pub async fn build_router(
         .route(
             "/api/agents/{id}/upload",
             axum::routing::post(routes::upload_file),
+        )
+        .route(
+            "/api/agents/{id}/files/upload",
+            axum::routing::post(routes::upload_file),
+        )
+        .route(
+            "/api/agents/{id}/activity",
+            axum::routing::get(compat_routes::agent_activity),
+        )
+        .route(
+            "/api/agents/{id}/metrics",
+            axum::routing::get(compat_routes::agent_metrics),
+        )
+        .route(
+            "/api/agents/{id}/approvals",
+            axum::routing::get(compat_routes::agent_approvals),
+        )
+        .route(
+            "/api/agents/{id}/approvals/{approval_id}/resolve",
+            axum::routing::post(compat_routes::resolve_agent_approval),
         )
         .route("/api/agents/{id}/ws", axum::routing::get(ws::agent_ws))
         // Upload serving
@@ -490,6 +533,10 @@ pub async fn build_router(
             axum::routing::get(routes::whatsapp_qr_status),
         )
         // Template endpoints
+        .route(
+            "/api/agents/templates",
+            axum::routing::get(routes::list_templates),
+        )
         .route("/api/templates", axum::routing::get(routes::list_templates))
         .route(
             "/api/templates/{name}",
@@ -549,6 +596,35 @@ pub async fn build_router(
         )
         // Skills endpoints
         .route("/api/skills", axum::routing::get(routes::list_skills))
+        .route(
+            "/api/skills/browse/list",
+            axum::routing::get(compat_routes::skills_browse_list),
+        )
+        .route(
+            "/api/skills/browse/read",
+            axum::routing::get(compat_routes::skills_browse_read),
+        )
+        .route(
+            "/api/skills/browse/write",
+            axum::routing::put(compat_routes::skills_browse_write),
+        )
+        .route(
+            "/api/skills/browse/delete",
+            axum::routing::delete(compat_routes::skills_browse_delete),
+        )
+        .route(
+            "/api/skills/settings/token",
+            axum::routing::get(compat_routes::skills_settings_token_get)
+                .put(compat_routes::skills_settings_token_put),
+        )
+        .route(
+            "/api/skills/import-from-url/preview",
+            axum::routing::post(compat_routes::import_skill_from_url_preview),
+        )
+        .route(
+            "/api/skills/import-from-url",
+            axum::routing::post(compat_routes::import_skill_from_url),
+        )
         .route(
             "/api/skills/install",
             axum::routing::post(routes::install_skill),
@@ -1146,7 +1222,9 @@ pub async fn build_router(
         )
         .route(
             "/api/control/observations/{observation_id}",
-            axum::routing::get(control_routes::get_observation),
+            axum::routing::get(control_routes::get_observation)
+                .put(control_routes::update_observation)
+                .delete(control_routes::delete_observation),
         )
         .route(
             "/api/control/guidelines",
@@ -1154,7 +1232,9 @@ pub async fn build_router(
         )
         .route(
             "/api/control/guidelines/{guideline_id}",
-            axum::routing::get(control_routes::get_guideline),
+            axum::routing::get(control_routes::get_guideline)
+                .put(control_routes::update_guideline)
+                .delete(control_routes::delete_guideline),
         )
         .route(
             "/api/control/journeys",
@@ -1162,19 +1242,49 @@ pub async fn build_router(
         )
         .route(
             "/api/control/journeys/{journey_id}",
-            axum::routing::get(control_routes::get_journey),
+            axum::routing::get(control_routes::get_journey)
+                .put(control_routes::update_journey)
+                .delete(control_routes::delete_journey),
         )
         .route(
             "/api/control/glossary-terms",
             axum::routing::post(control_routes::create_glossary_term),
         )
         .route(
+            "/api/control/glossary-terms/{term_id}",
+            axum::routing::get(control_routes::get_glossary_term)
+                .put(control_routes::update_glossary_term)
+                .delete(control_routes::delete_glossary_term),
+        )
+        .route(
             "/api/control/context-variables",
             axum::routing::post(control_routes::create_context_variable),
         )
         .route(
+            "/api/control/context-variables/{variable_id}",
+            axum::routing::get(control_routes::get_context_variable)
+                .put(control_routes::update_context_variable)
+                .delete(control_routes::delete_context_variable),
+        )
+        .route(
+            "/api/control/context-variables/{variable_id}/values",
+            axum::routing::get(control_routes::list_context_variable_values),
+        )
+        .route(
+            "/api/control/context-variables/{variable_id}/values/{key}",
+            axum::routing::get(control_routes::get_context_variable_value)
+                .put(control_routes::upsert_context_variable_value)
+                .delete(control_routes::delete_context_variable_value),
+        )
+        .route(
             "/api/control/canned-responses",
             axum::routing::post(control_routes::create_canned_response),
+        )
+        .route(
+            "/api/control/canned-responses/{response_id}",
+            axum::routing::get(control_routes::get_canned_response)
+                .put(control_routes::update_canned_response)
+                .delete(control_routes::delete_canned_response),
         )
         .route(
             "/api/control/scopes/{scope_id}/glossary-terms",
@@ -1202,6 +1312,12 @@ pub async fn build_router(
                 .post(control_routes::create_journey_state),
         )
         .route(
+            "/api/control/journey-states/{state_id}",
+            axum::routing::get(control_routes::get_journey_state)
+                .put(control_routes::update_journey_state)
+                .delete(control_routes::delete_journey_state),
+        )
+        .route(
             "/api/control/journeys/{journey_id}/entry-state",
             axum::routing::post(control_routes::set_journey_entry_state),
         )
@@ -1209,6 +1325,12 @@ pub async fn build_router(
             "/api/control/journeys/{journey_id}/transitions",
             axum::routing::get(control_routes::list_journey_transitions)
                 .post(control_routes::create_journey_transition),
+        )
+        .route(
+            "/api/control/journey-transitions/{transition_id}",
+            axum::routing::get(control_routes::get_journey_transition)
+                .put(control_routes::update_journey_transition)
+                .delete(control_routes::delete_journey_transition),
         )
         .route(
             "/api/control/test/compile-turn",
@@ -1324,7 +1446,7 @@ pub async fn build_router(
 ///
 /// This function blocks until Ctrl+C or a shutdown request.
 pub async fn run_daemon(
-    kernel: OpenFangKernel,
+    kernel: SiliCrewKernel,
     listen_addr: &str,
     daemon_info_path: Option<&Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {

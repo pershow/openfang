@@ -118,6 +118,7 @@ impl JourneyRuntime for SqliteJourneyRuntime {
                                 action_text.chars().take(40).collect::<String>()
                             ),
                             action_text: action_text.clone(),
+                            composition_mode: None,
                             priority: 50, // mid-level priority
                             source_observations: Vec::new(),
                         })
@@ -193,6 +194,7 @@ impl JourneyRuntime for SqliteJourneyRuntime {
                         action_text.chars().take(40).collect::<String>()
                     ),
                     action_text: action_text.clone(),
+                    composition_mode: None,
                     priority: 50,
                     source_observations: Vec::new(),
                 })

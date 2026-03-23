@@ -257,6 +257,64 @@ pub async fn get_observation(
     }
 }
 
+/// PUT /api/control/observations/:observation_id
+pub async fn update_observation(
+    State(state): State<Arc<AppState>>,
+    Path(observation_id): Path<String>,
+    Json(req): Json<CreateObservationRequest>,
+) -> impl IntoResponse {
+    let oid = match uuid::Uuid::parse_str(&observation_id) {
+        Ok(u) => ObservationId(u),
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid observation ID"})),
+            )
+        }
+    };
+    match state.policy_store.get_observation(oid) {
+        Ok(Some(_)) => {
+            let obs = ObservationDefinition {
+                observation_id: oid,
+                scope_id: ScopeId::new(req.scope_id),
+                name: req.name,
+                matcher_type: req.matcher_type,
+                matcher_config: req.matcher_config,
+                priority: req.priority,
+                enabled: req.enabled,
+            };
+            match state.policy_store.upsert_observation(&obs) {
+                Ok(()) => (StatusCode::OK, Json(serde_json::json!(obs))),
+                Err(e) => internal(e),
+            }
+        }
+        Ok(None) => not_found("observation"),
+        Err(e) => internal(e),
+    }
+}
+
+/// DELETE /api/control/observations/:observation_id
+pub async fn delete_observation(
+    State(state): State<Arc<AppState>>,
+    Path(observation_id): Path<String>,
+) -> impl IntoResponse {
+    let oid = match uuid::Uuid::parse_str(&observation_id) {
+        Ok(u) => ObservationId(u),
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid observation ID"})),
+            )
+                .into_response()
+        }
+    };
+    match state.policy_store.delete_observation(oid) {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => not_found("observation").into_response(),
+        Err(e) => internal(e).into_response(),
+    }
+}
+
 // ─── Guidelines ───────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
@@ -331,6 +389,66 @@ pub async fn get_guideline(
     }
 }
 
+/// PUT /api/control/guidelines/:guideline_id
+pub async fn update_guideline(
+    State(state): State<Arc<AppState>>,
+    Path(guideline_id): Path<String>,
+    Json(req): Json<CreateGuidelineRequest>,
+) -> impl IntoResponse {
+    let gid = match uuid::Uuid::parse_str(&guideline_id) {
+        Ok(u) => GuidelineId(u),
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid guideline ID"})),
+            )
+        }
+    };
+
+    match state.policy_store.get_guideline(gid) {
+        Ok(Some(_)) => {
+            let g = GuidelineDefinition {
+                guideline_id: gid,
+                scope_id: ScopeId::new(req.scope_id),
+                name: req.name,
+                condition_ref: req.condition_ref,
+                action_text: req.action_text,
+                composition_mode: req.composition_mode,
+                priority: req.priority,
+                enabled: req.enabled,
+            };
+            match state.policy_store.upsert_guideline(&g) {
+                Ok(()) => (StatusCode::OK, Json(serde_json::json!(g))),
+                Err(e) => internal(e),
+            }
+        }
+        Ok(None) => not_found("guideline"),
+        Err(e) => internal(e),
+    }
+}
+
+/// DELETE /api/control/guidelines/:guideline_id
+pub async fn delete_guideline(
+    State(state): State<Arc<AppState>>,
+    Path(guideline_id): Path<String>,
+) -> impl IntoResponse {
+    let gid = match uuid::Uuid::parse_str(&guideline_id) {
+        Ok(u) => GuidelineId(u),
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid guideline ID"})),
+            )
+                .into_response()
+        }
+    };
+    match state.policy_store.delete_guideline(gid) {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => not_found("guideline").into_response(),
+        Err(e) => internal(e).into_response(),
+    }
+}
+
 // ─── Journeys ─────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
@@ -397,6 +515,65 @@ pub async fn get_journey(
     }
 }
 
+/// PUT /api/control/journeys/:journey_id
+pub async fn update_journey(
+    State(state): State<Arc<AppState>>,
+    Path(journey_id): Path<String>,
+    Json(req): Json<CreateJourneyRequest>,
+) -> impl IntoResponse {
+    let jid = match uuid::Uuid::parse_str(&journey_id) {
+        Ok(u) => JourneyId(u),
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid journey ID"})),
+            )
+        }
+    };
+
+    match state.journey_store.get_journey_sync(&jid) {
+        Ok(Some(existing)) => {
+            let j = JourneyDefinition {
+                journey_id: jid,
+                scope_id: ScopeId::new(req.scope_id),
+                name: req.name,
+                trigger_config: req.trigger_config,
+                completion_rule: req.completion_rule,
+                entry_state_id: existing.entry_state_id,
+                enabled: req.enabled,
+            };
+            match state.journey_store.upsert_journey(&j) {
+                Ok(()) => (StatusCode::OK, Json(serde_json::json!(j))),
+                Err(e) => internal(e),
+            }
+        }
+        Ok(None) => not_found("journey"),
+        Err(e) => internal(e),
+    }
+}
+
+/// DELETE /api/control/journeys/:journey_id
+pub async fn delete_journey(
+    State(state): State<Arc<AppState>>,
+    Path(journey_id): Path<String>,
+) -> impl IntoResponse {
+    let jid = match uuid::Uuid::parse_str(&journey_id) {
+        Ok(u) => JourneyId(u),
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid journey ID"})),
+            )
+                .into_response()
+        }
+    };
+    match state.journey_store.delete_journey(&jid) {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => not_found("journey").into_response(),
+        Err(e) => internal(e).into_response(),
+    }
+}
+
 // ─── Glossary terms ───────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -438,6 +615,59 @@ pub async fn create_glossary_term(
             ),
         ),
         Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/glossary-terms/:term_id
+pub async fn get_glossary_term(
+    State(state): State<Arc<AppState>>,
+    Path(term_id): Path<String>,
+) -> impl IntoResponse {
+    match state.control_store.get_glossary_term(&term_id) {
+        Ok(Some(term)) => (StatusCode::OK, Json(term)),
+        Ok(None) => not_found("glossary term"),
+        Err(e) => internal(e),
+    }
+}
+
+/// PUT /api/control/glossary-terms/:term_id
+pub async fn update_glossary_term(
+    State(state): State<Arc<AppState>>,
+    Path(term_id): Path<String>,
+    Json(req): Json<GlossaryTermRequest>,
+) -> impl IntoResponse {
+    let synonyms_json = serde_json::to_string(&req.synonyms).unwrap_or_else(|_| "[]".to_string());
+    match state.control_store.get_glossary_term(&term_id) {
+        Ok(Some(_)) => match state.control_store.upsert_glossary_term(
+            &term_id,
+            &req.scope_id,
+            &req.name,
+            &req.description,
+            &synonyms_json,
+            req.enabled,
+            req.always_include,
+        ) {
+            Ok(()) => match state.control_store.get_glossary_term(&term_id) {
+                Ok(Some(term)) => (StatusCode::OK, Json(term)),
+                Ok(None) => internal("glossary term was not persisted"),
+                Err(e) => internal(e),
+            },
+            Err(e) => internal(e),
+        },
+        Ok(None) => not_found("glossary term"),
+        Err(e) => internal(e),
+    }
+}
+
+/// DELETE /api/control/glossary-terms/:term_id
+pub async fn delete_glossary_term(
+    State(state): State<Arc<AppState>>,
+    Path(term_id): Path<String>,
+) -> impl IntoResponse {
+    match state.control_store.delete_glossary_term(&term_id) {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => not_found("glossary term").into_response(),
+        Err(e) => internal(e).into_response(),
     }
 }
 
@@ -489,6 +719,135 @@ pub async fn create_context_variable(
     }
 }
 
+/// GET /api/control/context-variables/:variable_id
+pub async fn get_context_variable(
+    State(state): State<Arc<AppState>>,
+    Path(variable_id): Path<String>,
+) -> impl IntoResponse {
+    match state.control_store.get_context_variable(&variable_id) {
+        Ok(Some(variable)) => (StatusCode::OK, Json(variable)),
+        Ok(None) => not_found("context variable"),
+        Err(e) => internal(e),
+    }
+}
+
+/// PUT /api/control/context-variables/:variable_id
+pub async fn update_context_variable(
+    State(state): State<Arc<AppState>>,
+    Path(variable_id): Path<String>,
+    Json(req): Json<ContextVariableRequest>,
+) -> impl IntoResponse {
+    let config_json =
+        serde_json::to_string(&req.value_source_config).unwrap_or_else(|_| "{}".to_string());
+    match state.control_store.get_context_variable(&variable_id) {
+        Ok(Some(_)) => match state.control_store.upsert_context_variable(
+            &variable_id,
+            &req.scope_id,
+            &req.name,
+            &req.value_source_type,
+            &config_json,
+            req.visibility_rule.as_deref(),
+            req.enabled,
+        ) {
+            Ok(()) => match state.control_store.get_context_variable(&variable_id) {
+                Ok(Some(variable)) => (StatusCode::OK, Json(variable)),
+                Ok(None) => internal("context variable was not persisted"),
+                Err(e) => internal(e),
+            },
+            Err(e) => internal(e),
+        },
+        Ok(None) => not_found("context variable"),
+        Err(e) => internal(e),
+    }
+}
+
+/// DELETE /api/control/context-variables/:variable_id
+pub async fn delete_context_variable(
+    State(state): State<Arc<AppState>>,
+    Path(variable_id): Path<String>,
+) -> impl IntoResponse {
+    match state.control_store.delete_context_variable(&variable_id) {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => not_found("context variable").into_response(),
+        Err(e) => internal(e).into_response(),
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ContextVariableValueRequest {
+    pub data: serde_json::Value,
+}
+
+/// GET /api/control/context-variables/:variable_id/values
+pub async fn list_context_variable_values(
+    State(state): State<Arc<AppState>>,
+    Path(variable_id): Path<String>,
+) -> impl IntoResponse {
+    match state
+        .control_store
+        .list_context_variable_values(&variable_id)
+    {
+        Ok(items) => (StatusCode::OK, Json(serde_json::json!(items))),
+        Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/context-variables/:variable_id/values/:key
+pub async fn get_context_variable_value(
+    State(state): State<Arc<AppState>>,
+    Path((variable_id, key)): Path<(String, String)>,
+) -> impl IntoResponse {
+    match state
+        .control_store
+        .get_context_variable_value(&variable_id, &key)
+    {
+        Ok(Some(value)) => (StatusCode::OK, Json(value)),
+        Ok(None) => not_found("context variable value"),
+        Err(e) => internal(e),
+    }
+}
+
+/// PUT /api/control/context-variables/:variable_id/values/:key
+pub async fn upsert_context_variable_value(
+    State(state): State<Arc<AppState>>,
+    Path((variable_id, key)): Path<(String, String)>,
+    Json(req): Json<ContextVariableValueRequest>,
+) -> impl IntoResponse {
+    let value_id = uuid::Uuid::new_v4().to_string();
+    let data_json = serde_json::to_string(&req.data).unwrap_or_else(|_| "null".to_string());
+    match state.control_store.upsert_context_variable_value(
+        &value_id,
+        &variable_id,
+        &key,
+        &data_json,
+    ) {
+        Ok(()) => match state
+            .control_store
+            .get_context_variable_value(&variable_id, &key)
+        {
+            Ok(Some(value)) => (StatusCode::OK, Json(value)),
+            Ok(None) => internal("context variable value was not persisted"),
+            Err(e) => internal(e),
+        },
+        Err(e) => internal(e),
+    }
+}
+
+/// DELETE /api/control/context-variables/:variable_id/values/:key
+pub async fn delete_context_variable_value(
+    State(state): State<Arc<AppState>>,
+    Path((variable_id, key)): Path<(String, String)>,
+) -> impl IntoResponse {
+    match state
+        .control_store
+        .delete_context_variable_value(&variable_id, &key)
+    {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => not_found("context variable value").into_response(),
+        Err(e) => internal(e).into_response(),
+    }
+}
+
 // ─── Canned responses ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -527,6 +886,58 @@ pub async fn create_canned_response(
             ),
         ),
         Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/canned-responses/:response_id
+pub async fn get_canned_response(
+    State(state): State<Arc<AppState>>,
+    Path(response_id): Path<String>,
+) -> impl IntoResponse {
+    match state.control_store.get_canned_response(&response_id) {
+        Ok(Some(response)) => (StatusCode::OK, Json(response)),
+        Ok(None) => not_found("canned response"),
+        Err(e) => internal(e),
+    }
+}
+
+/// PUT /api/control/canned-responses/:response_id
+pub async fn update_canned_response(
+    State(state): State<Arc<AppState>>,
+    Path(response_id): Path<String>,
+    Json(req): Json<CannedResponseRequest>,
+) -> impl IntoResponse {
+    match state.control_store.get_canned_response(&response_id) {
+        Ok(Some(_)) => match state.control_store.upsert_canned_response(
+            &response_id,
+            &req.scope_id,
+            &req.name,
+            &req.template_text,
+            req.trigger_rule.as_deref(),
+            req.priority,
+            req.enabled,
+        ) {
+            Ok(()) => match state.control_store.get_canned_response(&response_id) {
+                Ok(Some(response)) => (StatusCode::OK, Json(response)),
+                Ok(None) => internal("canned response was not persisted"),
+                Err(e) => internal(e),
+            },
+            Err(e) => internal(e),
+        },
+        Ok(None) => not_found("canned response"),
+        Err(e) => internal(e),
+    }
+}
+
+/// DELETE /api/control/canned-responses/:response_id
+pub async fn delete_canned_response(
+    State(state): State<Arc<AppState>>,
+    Path(response_id): Path<String>,
+) -> impl IntoResponse {
+    match state.control_store.delete_canned_response(&response_id) {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => not_found("canned response").into_response(),
+        Err(e) => internal(e).into_response(),
     }
 }
 
@@ -791,6 +1202,57 @@ pub async fn list_journey_states(
     }
 }
 
+/// GET /api/control/journey-states/:state_id
+pub async fn get_journey_state(
+    State(state): State<Arc<AppState>>,
+    Path(state_id): Path<String>,
+) -> impl IntoResponse {
+    match state.control_store.get_journey_state(&state_id) {
+        Ok(Some(item)) => (StatusCode::OK, Json(item)),
+        Ok(None) => not_found("journey state"),
+        Err(e) => internal(e),
+    }
+}
+
+/// PUT /api/control/journey-states/:state_id
+pub async fn update_journey_state(
+    State(state): State<Arc<AppState>>,
+    Path(state_id): Path<String>,
+    Json(req): Json<JourneyStateRequest>,
+) -> impl IntoResponse {
+    let req_fields_json =
+        serde_json::to_string(&req.required_fields).unwrap_or_else(|_| "[]".into());
+    let guideline_actions_json =
+        serde_json::to_string(&req.guideline_actions).unwrap_or_else(|_| "[]".into());
+    match state.control_store.update_journey_state(
+        &state_id,
+        &req.name,
+        req.description.as_deref(),
+        &req_fields_json,
+        &guideline_actions_json,
+    ) {
+        Ok(true) => match state.control_store.get_journey_state(&state_id) {
+            Ok(Some(item)) => (StatusCode::OK, Json(item)),
+            Ok(None) => internal("journey state was not persisted"),
+            Err(e) => internal(e),
+        },
+        Ok(false) => not_found("journey state"),
+        Err(e) => internal(e),
+    }
+}
+
+/// DELETE /api/control/journey-states/:state_id
+pub async fn delete_journey_state(
+    State(state): State<Arc<AppState>>,
+    Path(state_id): Path<String>,
+) -> impl IntoResponse {
+    match state.control_store.delete_journey_state(&state_id) {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => not_found("journey state").into_response(),
+        Err(e) => internal(e).into_response(),
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JourneyEntryStateRequest {
     pub state_id: String,
@@ -891,6 +1353,57 @@ pub async fn list_journey_transitions(
     match state.control_store.list_journey_transitions(&journey_id) {
         Ok(items) => (StatusCode::OK, Json(serde_json::json!(items))),
         Err(e) => internal(e),
+    }
+}
+
+/// GET /api/control/journey-transitions/:transition_id
+pub async fn get_journey_transition(
+    State(state): State<Arc<AppState>>,
+    Path(transition_id): Path<String>,
+) -> impl IntoResponse {
+    match state.control_store.get_journey_transition(&transition_id) {
+        Ok(Some(item)) => (StatusCode::OK, Json(item)),
+        Ok(None) => not_found("journey transition"),
+        Err(e) => internal(e),
+    }
+}
+
+/// PUT /api/control/journey-transitions/:transition_id
+pub async fn update_journey_transition(
+    State(state): State<Arc<AppState>>,
+    Path(transition_id): Path<String>,
+    Json(req): Json<JourneyTransitionRequest>,
+) -> impl IntoResponse {
+    let cond_json = serde_json::to_string(&req.condition_config).unwrap_or_else(|_| "{}".into());
+    match state.control_store.update_journey_transition(
+        &transition_id,
+        &req.from_state_id,
+        &req.to_state_id,
+        &cond_json,
+        &req.transition_type,
+    ) {
+        Ok(true) => match state.control_store.get_journey_transition(&transition_id) {
+            Ok(Some(item)) => (StatusCode::OK, Json(item)),
+            Ok(None) => internal("journey transition was not persisted"),
+            Err(e) => internal(e),
+        },
+        Ok(false) => not_found("journey transition"),
+        Err(e) => internal(e),
+    }
+}
+
+/// DELETE /api/control/journey-transitions/:transition_id
+pub async fn delete_journey_transition(
+    State(state): State<Arc<AppState>>,
+    Path(transition_id): Path<String>,
+) -> impl IntoResponse {
+    match state
+        .control_store
+        .delete_journey_transition(&transition_id)
+    {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => not_found("journey transition").into_response(),
+        Err(e) => internal(e).into_response(),
     }
 }
 

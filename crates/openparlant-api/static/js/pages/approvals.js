@@ -38,7 +38,7 @@ function approvalsPage() {
       this.loading = true;
       this.loadError = '';
       try {
-        var data = await OpenFangAPI.get('/api/approvals');
+        var data = await SiliCrewAPI.get('/api/approvals');
         this.approvals = data.approvals || [];
       } catch(e) {
         this.loadError = e.message || 'Could not load approvals.';
@@ -48,23 +48,23 @@ function approvalsPage() {
 
     async approve(id) {
       try {
-        await OpenFangAPI.post('/api/approvals/' + id + '/approve', {});
-        OpenFangToast.success('Approved');
+        await SiliCrewAPI.post('/api/approvals/' + id + '/approve', {});
+        SiliCrewToast.success('Approved');
         await this.loadData();
       } catch(e) {
-        OpenFangToast.error(e.message);
+        SiliCrewToast.error(e.message);
       }
     },
 
     async reject(id) {
       var self = this;
-      OpenFangToast.confirm('Reject Action', 'Are you sure you want to reject this action?', async function() {
+      SiliCrewToast.confirm('Reject Action', 'Are you sure you want to reject this action?', async function() {
         try {
-          await OpenFangAPI.post('/api/approvals/' + id + '/reject', {});
-          OpenFangToast.success('Rejected');
+          await SiliCrewAPI.post('/api/approvals/' + id + '/reject', {});
+          SiliCrewToast.success('Rejected');
           await self.loadData();
         } catch(e) {
-          OpenFangToast.error(e.message);
+          SiliCrewToast.error(e.message);
         }
       });
     },

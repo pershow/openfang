@@ -115,7 +115,7 @@ cargo run -- doctor
 - **Documentation**: All public types and functions must have doc comments (`///`).
 - **Error Handling**: Use `thiserror` for error types. Avoid `unwrap()` in library code; prefer `?` propagation.
 - **Naming**:
-  - Types: `PascalCase` (e.g., `OpenFangKernel`, `AgentManifest`)
+  - Types: `PascalCase` (e.g., `SiliCrewKernel`, `AgentManifest`)
   - Functions/methods: `snake_case`
   - Constants: `SCREAMING_SNAKE_CASE`
   - Crate names: `openparlant-{name}` (kebab-case)
@@ -148,7 +148,7 @@ OpenParlant is organized as a Cargo workspace with 14 crates:
 
 ### Key Architectural Patterns
 
-- **`KernelHandle` trait**: Defined in `openparlant-runtime`, implemented on `OpenFangKernel` in `openparlant-kernel`. This avoids circular crate dependencies while enabling inter-agent tools.
+- **`KernelHandle` trait**: Defined in `openparlant-runtime`, implemented on `SiliCrewKernel` in `openparlant-kernel`. This avoids circular crate dependencies while enabling inter-agent tools.
 - **Shared memory**: A fixed UUID (`AgentId(Uuid::from_bytes([0..0, 0x01]))`) provides a cross-agent KV namespace.
 - **Daemon detection**: The CLI checks `~/.openparlant/daemon.json` and pings the health endpoint. If a daemon is running, commands use HTTP; otherwise, they boot an in-process kernel.
 - **Capability-based security**: Every agent operation is checked against the agent's granted capabilities before execution.

@@ -1,7 +1,7 @@
 use chrono::Utc;
 use openparlant_memory::db::{block_on, SharedDb};
 use openparlant_types::control::{JourneyDefinition, JourneyId, ScopeId};
-use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::error::{SiliCrewError, SiliCrewResult};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
@@ -62,14 +62,14 @@ impl JourneyStore {
     }
 
     /// Insert or update a journey definition.
-    pub fn upsert_journey(&self, journey: &JourneyDefinition) -> OpenFangResult<()> {
+    pub fn upsert_journey(&self, journey: &JourneyDefinition) -> SiliCrewResult<()> {
         let trigger_config = serde_json::to_string(&journey.trigger_config)
-            .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+            .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO journeys (journey_id, scope_id, name, trigger_config, completion_rule, entry_state_id, enabled)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
@@ -90,7 +90,7 @@ impl JourneyStore {
                         journey.enabled as i64,
                     ],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -122,7 +122,7 @@ impl JourneyStore {
                     .execute(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
@@ -133,12 +133,12 @@ impl JourneyStore {
         &self,
         journey_id: &JourneyId,
         entry_state_id: Option<&str>,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 if let Some(entry_state_id) = entry_state_id {
                     let exists: i64 = conn
                         .query_row(
@@ -146,9 +146,9 @@ impl JourneyStore {
                             params![journey_id.0.to_string(), entry_state_id],
                             |row| row.get(0),
                         )
-                        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     if exists == 0 {
-                        return Err(OpenFangError::Memory(format!(
+                        return Err(SiliCrewError::Memory(format!(
                             "entry state {entry_state_id} does not belong to journey {journey_id}"
                         )));
                     }
@@ -157,7 +157,7 @@ impl JourneyStore {
                     "UPDATE journeys SET entry_state_id = ?1 WHERE journey_id = ?2",
                     params![entry_state_id, journey_id.0.to_string()],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -186,10 +186,10 @@ impl JourneyStore {
                         .await
                 })
                 .map_err(|e| match e {
-                    sqlx::Error::RowNotFound => OpenFangError::Memory(
+                    sqlx::Error::RowNotFound => SiliCrewError::Memory(
                         "entry state does not belong to the target journey".to_string(),
                     ),
-                    other => OpenFangError::Memory(other.to_string()),
+                    other => SiliCrewError::Memory(other.to_string()),
                 })?;
             }
         }
@@ -200,7 +200,7 @@ impl JourneyStore {
     pub async fn get_journey(
         &self,
         journey_id: &JourneyId,
-    ) -> OpenFangResult<Option<JourneyDefinition>> {
+    ) -> SiliCrewResult<Option<JourneyDefinition>> {
         self.get_journey_sync(journey_id)
     }
 
@@ -209,7 +209,7 @@ impl JourneyStore {
         &self,
         scope_id: &ScopeId,
         enabled_only: bool,
-    ) -> OpenFangResult<Vec<JourneyDefinition>> {
+    ) -> SiliCrewResult<Vec<JourneyDefinition>> {
         self.list_journeys_sync(scope_id, enabled_only)
     }
 
@@ -217,18 +217,18 @@ impl JourneyStore {
     pub fn get_journey_sync(
         &self,
         journey_id: &JourneyId,
-    ) -> OpenFangResult<Option<JourneyDefinition>> {
+    ) -> SiliCrewResult<Option<JourneyDefinition>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT journey_id, scope_id, name, trigger_config, completion_rule, entry_state_id, enabled
                          FROM journeys WHERE journey_id = ?1",
                     )
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let row = stmt.query_row(params![journey_id.0.to_string()], |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -243,7 +243,7 @@ impl JourneyStore {
                 match row {
                     Ok(row) => Ok(Some(journey_from_row(row)?)),
                     Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                    Err(e) => Err(OpenFangError::Memory(e.to_string())),
+                    Err(e) => Err(SiliCrewError::Memory(e.to_string())),
                 }
             }
             SharedDb::Postgres(pool) => {
@@ -279,7 +279,7 @@ impl JourneyStore {
                         None => Ok(None),
                     }
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
             }
         }
     }
@@ -289,12 +289,12 @@ impl JourneyStore {
         &self,
         scope_id: &ScopeId,
         enabled_only: bool,
-    ) -> OpenFangResult<Vec<JourneyDefinition>> {
+    ) -> SiliCrewResult<Vec<JourneyDefinition>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let sql = if enabled_only {
                     "SELECT journey_id, scope_id, name, trigger_config, completion_rule, entry_state_id, enabled
                      FROM journeys WHERE scope_id = ?1 AND enabled = 1 ORDER BY name ASC"
@@ -304,7 +304,7 @@ impl JourneyStore {
                 };
                 let mut stmt = conn
                     .prepare(sql)
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let rows = stmt
                     .query_map(params![scope_id.0.as_str()], |row| {
                         Ok((
@@ -317,11 +317,11 @@ impl JourneyStore {
                             row.get::<_, i64>(6)?,
                         ))
                     })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let mut journeys = Vec::new();
                 for row in rows {
                     journeys.push(journey_from_row(
-                        row.map_err(|e| OpenFangError::Memory(e.to_string()))?,
+                        row.map_err(|e| SiliCrewError::Memory(e.to_string()))?,
                     )?);
                 }
                 Ok(journeys)
@@ -360,7 +360,83 @@ impl JourneyStore {
                     }
                     Ok::<Vec<JourneyDefinition>, sqlx::Error>(journeys)
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
+            }
+        }
+    }
+
+    /// Delete a journey and its dependent states, transitions, instances, and binding references.
+    pub fn delete_journey(&self, journey_id: &JourneyId) -> SiliCrewResult<bool> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                conn.execute(
+                    "UPDATE session_bindings
+                     SET active_journey_instance_id = NULL
+                     WHERE active_journey_instance_id IN (
+                        SELECT journey_instance_id FROM journey_instances WHERE journey_id = ?1
+                     )",
+                    params![journey_id.0.to_string()],
+                )
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
+                conn.execute(
+                    "DELETE FROM journey_instances WHERE journey_id = ?1",
+                    params![journey_id.0.to_string()],
+                )
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
+                conn.execute(
+                    "DELETE FROM journey_transitions WHERE journey_id = ?1",
+                    params![journey_id.0.to_string()],
+                )
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
+                conn.execute(
+                    "DELETE FROM journey_states WHERE journey_id = ?1",
+                    params![journey_id.0.to_string()],
+                )
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
+                let rows = conn
+                    .execute(
+                        "DELETE FROM journeys WHERE journey_id = ?1",
+                        params![journey_id.0.to_string()],
+                    )
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
+                Ok(rows > 0)
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let journey_id_str = journey_id.0.to_string();
+                block_on(async move {
+                    sqlx::query(
+                        "UPDATE session_bindings
+                         SET active_journey_instance_id = NULL
+                         WHERE active_journey_instance_id IN (
+                            SELECT journey_instance_id FROM journey_instances WHERE journey_id = $1
+                         )",
+                    )
+                    .bind(&journey_id_str)
+                    .execute(&*pool)
+                    .await?;
+                    sqlx::query("DELETE FROM journey_instances WHERE journey_id = $1")
+                        .bind(&journey_id_str)
+                        .execute(&*pool)
+                        .await?;
+                    sqlx::query("DELETE FROM journey_transitions WHERE journey_id = $1")
+                        .bind(&journey_id_str)
+                        .execute(&*pool)
+                        .await?;
+                    sqlx::query("DELETE FROM journey_states WHERE journey_id = $1")
+                        .bind(&journey_id_str)
+                        .execute(&*pool)
+                        .await?;
+                    sqlx::query("DELETE FROM journeys WHERE journey_id = $1")
+                        .bind(&journey_id_str)
+                        .execute(&*pool)
+                        .await
+                })
+                .map(|rows| rows.rows_affected() > 0)
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
             }
         }
     }
@@ -368,12 +444,12 @@ impl JourneyStore {
     pub async fn list_active_instances(
         &self,
         scope_id: &ScopeId,
-    ) -> OpenFangResult<Vec<JourneyInstanceRecord>> {
+    ) -> SiliCrewResult<Vec<JourneyInstanceRecord>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT journey_instance_id, journey_id, current_state_id, state_payload
@@ -381,7 +457,7 @@ impl JourneyStore {
                          WHERE scope_id = ?1 AND status = 'active'
                          ORDER BY updated_at DESC",
                     )
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let rows = stmt
                     .query_map(params![scope_id.0.as_str()], |row| {
                         Ok((
@@ -391,12 +467,12 @@ impl JourneyStore {
                             row.get::<_, String>(3).unwrap_or_else(|_| "{}".to_string()),
                         ))
                     })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 let mut instances = Vec::new();
                 for row in rows {
                     let (instance_id, journey_id_str, state_id, state_payload) =
-                        row.map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        row.map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     instances.push(JourneyInstanceRecord {
                         journey_instance_id: instance_id,
                         journey_id: parse_uuid(&journey_id_str)
@@ -442,24 +518,24 @@ impl JourneyStore {
                     }
                     Ok::<Vec<JourneyInstanceRecord>, sqlx::Error>(instances)
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
             }
         }
     }
 
-    pub async fn get_state(&self, state_id: &str) -> OpenFangResult<Option<JourneyStateRecord>> {
+    pub async fn get_state(&self, state_id: &str) -> SiliCrewResult<Option<JourneyStateRecord>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT state_id, name, description, required_fields,
                                 COALESCE(guideline_actions_json, '[]')
                          FROM journey_states WHERE state_id = ?1",
                     )
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let row = stmt.query_row(params![state_id], |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -484,7 +560,7 @@ impl JourneyStore {
                         }))
                     }
                     Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                    Err(e) => Err(OpenFangError::Memory(e.to_string())),
+                    Err(e) => Err(SiliCrewError::Memory(e.to_string())),
                 }
             }
             SharedDb::Postgres(pool) => {
@@ -519,7 +595,7 @@ impl JourneyStore {
                         None => Ok(None),
                     }
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
             }
         }
     }
@@ -533,12 +609,12 @@ impl JourneyStore {
     pub async fn get_first_state_for_journey(
         &self,
         journey_id: &JourneyId,
-    ) -> OpenFangResult<Option<JourneyStateRecord>> {
+    ) -> SiliCrewResult<Option<JourneyStateRecord>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT js.state_id, js.name, js.description, js.required_fields,
@@ -563,7 +639,7 @@ impl JourneyStore {
                             js.rowid ASC
                          LIMIT 1",
                     )
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let row = stmt.query_row(params![journey_id.0.to_string()], |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -586,7 +662,7 @@ impl JourneyStore {
                         }))
                     }
                     Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                    Err(e) => Err(OpenFangError::Memory(e.to_string())),
+                    Err(e) => Err(SiliCrewError::Memory(e.to_string())),
                 }
             }
             SharedDb::Postgres(pool) => {
@@ -640,7 +716,7 @@ impl JourneyStore {
                         None => Ok(None),
                     }
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
             }
         }
     }
@@ -653,12 +729,12 @@ impl JourneyStore {
         session_id: &str,
         journey_id: &JourneyId,
         current_state_id: &str,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO journey_instances (
                         journey_instance_id, scope_id, session_id,
@@ -675,7 +751,7 @@ impl JourneyStore {
                         current_state_id,
                     ],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -704,25 +780,25 @@ impl JourneyStore {
                     .execute(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
     }
 
     /// Mark a journey instance as completed or abandoned.
-    pub fn set_instance_status(&self, instance_id: &str, status: &str) -> OpenFangResult<()> {
+    pub fn set_instance_status(&self, instance_id: &str, status: &str) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "UPDATE journey_instances SET status = ?1, updated_at = datetime('now')
                      WHERE journey_instance_id = ?2",
                     params![status, instance_id],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -740,26 +816,26 @@ impl JourneyStore {
                     .execute(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
     }
 
     /// Advance an instance to a new state.
-    pub fn advance_instance(&self, instance_id: &str, new_state_id: &str) -> OpenFangResult<()> {
+    pub fn advance_instance(&self, instance_id: &str, new_state_id: &str) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "UPDATE journey_instances
                      SET current_state_id = ?1, updated_at = datetime('now')
                      WHERE journey_instance_id = ?2",
                     params![new_state_id, instance_id],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -778,7 +854,7 @@ impl JourneyStore {
                     .execute(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
@@ -788,12 +864,12 @@ impl JourneyStore {
     pub async fn list_active_instances_for_session(
         &self,
         session_id: &str,
-    ) -> OpenFangResult<Vec<ActiveJourneyInstanceRecord>> {
+    ) -> SiliCrewResult<Vec<ActiveJourneyInstanceRecord>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT journey_instance_id, scope_id, journey_id, current_state_id, state_payload
@@ -801,7 +877,7 @@ impl JourneyStore {
                          WHERE session_id = ?1 AND status = 'active'
                          ORDER BY updated_at DESC",
                     )
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let rows = stmt
                     .query_map(params![session_id], |row| {
                         Ok((
@@ -812,11 +888,11 @@ impl JourneyStore {
                             row.get::<_, String>(4).unwrap_or_else(|_| "{}".to_string()),
                         ))
                     })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let mut out = Vec::new();
                 for row in rows {
                     let (iid, sid, jid_str, state_id, state_payload) =
-                        row.map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        row.map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     let journey_id = parse_uuid(&jid_str)
                         .map(JourneyId)
                         .map_err(memory_parse_error)?;
@@ -864,7 +940,7 @@ impl JourneyStore {
                     }
                     Ok::<Vec<ActiveJourneyInstanceRecord>, sqlx::Error>(out)
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
             }
         }
     }
@@ -874,19 +950,19 @@ impl JourneyStore {
         &self,
         journey_id: &JourneyId,
         from_state_id: &str,
-    ) -> OpenFangResult<Vec<TransitionRecord>> {
+    ) -> SiliCrewResult<Vec<TransitionRecord>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT transition_id, to_state_id, condition_config, transition_type
                          FROM journey_transitions
                          WHERE journey_id = ?1 AND from_state_id = ?2",
                     )
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let rows = stmt
                     .query_map(params![journey_id.0.to_string(), from_state_id], |row| {
                         Ok((
@@ -896,11 +972,11 @@ impl JourneyStore {
                             row.get::<_, String>(3)?,
                         ))
                     })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let mut out = Vec::new();
                 for row in rows {
                     let (tid, to_sid, cond, ttype) =
-                        row.map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        row.map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     out.push(TransitionRecord {
                         transition_id: tid,
                         to_state_id: to_sid,
@@ -936,7 +1012,7 @@ impl JourneyStore {
                     }
                     Ok::<Vec<TransitionRecord>, sqlx::Error>(out)
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
             }
         }
     }
@@ -952,7 +1028,7 @@ fn journey_from_row(
         Option<String>,
         i64,
     ),
-) -> OpenFangResult<JourneyDefinition> {
+) -> SiliCrewResult<JourneyDefinition> {
     Ok(JourneyDefinition {
         journey_id: parse_uuid(&row.0)
             .map(JourneyId)
@@ -960,7 +1036,7 @@ fn journey_from_row(
         scope_id: ScopeId::from(row.1),
         name: row.2,
         trigger_config: serde_json::from_str(&row.3)
-            .map_err(|e| OpenFangError::Serialization(e.to_string()))?,
+            .map_err(|e| SiliCrewError::Serialization(e.to_string()))?,
         completion_rule: row.4,
         entry_state_id: row.5,
         enabled: row.6 != 0,
@@ -971,8 +1047,8 @@ fn parse_uuid(value: &str) -> Result<uuid::Uuid, uuid::Error> {
     uuid::Uuid::parse_str(value)
 }
 
-fn memory_parse_error<E: std::fmt::Display>(error: E) -> OpenFangError {
-    OpenFangError::Memory(error.to_string())
+fn memory_parse_error<E: std::fmt::Display>(error: E) -> SiliCrewError {
+    SiliCrewError::Memory(error.to_string())
 }
 
 #[cfg(test)]
@@ -1154,5 +1230,98 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(state.state_id, "zzz-entry");
+    }
+
+    #[test]
+    fn deleting_journey_removes_states_transitions_and_instances() {
+        let store = test_store();
+        let scope_id = ScopeId::from("default");
+        let journey = JourneyDefinition {
+            journey_id: JourneyId::new(),
+            scope_id: scope_id.clone(),
+            name: "delete_me".to_string(),
+            trigger_config: json!({ "always": true }),
+            completion_rule: None,
+            entry_state_id: Some("state-a".to_string()),
+            enabled: true,
+        };
+        store.upsert_journey(&journey).unwrap();
+
+        {
+            let conn = store.db.sqlite().unwrap();
+            let conn = conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO journey_states (state_id, journey_id, name, description, required_fields, guideline_actions_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params!["state-a", journey.journey_id.0.to_string(), "Start", Option::<String>::None, "[]", "[]"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO journey_states (state_id, journey_id, name, description, required_fields, guideline_actions_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params!["state-b", journey.journey_id.0.to_string(), "Next", Option::<String>::None, "[]", "[]"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO journey_transitions (transition_id, journey_id, from_state_id, to_state_id, condition_config, transition_type)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params!["transition-a", journey.journey_id.0.to_string(), "state-a", "state-b", "{}", "auto"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO journey_instances (journey_instance_id, scope_id, session_id, journey_id, current_state_id, status, state_payload, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'active', '{}', datetime('now'))",
+                params!["instance-a", scope_id.0.as_str(), "session-a", journey.journey_id.0.to_string(), "state-a"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO session_bindings (binding_id, scope_id, channel_type, external_user_id, external_chat_id, agent_id, session_id, manual_mode, active_journey_instance_id, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, NULL, NULL, ?4, ?5, 0, ?6, datetime('now'), datetime('now'))",
+                params!["binding-a", scope_id.0.as_str(), "web", uuid::Uuid::new_v4().to_string(), "session-a", "instance-a"],
+            )
+            .unwrap();
+        }
+
+        assert!(store.delete_journey(&journey.journey_id).unwrap());
+        assert!(store
+            .get_journey_sync(&journey.journey_id)
+            .unwrap()
+            .is_none());
+
+        let conn = store.db.sqlite().unwrap();
+        let conn = conn.lock().unwrap();
+        let state_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM journey_states WHERE journey_id = ?1",
+                params![journey.journey_id.0.to_string()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let transition_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM journey_transitions WHERE journey_id = ?1",
+                params![journey.journey_id.0.to_string()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let instance_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM journey_instances WHERE journey_id = ?1",
+                params![journey.journey_id.0.to_string()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let active_binding: Option<String> = conn
+            .query_row(
+                "SELECT active_journey_instance_id FROM session_bindings WHERE binding_id = ?1",
+                params!["binding-a"],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(state_count, 0);
+        assert_eq!(transition_count, 0);
+        assert_eq!(instance_count, 0);
+        assert_eq!(active_binding, None);
     }
 }

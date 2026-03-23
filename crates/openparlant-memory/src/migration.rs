@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use sqlx::PgPool;
 
 /// Current schema version.
-const SCHEMA_VERSION: u32 = 20;
+const SCHEMA_VERSION: u32 = 22;
 
 /// Run all migrations to bring the database up to date.
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -82,6 +82,12 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     }
     if current_version < 20 {
         migrate_v20(conn)?;
+    }
+    if current_version < 21 {
+        migrate_v21(conn)?;
+    }
+    if current_version < 22 {
+        migrate_v22(conn)?;
     }
 
     set_schema_version(conn, SCHEMA_VERSION)?;
@@ -427,6 +433,15 @@ pub async fn run_postgres_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_context_variables_scope_name ON context_variables(scope_id, name)",
         "CREATE INDEX IF NOT EXISTS idx_context_variables_scope_enabled ON context_variables(scope_id, enabled)",
         "CREATE INDEX IF NOT EXISTS idx_context_variables_source_type ON context_variables(value_source_type)",
+        "CREATE TABLE IF NOT EXISTS context_variable_values (
+            value_id TEXT PRIMARY KEY,
+            variable_id TEXT NOT NULL,
+            key TEXT NOT NULL,
+            data_json TEXT NOT NULL DEFAULT 'null',
+            updated_at TEXT NOT NULL
+        )",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_context_variable_values_variable_key ON context_variable_values(variable_id, key)",
+        "CREATE INDEX IF NOT EXISTS idx_context_variable_values_variable_id ON context_variable_values(variable_id)",
         "CREATE TABLE IF NOT EXISTS canned_responses (
             response_id TEXT PRIMARY KEY,
             scope_id TEXT NOT NULL,
@@ -467,13 +482,27 @@ pub async fn run_postgres_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             slug TEXT NOT NULL UNIQUE,
+            im_provider TEXT NOT NULL DEFAULT 'web_only',
+            timezone TEXT NOT NULL DEFAULT 'UTC',
             is_active BOOLEAN NOT NULL DEFAULT TRUE,
             created_at TEXT NOT NULL,
             default_message_limit INTEGER NOT NULL DEFAULT 50,
             default_message_period TEXT NOT NULL DEFAULT 'permanent',
             default_max_agents INTEGER NOT NULL DEFAULT 2,
-            default_agent_ttl_hours INTEGER NOT NULL DEFAULT 48
+            default_agent_ttl_hours INTEGER NOT NULL DEFAULT 48,
+            default_max_llm_calls_per_day INTEGER NOT NULL DEFAULT 100,
+            min_heartbeat_interval_minutes INTEGER NOT NULL DEFAULT 120,
+            default_max_triggers INTEGER NOT NULL DEFAULT 20,
+            min_poll_interval_floor INTEGER NOT NULL DEFAULT 5,
+            max_webhook_rate_ceiling INTEGER NOT NULL DEFAULT 5
         )",
+        "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS im_provider TEXT NOT NULL DEFAULT 'web_only'",
+        "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC'",
+        "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS default_max_llm_calls_per_day INTEGER NOT NULL DEFAULT 100",
+        "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS min_heartbeat_interval_minutes INTEGER NOT NULL DEFAULT 120",
+        "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS default_max_triggers INTEGER NOT NULL DEFAULT 20",
+        "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS min_poll_interval_floor INTEGER NOT NULL DEFAULT 5",
+        "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS max_webhook_rate_ceiling INTEGER NOT NULL DEFAULT 5",
         "CREATE INDEX IF NOT EXISTS idx_tenants_slug ON tenants(slug)",
         "CREATE INDEX IF NOT EXISTS idx_tenants_active_created ON tenants(is_active, created_at DESC)",
         "CREATE TABLE IF NOT EXISTS users (
@@ -1156,6 +1185,18 @@ fn migrate_v11(conn: &Connection) -> Result<(), rusqlite::Error> {
         CREATE INDEX IF NOT EXISTS idx_context_variables_source_type
             ON context_variables(value_source_type);
 
+        CREATE TABLE IF NOT EXISTS context_variable_values (
+            value_id TEXT PRIMARY KEY,
+            variable_id TEXT NOT NULL,
+            key TEXT NOT NULL,
+            data_json TEXT NOT NULL DEFAULT 'null',
+            updated_at TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_context_variable_values_variable_key
+            ON context_variable_values(variable_id, key);
+        CREATE INDEX IF NOT EXISTS idx_context_variable_values_variable_id
+            ON context_variable_values(variable_id);
+
         CREATE TABLE IF NOT EXISTS canned_responses (
             response_id TEXT PRIMARY KEY,
             scope_id TEXT NOT NULL,
@@ -1292,12 +1333,19 @@ fn migrate_v17(conn: &Connection) -> Result<(), rusqlite::Error> {
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             slug TEXT NOT NULL UNIQUE,
+            im_provider TEXT NOT NULL DEFAULT 'web_only',
+            timezone TEXT NOT NULL DEFAULT 'UTC',
             is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
             created_at TEXT NOT NULL,
             default_message_limit INTEGER NOT NULL DEFAULT 50,
             default_message_period TEXT NOT NULL DEFAULT 'permanent',
             default_max_agents INTEGER NOT NULL DEFAULT 2,
-            default_agent_ttl_hours INTEGER NOT NULL DEFAULT 48
+            default_agent_ttl_hours INTEGER NOT NULL DEFAULT 48,
+            default_max_llm_calls_per_day INTEGER NOT NULL DEFAULT 100,
+            min_heartbeat_interval_minutes INTEGER NOT NULL DEFAULT 120,
+            default_max_triggers INTEGER NOT NULL DEFAULT 20,
+            min_poll_interval_floor INTEGER NOT NULL DEFAULT 5,
+            max_webhook_rate_ceiling INTEGER NOT NULL DEFAULT 5
         )",
         [],
     )?;
@@ -1519,6 +1567,86 @@ fn migrate_v20(conn: &Connection) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
+fn migrate_v21(conn: &Connection) -> Result<(), rusqlite::Error> {
+    if !column_exists(conn, "tenants", "im_provider") {
+        conn.execute(
+            "ALTER TABLE tenants ADD COLUMN im_provider TEXT NOT NULL DEFAULT 'web_only'",
+            [],
+        )?;
+    }
+    if !column_exists(conn, "tenants", "timezone") {
+        conn.execute(
+            "ALTER TABLE tenants ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'",
+            [],
+        )?;
+    }
+    if !column_exists(conn, "tenants", "default_max_llm_calls_per_day") {
+        conn.execute(
+            "ALTER TABLE tenants ADD COLUMN default_max_llm_calls_per_day INTEGER NOT NULL DEFAULT 100",
+            [],
+        )?;
+    }
+    if !column_exists(conn, "tenants", "min_heartbeat_interval_minutes") {
+        conn.execute(
+            "ALTER TABLE tenants ADD COLUMN min_heartbeat_interval_minutes INTEGER NOT NULL DEFAULT 120",
+            [],
+        )?;
+    }
+    if !column_exists(conn, "tenants", "default_max_triggers") {
+        conn.execute(
+            "ALTER TABLE tenants ADD COLUMN default_max_triggers INTEGER NOT NULL DEFAULT 20",
+            [],
+        )?;
+    }
+    if !column_exists(conn, "tenants", "min_poll_interval_floor") {
+        conn.execute(
+            "ALTER TABLE tenants ADD COLUMN min_poll_interval_floor INTEGER NOT NULL DEFAULT 5",
+            [],
+        )?;
+    }
+    if !column_exists(conn, "tenants", "max_webhook_rate_ceiling") {
+        conn.execute(
+            "ALTER TABLE tenants ADD COLUMN max_webhook_rate_ceiling INTEGER NOT NULL DEFAULT 5",
+            [],
+        )?;
+    }
+    conn.execute(
+        "INSERT OR IGNORE INTO migrations (version, applied_at, description)
+         VALUES (21, datetime('now'), 'Expand tenants with company settings for timezone and quota defaults')",
+        [],
+    )?;
+    Ok(())
+}
+
+fn migrate_v22(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS context_variable_values (
+            value_id TEXT PRIMARY KEY,
+            variable_id TEXT NOT NULL,
+            key TEXT NOT NULL,
+            data_json TEXT NOT NULL DEFAULT 'null',
+            updated_at TEXT NOT NULL
+        )",
+        [],
+    )?;
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_context_variable_values_variable_key
+         ON context_variable_values(variable_id, key)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_context_variable_values_variable_id
+         ON context_variable_values(variable_id)",
+        [],
+    )?;
+    conn.execute(
+        "INSERT OR IGNORE INTO migrations (version, applied_at, description)
+         VALUES (22, datetime('now'), 'Add context variable value storage for dynamic session-scoped variables')",
+        [],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1561,6 +1689,7 @@ mod tests {
         assert!(tables.contains(&"retriever_bindings".to_string()));
         assert!(tables.contains(&"glossary_terms".to_string()));
         assert!(tables.contains(&"context_variables".to_string()));
+        assert!(tables.contains(&"context_variable_values".to_string()));
         assert!(tables.contains(&"canned_responses".to_string()));
         assert!(tables.contains(&"tool_exposure_policies".to_string()));
         assert!(tables.contains(&"control_releases".to_string()));

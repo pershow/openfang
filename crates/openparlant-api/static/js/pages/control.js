@@ -126,7 +126,7 @@ function controlPage() {
 
     async loadScopes() {
       try {
-        var data = await OpenFangAPI.get('/api/control/scopes');
+        var data = await SiliCrewAPI.get('/api/control/scopes');
         this.scopes = data || [];
         if (!this.selectedScope && this.scopes.length > 0) {
           this.selectedScope = this.scopes[0].scope_id;
@@ -141,7 +141,7 @@ function controlPage() {
       if (!this.newScopeName.trim()) return;
       this.creatingScope = true;
       try {
-        var s = await OpenFangAPI.post('/api/control/scopes', { name: this.newScopeName.trim() });
+        var s = await SiliCrewAPI.post('/api/control/scopes', { name: this.newScopeName.trim() });
         this.scopes.push(s);
         this.selectedScope = s.scope_id;
         this.newScopeName = '';
@@ -186,7 +186,7 @@ function controlPage() {
       this.debugError = '';
       this.debugResult = null;
       try {
-        var result = await OpenFangAPI.post('/api/control/test/compile-turn', {
+        var result = await SiliCrewAPI.post('/api/control/test/compile-turn', {
           scope_id: this.selectedScope || this.debugAgentId,
           agent_id: this.debugAgentId.trim(),
           session_id: this.debugSessionId.trim(),
@@ -210,8 +210,8 @@ function controlPage() {
     },
 
     toast(level, message) {
-      if (typeof OpenFangToast !== 'undefined' && OpenFangToast[level]) {
-        OpenFangToast[level](message);
+      if (typeof SiliCrewToast !== 'undefined' && SiliCrewToast[level]) {
+        SiliCrewToast[level](message);
         return;
       }
       if (level === 'error') console.error(message);
@@ -262,9 +262,9 @@ function controlPage() {
       if (!journey || !journey.journey_id) return;
       this.switchTab('journeys', 'builder');
       try {
-        var full = await OpenFangAPI.get('/api/control/journeys/' + journey.journey_id);
-        var states = await OpenFangAPI.get('/api/control/journeys/' + journey.journey_id + '/states');
-        var transitions = await OpenFangAPI.get('/api/control/journeys/' + journey.journey_id + '/transitions');
+        var full = await SiliCrewAPI.get('/api/control/journeys/' + journey.journey_id);
+        var states = await SiliCrewAPI.get('/api/control/journeys/' + journey.journey_id + '/states');
+        var transitions = await SiliCrewAPI.get('/api/control/journeys/' + journey.journey_id + '/transitions');
         setTimeout(function() {
           window.dispatchEvent(new CustomEvent('control-journey-builder-import', {
             detail: {
@@ -285,7 +285,7 @@ function controlPage() {
       if (!this.selectedScope) return;
       this.obsLoading = true;
       try {
-        this.observations = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/observations') || [];
+        this.observations = await SiliCrewAPI.get('/api/control/scopes/' + this.selectedScope + '/observations') || [];
       } catch (e) {
         this.observations = [];
       } finally {
@@ -299,7 +299,7 @@ function controlPage() {
       try {
         var cfg = {};
         try { cfg = JSON.parse(this.obsForm.matcher_config || '{}'); } catch (_) {}
-        var obs = await OpenFangAPI.post('/api/control/observations', {
+        var obs = await SiliCrewAPI.post('/api/control/observations', {
           scope_id: this.selectedScope,
           name: this.obsForm.name,
           matcher_type: this.obsForm.matcher_type,
@@ -323,7 +323,7 @@ function controlPage() {
       if (!this.selectedScope) return;
       this.glLoading = true;
       try {
-        this.guidelines = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/guidelines') || [];
+        this.guidelines = await SiliCrewAPI.get('/api/control/scopes/' + this.selectedScope + '/guidelines') || [];
       } catch (e) {
         this.guidelines = [];
       } finally {
@@ -335,7 +335,7 @@ function controlPage() {
       if (!this.glForm.name.trim() || !this.glForm.action_text.trim() || !this.selectedScope) return;
       this.glCreating = true;
       try {
-        var g = await OpenFangAPI.post('/api/control/guidelines', {
+        var g = await SiliCrewAPI.post('/api/control/guidelines', {
           scope_id: this.selectedScope,
           name: this.glForm.name,
           condition_ref: this.glForm.condition_ref,
@@ -358,7 +358,7 @@ function controlPage() {
       if (!this.selectedScope) return;
       this.relLoading = true;
       try {
-        this.guidelineRelationships = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/guideline-relationships') || [];
+        this.guidelineRelationships = await SiliCrewAPI.get('/api/control/scopes/' + this.selectedScope + '/guideline-relationships') || [];
       } catch (e) {
         this.guidelineRelationships = [];
       } finally {
@@ -374,7 +374,7 @@ function controlPage() {
       }
       this.relCreating = true;
       try {
-        await OpenFangAPI.post('/api/control/guideline-relationships', {
+        await SiliCrewAPI.post('/api/control/guideline-relationships', {
           scope_id: this.selectedScope,
           from_guideline_id: this.relForm.from_guideline_id,
           to_guideline_id: this.relForm.to_guideline_id,
@@ -461,7 +461,7 @@ function controlPage() {
       if (!this.selectedScope) return;
       this.jrLoading = true;
       try {
-        this.journeys = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/journeys') || [];
+        this.journeys = await SiliCrewAPI.get('/api/control/scopes/' + this.selectedScope + '/journeys') || [];
       } catch (e) {
         this.journeys = [];
       } finally {
@@ -475,7 +475,7 @@ function controlPage() {
       try {
         var cfg = {};
         try { cfg = JSON.parse(this.jrForm.trigger_config || '{}'); } catch (_) {}
-        var j = await OpenFangAPI.post('/api/control/journeys', {
+        var j = await SiliCrewAPI.post('/api/control/journeys', {
           scope_id: this.selectedScope,
           name: this.jrForm.name,
           trigger_config: cfg,
@@ -504,7 +504,7 @@ function controlPage() {
 
     async loadJourneyStates(jid) {
       try {
-        var data = await OpenFangAPI.get('/api/control/journeys/' + jid + '/states');
+        var data = await SiliCrewAPI.get('/api/control/journeys/' + jid + '/states');
         this.journeyStates = Object.assign({}, this.journeyStates, { [jid]: data || [] });
       } catch (e) {
         this.journeyStates = Object.assign({}, this.journeyStates, { [jid]: [] });
@@ -513,7 +513,7 @@ function controlPage() {
 
     async loadJourneyTransitions(jid) {
       try {
-        var data = await OpenFangAPI.get('/api/control/journeys/' + jid + '/transitions');
+        var data = await SiliCrewAPI.get('/api/control/journeys/' + jid + '/transitions');
         this.journeyTransitions = Object.assign({}, this.journeyTransitions, { [jid]: data || [] });
       } catch (e) {
         this.journeyTransitions = Object.assign({}, this.journeyTransitions, { [jid]: [] });
@@ -527,7 +527,7 @@ function controlPage() {
         var fields = this.stateForm.required_fields
           ? this.stateForm.required_fields.split(',').map(function(s) { return s.trim(); }).filter(Boolean)
           : [];
-        var s = await OpenFangAPI.post('/api/control/journeys/' + jid + '/states', {
+        var s = await SiliCrewAPI.post('/api/control/journeys/' + jid + '/states', {
           name: this.stateForm.name,
           description: this.stateForm.description || null,
           required_fields: fields,
@@ -551,7 +551,7 @@ function controlPage() {
     async setJourneyEntryState(jid, stateId) {
       if (!jid || !stateId) return;
       try {
-        await OpenFangAPI.post('/api/control/journeys/' + jid + '/entry-state', {
+        await SiliCrewAPI.post('/api/control/journeys/' + jid + '/entry-state', {
           state_id: stateId,
         });
         this.updateJourneyRecord(jid, { entry_state_id: stateId });
@@ -567,7 +567,7 @@ function controlPage() {
       try {
         var cfg = {};
         try { cfg = JSON.parse(this.transitionForm.condition_config || '{}'); } catch (_) {}
-        var t = await OpenFangAPI.post('/api/control/journeys/' + jid + '/transitions', {
+        var t = await SiliCrewAPI.post('/api/control/journeys/' + jid + '/transitions', {
           from_state_id: this.transitionForm.from_state_id,
           to_state_id: this.transitionForm.to_state_id,
           transition_type: this.transitionForm.transition_type,
@@ -591,7 +591,7 @@ function controlPage() {
       if (!this.selectedScope) return;
       this.retrieversLoading = true;
       try {
-        this.retrievers = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/retrievers') || [];
+        this.retrievers = await SiliCrewAPI.get('/api/control/scopes/' + this.selectedScope + '/retrievers') || [];
       } catch (e) {
         this.retrievers = [];
       } finally {
@@ -605,7 +605,7 @@ function controlPage() {
       try {
         var cfg = {};
         try { cfg = JSON.parse(this.retrieverForm.config_json || '{}'); } catch (_) {}
-        await OpenFangAPI.post('/api/control/retrievers', {
+        await SiliCrewAPI.post('/api/control/retrievers', {
           scope_id: this.selectedScope,
           name: this.retrieverForm.name.trim(),
           retriever_type: this.retrieverForm.retriever_type || 'static',
@@ -626,7 +626,7 @@ function controlPage() {
       if (!this.selectedScope) return;
       this.bindingsLoading = true;
       try {
-        this.retrieverBindings = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/retriever-bindings') || [];
+        this.retrieverBindings = await SiliCrewAPI.get('/api/control/scopes/' + this.selectedScope + '/retriever-bindings') || [];
       } catch (e) {
         this.retrieverBindings = [];
       } finally {
@@ -638,7 +638,7 @@ function controlPage() {
       if (!this.selectedScope) return;
       this.glossaryLoading = true;
       try {
-        this.glossaryTerms = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/glossary-terms') || [];
+        this.glossaryTerms = await SiliCrewAPI.get('/api/control/scopes/' + this.selectedScope + '/glossary-terms') || [];
       } catch (e) {
         this.glossaryTerms = [];
       } finally {
@@ -650,7 +650,7 @@ function controlPage() {
       if (!this.selectedScope) return;
       this.contextVariablesLoading = true;
       try {
-        this.contextVariables = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/context-variables') || [];
+        this.contextVariables = await SiliCrewAPI.get('/api/control/scopes/' + this.selectedScope + '/context-variables') || [];
       } catch (e) {
         this.contextVariables = [];
       } finally {
@@ -662,7 +662,7 @@ function controlPage() {
       if (!this.selectedScope) return;
       this.cannedResponsesLoading = true;
       try {
-        this.cannedResponses = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/canned-responses') || [];
+        this.cannedResponses = await SiliCrewAPI.get('/api/control/scopes/' + this.selectedScope + '/canned-responses') || [];
       } catch (e) {
         this.cannedResponses = [];
       } finally {
@@ -674,7 +674,7 @@ function controlPage() {
       if (!this.bindingForm.retriever_id || !this.bindingForm.bind_ref.trim() || !this.selectedScope) return;
       this.bindingCreating = true;
       try {
-        await OpenFangAPI.post('/api/control/retriever-bindings', {
+        await SiliCrewAPI.post('/api/control/retriever-bindings', {
           scope_id: this.selectedScope,
           retriever_id: this.bindingForm.retriever_id,
           bind_type: this.bindingForm.bind_type,
@@ -693,7 +693,7 @@ function controlPage() {
     async deleteRetrieverBinding(id) {
       if (!id || !confirm('Delete this retriever binding?')) return;
       try {
-        await OpenFangAPI.delete('/api/control/retriever-bindings/' + encodeURIComponent(id));
+        await SiliCrewAPI.delete('/api/control/retriever-bindings/' + encodeURIComponent(id));
         await this.loadRetrieverBindings();
         this.toastSuccess('Binding deleted');
       } catch (e) {
@@ -708,7 +708,7 @@ function controlPage() {
         var syns = this.glossaryForm.synonyms
           ? this.glossaryForm.synonyms.split(',').map(function(s) { return s.trim(); }).filter(Boolean)
           : [];
-        await OpenFangAPI.post('/api/control/glossary-terms', {
+        await SiliCrewAPI.post('/api/control/glossary-terms', {
           scope_id: this.selectedScope,
           name: this.glossaryForm.name,
           description: this.glossaryForm.description,
@@ -731,7 +731,7 @@ function controlPage() {
       try {
         var cfg = {};
         try { cfg = JSON.parse(this.varForm.value_source_config || '{}'); } catch (_) {}
-        await OpenFangAPI.post('/api/control/context-variables', {
+        await SiliCrewAPI.post('/api/control/context-variables', {
           scope_id: this.selectedScope,
           name: this.varForm.name,
           value_source_type: this.varForm.value_source_type,
@@ -752,7 +752,7 @@ function controlPage() {
       if (!this.cannedForm.name.trim() || !this.cannedForm.template_text.trim() || !this.selectedScope) return;
       this.cannedCreating = true;
       try {
-        await OpenFangAPI.post('/api/control/canned-responses', {
+        await SiliCrewAPI.post('/api/control/canned-responses', {
           scope_id: this.selectedScope,
           name: this.cannedForm.name,
           template_text: this.cannedForm.template_text,
@@ -775,7 +775,7 @@ function controlPage() {
       if (!this.selectedScope) return;
       this.tpLoading = true;
       try {
-        this.toolPolicies = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/tool-policies') || [];
+        this.toolPolicies = await SiliCrewAPI.get('/api/control/scopes/' + this.selectedScope + '/tool-policies') || [];
       } catch (e) {
         this.toolPolicies = [];
       } finally {
@@ -787,7 +787,7 @@ function controlPage() {
       if (!this.tpForm.tool_name.trim() || !this.selectedScope) return;
       this.tpCreating = true;
       try {
-        var p = await OpenFangAPI.post('/api/control/tool-policies', {
+        var p = await SiliCrewAPI.post('/api/control/tool-policies', {
           scope_id: this.selectedScope,
           tool_name: this.tpForm.tool_name,
           skill_ref: this.tpForm.skill_ref || null,
@@ -818,7 +818,7 @@ function controlPage() {
       if (!this.selectedScope) return;
       this.releasesLoading = true;
       try {
-        this.releases = await OpenFangAPI.get('/api/control/scopes/' + this.selectedScope + '/releases') || [];
+        this.releases = await SiliCrewAPI.get('/api/control/scopes/' + this.selectedScope + '/releases') || [];
       } catch (e) {
         this.releases = [];
       } finally {
@@ -830,7 +830,7 @@ function controlPage() {
       if (!this.selectedScope || !this.releaseForm.version.trim()) return;
       this.releasePublishing = true;
       try {
-        await OpenFangAPI.post('/api/control/releases/publish', {
+        await SiliCrewAPI.post('/api/control/releases/publish', {
           scope_id: this.selectedScope,
           version: this.releaseForm.version.trim(),
           published_by: (this.releaseForm.published_by || 'system').trim() || 'system',
@@ -848,7 +848,7 @@ function controlPage() {
       if (!this.selectedScope) return;
       this.releaseRollback = true;
       try {
-        await OpenFangAPI.post('/api/control/releases/rollback', { scope_id: this.selectedScope });
+        await SiliCrewAPI.post('/api/control/releases/rollback', { scope_id: this.selectedScope });
         await this.loadReleases();
         this.toastSuccess('Release rolled back');
       } catch (e) {
@@ -881,7 +881,7 @@ function controlPage() {
       this.handoffCreating = true;
       this.handoffResult = null;
       try {
-        this.handoffResult = await OpenFangAPI.post(
+        this.handoffResult = await SiliCrewAPI.post(
           '/api/sessions/' + this.handoffSessionId + '/handoff',
           { reason: this.handoffReason, summary: this.handoffSummary || null }
         );
@@ -897,7 +897,7 @@ function controlPage() {
       if (!this.handoffSessionId.trim()) return;
       this.handoffListLoading = true;
       try {
-        this.handoffList = await OpenFangAPI.get('/api/sessions/' + this.handoffSessionId + '/handoffs') || [];
+        this.handoffList = await SiliCrewAPI.get('/api/sessions/' + this.handoffSessionId + '/handoffs') || [];
       } catch (e) {
         this.handoffList = [];
       } finally {
@@ -913,7 +913,7 @@ function controlPage() {
         ? '/api/sessions/' + this.manualModeSessionId + '/manual-mode'
         : '/api/sessions/' + this.manualModeSessionId + '/resume-ai';
       try {
-        this.manualModeResult = await OpenFangAPI.post(endpoint, {});
+        this.manualModeResult = await SiliCrewAPI.post(endpoint, {});
         this.toastSuccess(this.manualModeOp === 'enable' ? 'Manual mode enabled' : 'AI resumed');
       } catch (e) {
         this.toastError('Failed to update manual mode: ' + e.message);
@@ -924,7 +924,7 @@ function controlPage() {
 
     async updateHandoffStatus(handoffId, status) {
       try {
-        await OpenFangAPI.patch('/api/control/handoffs/' + handoffId + '/status', { status });
+        await SiliCrewAPI.patch('/api/control/handoffs/' + handoffId + '/status', { status });
         await this.loadHandoffs();
         this.toastSuccess('Handoff status updated');
       } catch (e) {

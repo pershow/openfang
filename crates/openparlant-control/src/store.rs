@@ -5,7 +5,7 @@ use openparlant_types::control::{
     ControlScope, JourneyTransitionRecord, PolicyMatchRecord, ResponseMode, ScopeId,
     ToolAuthorizationRecord, TraceId, TurnTraceRecord,
 };
-use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::error::{SiliCrewError, SiliCrewResult};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
@@ -23,12 +23,19 @@ pub struct DashboardTenant {
     pub tenant_id: String,
     pub name: String,
     pub slug: String,
+    pub im_provider: String,
+    pub timezone: String,
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub default_message_limit: i32,
     pub default_message_period: String,
     pub default_max_agents: i32,
     pub default_agent_ttl_hours: i32,
+    pub default_max_llm_calls_per_day: i32,
+    pub min_heartbeat_interval_minutes: i32,
+    pub default_max_triggers: i32,
+    pub min_poll_interval_floor: i32,
+    pub max_webhook_rate_ceiling: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -126,12 +133,12 @@ impl ControlStore {
     }
 
     /// Insert or update a control scope.
-    pub fn upsert_scope(&self, scope: &ControlScope) -> OpenFangResult<()> {
+    pub fn upsert_scope(&self, scope: &ControlScope) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO control_scopes (scope_id, name, scope_type, status, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -185,12 +192,12 @@ impl ControlStore {
     }
 
     /// Fetch a control scope by ID.
-    pub fn get_scope(&self, scope_id: &ScopeId) -> OpenFangResult<Option<ControlScope>> {
+    pub fn get_scope(&self, scope_id: &ScopeId) -> SiliCrewResult<Option<ControlScope>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT scope_id, name, scope_type, status, created_at, updated_at
@@ -245,12 +252,12 @@ impl ControlStore {
     }
 
     /// List all control scopes.
-    pub fn list_scopes(&self) -> OpenFangResult<Vec<ControlScope>> {
+    pub fn list_scopes(&self) -> SiliCrewResult<Vec<ControlScope>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT scope_id, name, scope_type, status, created_at, updated_at
@@ -305,12 +312,12 @@ impl ControlStore {
     }
 
     /// Insert or update a turn trace record.
-    pub fn upsert_turn_trace(&self, trace: &TurnTraceRecord) -> OpenFangResult<()> {
+    pub fn upsert_turn_trace(&self, trace: &TurnTraceRecord) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO turn_traces (
                         trace_id, scope_id, session_id, agent_id, channel_type,
@@ -390,12 +397,12 @@ impl ControlStore {
     }
 
     /// Fetch a turn trace by ID.
-    pub fn get_turn_trace(&self, trace_id: TraceId) -> OpenFangResult<Option<TurnTraceRecord>> {
+    pub fn get_turn_trace(&self, trace_id: TraceId) -> SiliCrewResult<Option<TurnTraceRecord>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT trace_id, scope_id, session_id, agent_id, channel_type,
@@ -464,12 +471,12 @@ impl ControlStore {
         &self,
         session_id: SessionId,
         limit: usize,
-    ) -> OpenFangResult<Vec<TurnTraceRecord>> {
+    ) -> SiliCrewResult<Vec<TurnTraceRecord>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT trace_id, scope_id, session_id, agent_id, channel_type,
@@ -546,12 +553,12 @@ impl ControlStore {
     // ─── Explainability sub-records ───────────────────────────────────────────
 
     /// Persist the policy match record for a turn.
-    pub fn upsert_policy_match_record(&self, rec: &PolicyMatchRecord) -> OpenFangResult<()> {
+    pub fn upsert_policy_match_record(&self, rec: &PolicyMatchRecord) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO policy_match_records (
                         record_id, trace_id, observation_hits_json,
@@ -609,12 +616,12 @@ impl ControlStore {
     pub fn get_policy_match_record(
         &self,
         trace_id: TraceId,
-    ) -> OpenFangResult<Option<PolicyMatchRecord>> {
+    ) -> SiliCrewResult<Option<PolicyMatchRecord>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT record_id, trace_id, observation_hits_json,
@@ -673,12 +680,12 @@ impl ControlStore {
     pub fn upsert_journey_transition_record(
         &self,
         rec: &JourneyTransitionRecord,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO journey_transition_records (
                         record_id, trace_id, journey_instance_id,
@@ -741,12 +748,12 @@ impl ControlStore {
     pub fn upsert_tool_authorization_record(
         &self,
         rec: &ToolAuthorizationRecord,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO tool_authorization_records (
                         record_id, trace_id, allowed_tools_json,
@@ -806,13 +813,13 @@ impl ControlStore {
     pub fn upsert_session_binding(
         &self,
         binding: &openparlant_types::control::SessionBinding,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         let now = now_rfc3339();
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let updated = conn
                     .execute(
                         "UPDATE session_bindings
@@ -942,12 +949,12 @@ impl ControlStore {
     pub fn get_session_binding(
         &self,
         session_id: &str,
-    ) -> OpenFangResult<Option<openparlant_types::control::SessionBinding>> {
+    ) -> SiliCrewResult<Option<openparlant_types::control::SessionBinding>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let row = conn.query_row(
                     "SELECT binding_id, scope_id, channel_type, external_user_id, external_chat_id,
                             agent_id, session_id, manual_mode, active_journey_instance_id
@@ -991,13 +998,13 @@ impl ControlStore {
     }
 
     /// Enable or disable manual mode for a session binding.
-    pub fn set_manual_mode(&self, session_id: &str, manual: bool) -> OpenFangResult<bool> {
+    pub fn set_manual_mode(&self, session_id: &str, manual: bool) -> SiliCrewResult<bool> {
         let now = now_rfc3339();
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let rows = conn
                     .execute(
                         "UPDATE session_bindings SET manual_mode = ?1, updated_at = ?2
@@ -1030,7 +1037,7 @@ impl ControlStore {
     // ── Retrievers ────────────────────────────────────────────────────────────
 
     /// Insert or update a retriever definition.
-    pub fn upsert_retriever(&self, r: &serde_json::Value) -> OpenFangResult<()> {
+    pub fn upsert_retriever(&self, r: &serde_json::Value) -> SiliCrewResult<()> {
         let retriever_id = r["retriever_id"].as_str().unwrap_or("").to_string();
         let scope_id = r["scope_id"].as_str().unwrap_or("").to_string();
         let name = r["name"].as_str().unwrap_or("").to_string();
@@ -1042,7 +1049,7 @@ impl ControlStore {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO retrievers (retriever_id, scope_id, name, retriever_type, config_json, enabled)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -1090,12 +1097,12 @@ impl ControlStore {
     }
 
     /// List retrievers for a scope.
-    pub fn list_retrievers(&self, scope_id: &ScopeId) -> OpenFangResult<Vec<serde_json::Value>> {
+    pub fn list_retrievers(&self, scope_id: &ScopeId) -> SiliCrewResult<Vec<serde_json::Value>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT retriever_id, scope_id, name, retriever_type, config_json, enabled
@@ -1153,13 +1160,13 @@ impl ControlStore {
         retriever_id: &str,
         bind_type: &str,
         bind_ref: &str,
-    ) -> OpenFangResult<String> {
+    ) -> SiliCrewResult<String> {
         let binding_id = uuid::Uuid::new_v4().to_string();
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO retriever_bindings (binding_id, scope_id, retriever_id, bind_type, bind_ref)
                      VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -1203,12 +1210,12 @@ impl ControlStore {
     pub fn list_retriever_bindings(
         &self,
         scope_id: &ScopeId,
-    ) -> OpenFangResult<Vec<serde_json::Value>> {
+    ) -> SiliCrewResult<Vec<serde_json::Value>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT binding_id, scope_id, retriever_id, bind_type, bind_ref
@@ -1260,12 +1267,12 @@ impl ControlStore {
     }
 
     /// Delete a retriever binding by id.
-    pub fn delete_retriever_binding(&self, binding_id: &str) -> OpenFangResult<bool> {
+    pub fn delete_retriever_binding(&self, binding_id: &str) -> SiliCrewResult<bool> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let n = conn
                     .execute(
                         "DELETE FROM retriever_bindings WHERE binding_id = ?1",
@@ -1298,13 +1305,13 @@ impl ControlStore {
         scope_id: &ScopeId,
         version: &str,
         published_by: &str,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         let created_at = now_rfc3339();
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "UPDATE control_releases SET status = 'superseded'
                      WHERE scope_id = ?1 AND status = 'published'",
@@ -1352,12 +1359,12 @@ impl ControlStore {
     }
 
     /// Rollback: mark the latest published release as rolled_back and re-activate the previous one.
-    pub fn rollback_release(&self, scope_id: &ScopeId) -> OpenFangResult<Option<String>> {
+    pub fn rollback_release(&self, scope_id: &ScopeId) -> SiliCrewResult<Option<String>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let current: Option<String> = conn
                     .query_row(
                         "SELECT release_id FROM control_releases
@@ -1430,12 +1437,12 @@ impl ControlStore {
     }
 
     /// List releases for a scope (newest first).
-    pub fn list_releases(&self, scope_id: &ScopeId) -> OpenFangResult<Vec<serde_json::Value>> {
+    pub fn list_releases(&self, scope_id: &ScopeId) -> SiliCrewResult<Vec<serde_json::Value>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT release_id, scope_id, version, status, published_by, created_at
@@ -1487,12 +1494,12 @@ impl ControlStore {
     }
 
     /// Return the currently published release version for a scope, if any.
-    pub fn current_release_version(&self, scope_id: &ScopeId) -> OpenFangResult<Option<String>> {
+    pub fn current_release_version(&self, scope_id: &ScopeId) -> SiliCrewResult<Option<String>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let row = conn.query_row(
                     "SELECT version
                      FROM control_releases
@@ -1539,12 +1546,12 @@ impl ControlStore {
     pub fn create_handoff(
         &self,
         handoff: &openparlant_types::control::HandoffRecord,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO handoff_records
                         (handoff_id, scope_id, session_id, reason, summary, status, created_at, updated_at)
@@ -1600,13 +1607,13 @@ impl ControlStore {
         &self,
         handoff_id: &str,
         status: &openparlant_types::control::HandoffStatus,
-    ) -> OpenFangResult<bool> {
+    ) -> SiliCrewResult<bool> {
         let now = now_rfc3339();
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let rows = conn
                     .execute(
                         "UPDATE handoff_records SET status = ?1, updated_at = ?2
@@ -1642,12 +1649,12 @@ impl ControlStore {
         &self,
         session_id: &str,
         limit: usize,
-    ) -> OpenFangResult<Vec<serde_json::Value>> {
+    ) -> SiliCrewResult<Vec<serde_json::Value>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT handoff_id, scope_id, session_id, reason, summary, status, created_at, updated_at
@@ -1716,12 +1723,12 @@ impl ControlStore {
         synonyms_json: &str,
         enabled: bool,
         always_include: bool,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO glossary_terms (term_id, scope_id, name, description, synonyms_json, enabled, always_include)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
@@ -1770,12 +1777,12 @@ impl ControlStore {
     }
 
     /// List glossary terms for a scope.
-    pub fn list_glossary_terms(&self, scope_id: &str) -> OpenFangResult<Vec<serde_json::Value>> {
+    pub fn list_glossary_terms(&self, scope_id: &str) -> SiliCrewResult<Vec<serde_json::Value>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT term_id, scope_id, name, description, synonyms_json, enabled, COALESCE(always_include, 0) AS always_include
@@ -1830,6 +1837,97 @@ impl ControlStore {
         }
     }
 
+    /// Fetch a single glossary term by id.
+    pub fn get_glossary_term(&self, term_id: &str) -> SiliCrewResult<Option<serde_json::Value>> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                let row = conn.query_row(
+                    "SELECT term_id, scope_id, name, description, synonyms_json, enabled,
+                            COALESCE(always_include, 0) AS always_include
+                     FROM glossary_terms WHERE term_id = ?1",
+                    params![term_id],
+                    |row| {
+                        Ok(glossary_term_json(
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4)?,
+                            row.get::<_, bool>(5)?,
+                            row.get::<_, i64>(6)? != 0,
+                        ))
+                    },
+                );
+                match row {
+                    Ok(value) => Ok(Some(value)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(memory_error(e)),
+                }
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let term_id = term_id.to_string();
+                block_on(async move {
+                    let row = sqlx::query(
+                        "SELECT term_id, scope_id, name, description, synonyms_json, enabled,
+                                COALESCE(always_include, FALSE) AS always_include
+                         FROM glossary_terms WHERE term_id = $1",
+                    )
+                    .bind(term_id)
+                    .fetch_optional(&*pool)
+                    .await?;
+
+                    Ok::<Option<serde_json::Value>, sqlx::Error>(row.map(|row| {
+                        glossary_term_json(
+                            row.try_get("term_id").unwrap_or_default(),
+                            row.try_get("scope_id").unwrap_or_default(),
+                            row.try_get("name").unwrap_or_default(),
+                            row.try_get("description").unwrap_or_default(),
+                            row.try_get("synonyms_json")
+                                .unwrap_or_else(|_| "[]".to_string()),
+                            row.try_get("enabled").unwrap_or(false),
+                            row.try_get("always_include").unwrap_or(false),
+                        )
+                    }))
+                })
+                .map_err(memory_error)
+            }
+        }
+    }
+
+    /// Delete a glossary term by id.
+    pub fn delete_glossary_term(&self, term_id: &str) -> SiliCrewResult<bool> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                let rows = conn
+                    .execute(
+                        "DELETE FROM glossary_terms WHERE term_id = ?1",
+                        params![term_id],
+                    )
+                    .map_err(memory_error)?;
+                Ok(rows > 0)
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let term_id = term_id.to_string();
+                let rows = block_on(async move {
+                    sqlx::query("DELETE FROM glossary_terms WHERE term_id = $1")
+                        .bind(term_id)
+                        .execute(&*pool)
+                        .await
+                })
+                .map_err(memory_error)?;
+                Ok(rows.rows_affected() > 0)
+            }
+        }
+    }
+
     /// Insert or update a context variable.
     pub fn upsert_context_variable(
         &self,
@@ -1840,12 +1938,12 @@ impl ControlStore {
         value_source_config: &str,
         visibility_rule: Option<&str>,
         enabled: bool,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO context_variables (variable_id, scope_id, name, value_source_type, value_source_config, visibility_rule, enabled)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
@@ -1895,12 +1993,12 @@ impl ControlStore {
     }
 
     /// List context variables for a scope.
-    pub fn list_context_variables(&self, scope_id: &str) -> OpenFangResult<Vec<serde_json::Value>> {
+    pub fn list_context_variables(&self, scope_id: &str) -> SiliCrewResult<Vec<serde_json::Value>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT variable_id, scope_id, name, value_source_type, value_source_config, enabled, visibility_rule
@@ -1953,6 +2051,323 @@ impl ControlStore {
         }
     }
 
+    /// Fetch a single context variable by id.
+    pub fn get_context_variable(
+        &self,
+        variable_id: &str,
+    ) -> SiliCrewResult<Option<serde_json::Value>> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                let row = conn.query_row(
+                    "SELECT variable_id, scope_id, name, value_source_type, value_source_config, enabled, visibility_rule
+                     FROM context_variables WHERE variable_id = ?1",
+                    params![variable_id],
+                    |row| {
+                        Ok(context_variable_json(
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4)?,
+                            row.get::<_, bool>(5)?,
+                            row.get::<_, Option<String>>(6)?,
+                        ))
+                    },
+                );
+                match row {
+                    Ok(value) => Ok(Some(value)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(memory_error(e)),
+                }
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let variable_id = variable_id.to_string();
+                block_on(async move {
+                    let row = sqlx::query(
+                        "SELECT variable_id, scope_id, name, value_source_type, value_source_config, enabled, visibility_rule
+                         FROM context_variables WHERE variable_id = $1",
+                    )
+                    .bind(variable_id)
+                    .fetch_optional(&*pool)
+                    .await?;
+
+                    Ok::<Option<serde_json::Value>, sqlx::Error>(row.map(|row| {
+                        context_variable_json(
+                            row.try_get("variable_id").unwrap_or_default(),
+                            row.try_get("scope_id").unwrap_or_default(),
+                            row.try_get("name").unwrap_or_default(),
+                            row.try_get("value_source_type").unwrap_or_default(),
+                            row.try_get("value_source_config")
+                                .unwrap_or_else(|_| "{}".to_string()),
+                            row.try_get("enabled").unwrap_or(false),
+                            row.try_get("visibility_rule").ok(),
+                        )
+                    }))
+                })
+                .map_err(memory_error)
+            }
+        }
+    }
+
+    /// Delete a context variable and any attached values.
+    pub fn delete_context_variable(&self, variable_id: &str) -> SiliCrewResult<bool> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                conn.execute(
+                    "DELETE FROM context_variable_values WHERE variable_id = ?1",
+                    params![variable_id],
+                )
+                .map_err(memory_error)?;
+                let rows = conn
+                    .execute(
+                        "DELETE FROM context_variables WHERE variable_id = ?1",
+                        params![variable_id],
+                    )
+                    .map_err(memory_error)?;
+                Ok(rows > 0)
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let variable_id = variable_id.to_string();
+                block_on(async move {
+                    sqlx::query("DELETE FROM context_variable_values WHERE variable_id = $1")
+                        .bind(&variable_id)
+                        .execute(&*pool)
+                        .await?;
+                    sqlx::query("DELETE FROM context_variables WHERE variable_id = $1")
+                        .bind(&variable_id)
+                        .execute(&*pool)
+                        .await
+                })
+                .map_err(memory_error)
+                .map(|rows| rows.rows_affected() > 0)
+            }
+        }
+    }
+
+    /// Insert or update a context variable value for a specific lookup key.
+    pub fn upsert_context_variable_value(
+        &self,
+        value_id: &str,
+        variable_id: &str,
+        key: &str,
+        data_json: &str,
+    ) -> SiliCrewResult<()> {
+        let updated_at = Utc::now().to_rfc3339();
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                conn.execute(
+                    "INSERT INTO context_variable_values (value_id, variable_id, key, data_json, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5)
+                     ON CONFLICT(variable_id, key) DO UPDATE SET
+                        data_json = excluded.data_json,
+                        updated_at = excluded.updated_at",
+                    params![value_id, variable_id, key, data_json, updated_at],
+                )
+                .map_err(memory_error)?;
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let value_id = value_id.to_string();
+                let variable_id = variable_id.to_string();
+                let key = key.to_string();
+                let data_json = data_json.to_string();
+                block_on(async move {
+                    sqlx::query(
+                        "INSERT INTO context_variable_values (value_id, variable_id, key, data_json, updated_at)
+                         VALUES ($1, $2, $3, $4, $5)
+                         ON CONFLICT(variable_id, key) DO UPDATE SET
+                            data_json = EXCLUDED.data_json,
+                            updated_at = EXCLUDED.updated_at",
+                    )
+                    .bind(value_id)
+                    .bind(variable_id)
+                    .bind(key)
+                    .bind(data_json)
+                    .bind(updated_at)
+                    .execute(&*pool)
+                    .await
+                })
+                .map_err(memory_error)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Fetch a single context variable value by variable and key.
+    pub fn get_context_variable_value(
+        &self,
+        variable_id: &str,
+        key: &str,
+    ) -> SiliCrewResult<Option<serde_json::Value>> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                let row = conn.query_row(
+                    "SELECT value_id, variable_id, key, data_json, updated_at
+                     FROM context_variable_values
+                     WHERE variable_id = ?1 AND key = ?2",
+                    params![variable_id, key],
+                    |row| {
+                        Ok(context_variable_value_json(
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4)?,
+                        ))
+                    },
+                );
+                match row {
+                    Ok(value) => Ok(Some(value)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(memory_error(e)),
+                }
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let variable_id = variable_id.to_string();
+                let key = key.to_string();
+                block_on(async move {
+                    let row = sqlx::query(
+                        "SELECT value_id, variable_id, key, data_json, updated_at
+                         FROM context_variable_values
+                         WHERE variable_id = $1 AND key = $2",
+                    )
+                    .bind(variable_id)
+                    .bind(key)
+                    .fetch_optional(&*pool)
+                    .await?;
+
+                    Ok::<Option<serde_json::Value>, sqlx::Error>(row.map(|row| {
+                        context_variable_value_json(
+                            row.try_get("value_id").unwrap_or_default(),
+                            row.try_get("variable_id").unwrap_or_default(),
+                            row.try_get("key").unwrap_or_default(),
+                            row.try_get("data_json")
+                                .unwrap_or_else(|_| "null".to_string()),
+                            row.try_get("updated_at").unwrap_or_default(),
+                        )
+                    }))
+                })
+                .map_err(memory_error)
+            }
+        }
+    }
+
+    /// List all context variable values for a variable.
+    pub fn list_context_variable_values(
+        &self,
+        variable_id: &str,
+    ) -> SiliCrewResult<Vec<serde_json::Value>> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT value_id, variable_id, key, data_json, updated_at
+                         FROM context_variable_values
+                         WHERE variable_id = ?1
+                         ORDER BY key ASC",
+                    )
+                    .map_err(memory_error)?;
+                let rows = stmt
+                    .query_map(params![variable_id], |row| {
+                        Ok(context_variable_value_json(
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4)?,
+                        ))
+                    })
+                    .map_err(memory_error)?;
+                Ok(rows.filter_map(|r| r.ok()).collect())
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let variable_id = variable_id.to_string();
+                let rows = block_on(async move {
+                    sqlx::query(
+                        "SELECT value_id, variable_id, key, data_json, updated_at
+                         FROM context_variable_values
+                         WHERE variable_id = $1
+                         ORDER BY key ASC",
+                    )
+                    .bind(variable_id)
+                    .fetch_all(&*pool)
+                    .await
+                })
+                .map_err(memory_error)?;
+
+                let mut out = Vec::with_capacity(rows.len());
+                for row in rows {
+                    out.push(context_variable_value_json(
+                        row.try_get("value_id").map_err(memory_error)?,
+                        row.try_get("variable_id").map_err(memory_error)?,
+                        row.try_get("key").map_err(memory_error)?,
+                        row.try_get("data_json")
+                            .unwrap_or_else(|_| "null".to_string()),
+                        row.try_get("updated_at").map_err(memory_error)?,
+                    ));
+                }
+                Ok(out)
+            }
+        }
+    }
+
+    /// Delete a single context variable value by variable and key.
+    pub fn delete_context_variable_value(
+        &self,
+        variable_id: &str,
+        key: &str,
+    ) -> SiliCrewResult<bool> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                let rows = conn
+                    .execute(
+                        "DELETE FROM context_variable_values WHERE variable_id = ?1 AND key = ?2",
+                        params![variable_id, key],
+                    )
+                    .map_err(memory_error)?;
+                Ok(rows > 0)
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let variable_id = variable_id.to_string();
+                let key = key.to_string();
+                let rows = block_on(async move {
+                    sqlx::query(
+                        "DELETE FROM context_variable_values WHERE variable_id = $1 AND key = $2",
+                    )
+                    .bind(variable_id)
+                    .bind(key)
+                    .execute(&*pool)
+                    .await
+                })
+                .map_err(memory_error)?;
+                Ok(rows.rows_affected() > 0)
+            }
+        }
+    }
+
     /// Insert or update a canned response.
     pub fn upsert_canned_response(
         &self,
@@ -1963,12 +2378,12 @@ impl ControlStore {
         trigger_rule: Option<&str>,
         priority: i32,
         enabled: bool,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO canned_responses (response_id, scope_id, name, template_text, trigger_rule, priority, enabled)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
@@ -2017,12 +2432,12 @@ impl ControlStore {
     }
 
     /// List canned responses for a scope.
-    pub fn list_canned_responses(&self, scope_id: &str) -> OpenFangResult<Vec<serde_json::Value>> {
+    pub fn list_canned_responses(&self, scope_id: &str) -> SiliCrewResult<Vec<serde_json::Value>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT response_id, scope_id, name, template_text, priority, enabled, trigger_rule
@@ -2075,16 +2490,107 @@ impl ControlStore {
         }
     }
 
-    /// Join turn traces with explainability records.
-    pub fn enrich_turn_traces_json(
+    /// Fetch a single canned response by id.
+    pub fn get_canned_response(
         &self,
-        traces: Vec<TurnTraceRecord>,
-    ) -> OpenFangResult<Vec<serde_json::Value>> {
+        response_id: &str,
+    ) -> SiliCrewResult<Option<serde_json::Value>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                let row = conn.query_row(
+                    "SELECT response_id, scope_id, name, template_text, priority, enabled, trigger_rule
+                     FROM canned_responses WHERE response_id = ?1",
+                    params![response_id],
+                    |row| {
+                        Ok(canned_response_json(
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, i32>(4)?,
+                            row.get::<_, bool>(5)?,
+                            row.get::<_, Option<String>>(6)?,
+                        ))
+                    },
+                );
+                match row {
+                    Ok(value) => Ok(Some(value)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(memory_error(e)),
+                }
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let response_id = response_id.to_string();
+                block_on(async move {
+                    let row = sqlx::query(
+                        "SELECT response_id, scope_id, name, template_text, priority, enabled, trigger_rule
+                         FROM canned_responses WHERE response_id = $1",
+                    )
+                    .bind(response_id)
+                    .fetch_optional(&*pool)
+                    .await?;
+
+                    Ok::<Option<serde_json::Value>, sqlx::Error>(row.map(|row| {
+                        canned_response_json(
+                            row.try_get("response_id").unwrap_or_default(),
+                            row.try_get("scope_id").unwrap_or_default(),
+                            row.try_get("name").unwrap_or_default(),
+                            row.try_get("template_text").unwrap_or_default(),
+                            row.try_get("priority").unwrap_or_default(),
+                            row.try_get("enabled").unwrap_or(false),
+                            row.try_get("trigger_rule").ok(),
+                        )
+                    }))
+                })
+                .map_err(memory_error)
+            }
+        }
+    }
+
+    /// Delete a canned response by id.
+    pub fn delete_canned_response(&self, response_id: &str) -> SiliCrewResult<bool> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                let rows = conn
+                    .execute(
+                        "DELETE FROM canned_responses WHERE response_id = ?1",
+                        params![response_id],
+                    )
+                    .map_err(memory_error)?;
+                Ok(rows > 0)
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let response_id = response_id.to_string();
+                let rows = block_on(async move {
+                    sqlx::query("DELETE FROM canned_responses WHERE response_id = $1")
+                        .bind(response_id)
+                        .execute(&*pool)
+                        .await
+                })
+                .map_err(memory_error)?;
+                Ok(rows.rows_affected() > 0)
+            }
+        }
+    }
+
+    /// Join turn traces with explainability records.
+    pub fn enrich_turn_traces_json(
+        &self,
+        traces: Vec<TurnTraceRecord>,
+    ) -> SiliCrewResult<Vec<serde_json::Value>> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut out = Vec::with_capacity(traces.len());
                 for trace in traces {
                     out.push(enrich_trace_with_sqlite(&conn, trace).map_err(memory_error)?);
@@ -2109,12 +2615,12 @@ impl ControlStore {
         from_guideline_id: &str,
         to_guideline_id: &str,
         relation_type: &str,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO guideline_relationships
                         (relationship_id, scope_id, from_guideline_id, to_guideline_id, relation_type)
@@ -2156,12 +2662,12 @@ impl ControlStore {
     pub fn list_guideline_relationships(
         &self,
         scope_id: &str,
-    ) -> OpenFangResult<Vec<serde_json::Value>> {
+    ) -> SiliCrewResult<Vec<serde_json::Value>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT relationship_id, scope_id, from_guideline_id, to_guideline_id, relation_type
@@ -2221,12 +2727,12 @@ impl ControlStore {
         description: Option<&str>,
         required_fields_json: &str,
         guideline_actions_json: &str,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO journey_states (state_id, journey_id, name, description, required_fields, guideline_actions_json)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -2271,12 +2777,12 @@ impl ControlStore {
     }
 
     /// List journey states for a journey.
-    pub fn list_journey_states(&self, journey_id: &str) -> OpenFangResult<Vec<serde_json::Value>> {
+    pub fn list_journey_states(&self, journey_id: &str) -> SiliCrewResult<Vec<serde_json::Value>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT state_id, journey_id, name, description, required_fields, COALESCE(guideline_actions_json, '[]')
@@ -2328,6 +2834,216 @@ impl ControlStore {
         }
     }
 
+    /// Fetch a single journey state by id.
+    pub fn get_journey_state(&self, state_id: &str) -> SiliCrewResult<Option<serde_json::Value>> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                let row = conn.query_row(
+                    "SELECT state_id, journey_id, name, description, required_fields,
+                            COALESCE(guideline_actions_json, '[]')
+                     FROM journey_states WHERE state_id = ?1",
+                    params![state_id],
+                    |row| {
+                        Ok(journey_state_json(
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, Option<String>>(3)?,
+                            row.get::<_, String>(4).unwrap_or_else(|_| "[]".into()),
+                            row.get::<_, String>(5).unwrap_or_else(|_| "[]".into()),
+                        ))
+                    },
+                );
+                match row {
+                    Ok(value) => Ok(Some(value)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(memory_error(e)),
+                }
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let state_id = state_id.to_string();
+                block_on(async move {
+                    let row = sqlx::query(
+                        "SELECT state_id, journey_id, name, description, required_fields,
+                                COALESCE(guideline_actions_json, '[]') AS guideline_actions_json
+                         FROM journey_states WHERE state_id = $1",
+                    )
+                    .bind(state_id)
+                    .fetch_optional(&*pool)
+                    .await?;
+
+                    Ok::<Option<serde_json::Value>, sqlx::Error>(row.map(|row| {
+                        journey_state_json(
+                            row.try_get("state_id").unwrap_or_default(),
+                            row.try_get("journey_id").unwrap_or_default(),
+                            row.try_get("name").unwrap_or_default(),
+                            row.try_get("description").ok(),
+                            row.try_get("required_fields")
+                                .unwrap_or_else(|_| "[]".to_string()),
+                            row.try_get("guideline_actions_json")
+                                .unwrap_or_else(|_| "[]".to_string()),
+                        )
+                    }))
+                })
+                .map_err(memory_error)
+            }
+        }
+    }
+
+    /// Update an existing journey state by id.
+    pub fn update_journey_state(
+        &self,
+        state_id: &str,
+        name: &str,
+        description: Option<&str>,
+        required_fields_json: &str,
+        guideline_actions_json: &str,
+    ) -> SiliCrewResult<bool> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                let rows = conn
+                    .execute(
+                        "UPDATE journey_states
+                         SET name = ?1, description = ?2, required_fields = ?3, guideline_actions_json = ?4
+                         WHERE state_id = ?5",
+                        params![
+                            name,
+                            description,
+                            required_fields_json,
+                            guideline_actions_json,
+                            state_id,
+                        ],
+                    )
+                    .map_err(memory_error)?;
+                Ok(rows > 0)
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let state_id = state_id.to_string();
+                let name = name.to_string();
+                let description = description.map(ToOwned::to_owned);
+                let required_fields_json = required_fields_json.to_string();
+                let guideline_actions_json = guideline_actions_json.to_string();
+                let rows = block_on(async move {
+                    sqlx::query(
+                        "UPDATE journey_states
+                         SET name = $1, description = $2, required_fields = $3, guideline_actions_json = $4
+                         WHERE state_id = $5",
+                    )
+                    .bind(name)
+                    .bind(description)
+                    .bind(required_fields_json)
+                    .bind(guideline_actions_json)
+                    .bind(state_id)
+                    .execute(&*pool)
+                    .await
+                })
+                .map_err(memory_error)?;
+                Ok(rows.rows_affected() > 0)
+            }
+        }
+    }
+
+    /// Delete a journey state and dependent transitions / active instances.
+    pub fn delete_journey_state(&self, state_id: &str) -> SiliCrewResult<bool> {
+        let Some(existing) = self.get_journey_state(state_id)? else {
+            return Ok(false);
+        };
+        let journey_id = existing
+            .get("journey_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                conn.execute(
+                    "UPDATE journeys SET entry_state_id = NULL
+                     WHERE journey_id = ?1 AND entry_state_id = ?2",
+                    params![journey_id.as_str(), state_id],
+                )
+                .map_err(memory_error)?;
+                conn.execute(
+                    "UPDATE session_bindings
+                     SET active_journey_instance_id = NULL
+                     WHERE active_journey_instance_id IN (
+                        SELECT journey_instance_id FROM journey_instances WHERE current_state_id = ?1
+                     )",
+                    params![state_id],
+                )
+                .map_err(memory_error)?;
+                conn.execute(
+                    "DELETE FROM journey_instances WHERE current_state_id = ?1",
+                    params![state_id],
+                )
+                .map_err(memory_error)?;
+                conn.execute(
+                    "DELETE FROM journey_transitions WHERE from_state_id = ?1 OR to_state_id = ?1",
+                    params![state_id],
+                )
+                .map_err(memory_error)?;
+                let rows = conn
+                    .execute(
+                        "DELETE FROM journey_states WHERE state_id = ?1",
+                        params![state_id],
+                    )
+                    .map_err(memory_error)?;
+                Ok(rows > 0)
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let state_id = state_id.to_string();
+                let journey_id_for_entry = journey_id;
+                block_on(async move {
+                    sqlx::query(
+                        "UPDATE journeys SET entry_state_id = NULL
+                         WHERE journey_id = $1 AND entry_state_id = $2",
+                    )
+                    .bind(&journey_id_for_entry)
+                    .bind(&state_id)
+                    .execute(&*pool)
+                    .await?;
+                    sqlx::query(
+                        "UPDATE session_bindings
+                         SET active_journey_instance_id = NULL
+                         WHERE active_journey_instance_id IN (
+                            SELECT journey_instance_id FROM journey_instances WHERE current_state_id = $1
+                         )",
+                    )
+                    .bind(&state_id)
+                    .execute(&*pool)
+                    .await?;
+                    sqlx::query("DELETE FROM journey_instances WHERE current_state_id = $1")
+                        .bind(&state_id)
+                        .execute(&*pool)
+                        .await?;
+                    sqlx::query(
+                        "DELETE FROM journey_transitions WHERE from_state_id = $1 OR to_state_id = $1",
+                    )
+                    .bind(&state_id)
+                    .execute(&*pool)
+                    .await?;
+                    sqlx::query("DELETE FROM journey_states WHERE state_id = $1")
+                        .bind(&state_id)
+                        .execute(&*pool)
+                        .await
+                })
+                .map(|rows| rows.rows_affected() > 0)
+                .map_err(memory_error)
+            }
+        }
+    }
+
     /// Insert or update a journey transition.
     pub fn upsert_journey_transition(
         &self,
@@ -2337,12 +3053,12 @@ impl ControlStore {
         to_state_id: &str,
         condition_config_json: &str,
         transition_type: &str,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO journey_transitions
                         (transition_id, journey_id, from_state_id, to_state_id, condition_config, transition_type)
@@ -2388,12 +3104,12 @@ impl ControlStore {
     pub fn list_journey_transitions(
         &self,
         journey_id: &str,
-    ) -> OpenFangResult<Vec<serde_json::Value>> {
+    ) -> SiliCrewResult<Vec<serde_json::Value>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare(
                         "SELECT transition_id, journey_id, from_state_id, to_state_id, condition_config, transition_type
@@ -2446,16 +3162,163 @@ impl ControlStore {
         }
     }
 
-    /// Return the active journey for a session.
-    pub fn get_active_journey_for_session(
+    /// Fetch a single journey transition by id.
+    pub fn get_journey_transition(
         &self,
-        session_id: &str,
-    ) -> OpenFangResult<Option<serde_json::Value>> {
+        transition_id: &str,
+    ) -> SiliCrewResult<Option<serde_json::Value>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                let row = conn.query_row(
+                    "SELECT transition_id, journey_id, from_state_id, to_state_id, condition_config, transition_type
+                     FROM journey_transitions WHERE transition_id = ?1",
+                    params![transition_id],
+                    |row| {
+                        Ok(journey_transition_json(
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4).unwrap_or_else(|_| "{}".into()),
+                            row.get::<_, String>(5)?,
+                        ))
+                    },
+                );
+                match row {
+                    Ok(value) => Ok(Some(value)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(memory_error(e)),
+                }
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let transition_id = transition_id.to_string();
+                block_on(async move {
+                    let row = sqlx::query(
+                        "SELECT transition_id, journey_id, from_state_id, to_state_id, condition_config, transition_type
+                         FROM journey_transitions WHERE transition_id = $1",
+                    )
+                    .bind(transition_id)
+                    .fetch_optional(&*pool)
+                    .await?;
+
+                    Ok::<Option<serde_json::Value>, sqlx::Error>(row.map(|row| {
+                        journey_transition_json(
+                            row.try_get("transition_id").unwrap_or_default(),
+                            row.try_get("journey_id").unwrap_or_default(),
+                            row.try_get("from_state_id").unwrap_or_default(),
+                            row.try_get("to_state_id").unwrap_or_default(),
+                            row.try_get("condition_config")
+                                .unwrap_or_else(|_| "{}".to_string()),
+                            row.try_get("transition_type").unwrap_or_default(),
+                        )
+                    }))
+                })
+                .map_err(memory_error)
+            }
+        }
+    }
+
+    /// Update a journey transition by id.
+    pub fn update_journey_transition(
+        &self,
+        transition_id: &str,
+        from_state_id: &str,
+        to_state_id: &str,
+        condition_config_json: &str,
+        transition_type: &str,
+    ) -> SiliCrewResult<bool> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                let rows = conn
+                    .execute(
+                        "UPDATE journey_transitions
+                         SET from_state_id = ?1, to_state_id = ?2, condition_config = ?3, transition_type = ?4
+                         WHERE transition_id = ?5",
+                        params![
+                            from_state_id,
+                            to_state_id,
+                            condition_config_json,
+                            transition_type,
+                            transition_id,
+                        ],
+                    )
+                    .map_err(memory_error)?;
+                Ok(rows > 0)
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let transition_id = transition_id.to_string();
+                let from_state_id = from_state_id.to_string();
+                let to_state_id = to_state_id.to_string();
+                let condition_config_json = condition_config_json.to_string();
+                let transition_type = transition_type.to_string();
+                let rows = block_on(async move {
+                    sqlx::query(
+                        "UPDATE journey_transitions
+                         SET from_state_id = $1, to_state_id = $2, condition_config = $3, transition_type = $4
+                         WHERE transition_id = $5",
+                    )
+                    .bind(from_state_id)
+                    .bind(to_state_id)
+                    .bind(condition_config_json)
+                    .bind(transition_type)
+                    .bind(transition_id)
+                    .execute(&*pool)
+                    .await
+                })
+                .map_err(memory_error)?;
+                Ok(rows.rows_affected() > 0)
+            }
+        }
+    }
+
+    /// Delete a journey transition by id.
+    pub fn delete_journey_transition(&self, transition_id: &str) -> SiliCrewResult<bool> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                let rows = conn
+                    .execute(
+                        "DELETE FROM journey_transitions WHERE transition_id = ?1",
+                        params![transition_id],
+                    )
+                    .map_err(memory_error)?;
+                Ok(rows > 0)
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let transition_id = transition_id.to_string();
+                let rows = block_on(async move {
+                    sqlx::query("DELETE FROM journey_transitions WHERE transition_id = $1")
+                        .bind(transition_id)
+                        .execute(&*pool)
+                        .await
+                })
+                .map_err(memory_error)?;
+                Ok(rows.rows_affected() > 0)
+            }
+        }
+    }
+
+    /// Return the active journey for a session.
+    pub fn get_active_journey_for_session(
+        &self,
+        session_id: &str,
+    ) -> SiliCrewResult<Option<serde_json::Value>> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let row = conn.query_row(
                     "SELECT ji.journey_instance_id, ji.journey_id, ji.current_state_id,
                             ji.status, ji.state_payload, ji.updated_at,
@@ -2529,7 +3392,7 @@ impl ControlStore {
 
 fn scope_from_row(
     row: (String, String, String, String, String, String),
-) -> OpenFangResult<ControlScope> {
+) -> SiliCrewResult<ControlScope> {
     Ok(ControlScope {
         scope_id: ScopeId::from(row.0),
         name: row.1,
@@ -2553,7 +3416,7 @@ fn trace_from_row(
         String,
         String,
     ),
-) -> OpenFangResult<TurnTraceRecord> {
+) -> SiliCrewResult<TurnTraceRecord> {
     Ok(TurnTraceRecord {
         trace_id: parse_uuid(&row.0)
             .map(TraceId)
@@ -2569,14 +3432,14 @@ fn trace_from_row(
         request_message_ref: row.5,
         compiled_context_hash: row.6,
         release_version: row.7,
-        response_mode: ResponseMode::from_str(&row.8).map_err(OpenFangError::Memory)?,
+        response_mode: ResponseMode::from_str(&row.8).map_err(SiliCrewError::Memory)?,
         created_at: parse_timestamp(&row.9)?,
     })
 }
 
 fn policy_match_record_from_row(
     row: (String, String, String, String, String),
-) -> OpenFangResult<PolicyMatchRecord> {
+) -> SiliCrewResult<PolicyMatchRecord> {
     Ok(PolicyMatchRecord {
         record_id: parse_uuid(&row.0)
             .map(TraceId)
@@ -2608,7 +3471,7 @@ fn session_binding_from_sqlite_row(
 
 fn session_binding_from_pg_row(
     row: &sqlx::postgres::PgRow,
-) -> OpenFangResult<openparlant_types::control::SessionBinding> {
+) -> SiliCrewResult<openparlant_types::control::SessionBinding> {
     Ok(openparlant_types::control::SessionBinding {
         binding_id: row.try_get("binding_id").map_err(memory_error)?,
         scope_id: ScopeId::new(row.try_get::<String, _>("scope_id").map_err(memory_error)?),
@@ -2626,7 +3489,7 @@ fn session_binding_from_pg_row(
     })
 }
 
-fn parse_timestamp(value: &str) -> OpenFangResult<DateTime<Utc>> {
+fn parse_timestamp(value: &str) -> SiliCrewResult<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(value)
         .map(|dt| dt.with_timezone(&Utc))
         .or_else(|_| {
@@ -2643,12 +3506,12 @@ fn now_rfc3339() -> String {
     Utc::now().to_rfc3339()
 }
 
-fn memory_error<E: std::fmt::Display>(error: E) -> OpenFangError {
-    OpenFangError::Memory(error.to_string())
+fn memory_error<E: std::fmt::Display>(error: E) -> SiliCrewError {
+    SiliCrewError::Memory(error.to_string())
 }
 
-fn memory_parse_error<E: std::fmt::Display>(error: E) -> OpenFangError {
-    OpenFangError::Memory(error.to_string())
+fn memory_parse_error<E: std::fmt::Display>(error: E) -> SiliCrewError {
+    SiliCrewError::Memory(error.to_string())
 }
 
 fn parse_json_array(value: &str) -> serde_json::Value {
@@ -2717,7 +3580,7 @@ fn enrich_trace_with_sqlite(
 fn enrich_trace_with_postgres(
     pool: Arc<sqlx::PgPool>,
     trace: TurnTraceRecord,
-) -> OpenFangResult<serde_json::Value> {
+) -> SiliCrewResult<serde_json::Value> {
     let tid = trace.trace_id.0.to_string();
     let policy_row = block_on({
         let pool = Arc::clone(&pool);
@@ -2734,7 +3597,7 @@ fn enrich_trace_with_postgres(
     })
     .map_err(memory_error)?
     .map(|row| {
-        Ok::<_, OpenFangError>((
+        Ok::<_, SiliCrewError>((
             row.try_get("observation_hits_json").map_err(memory_error)?,
             row.try_get("guideline_hits_json").map_err(memory_error)?,
             row.try_get("guideline_exclusions_json")
@@ -2757,7 +3620,7 @@ fn enrich_trace_with_postgres(
     })
     .map_err(memory_error)?
     .map(|row| {
-        Ok::<_, OpenFangError>((
+        Ok::<_, SiliCrewError>((
             row.try_get("allowed_tools_json").map_err(memory_error)?,
             row.try_get("authorization_reasons_json")
                 .map_err(memory_error)?,
@@ -2780,7 +3643,7 @@ fn enrich_trace_with_postgres(
     })
     .map_err(memory_error)?
     .map(|row| {
-        Ok::<_, OpenFangError>((
+        Ok::<_, SiliCrewError>((
             row.try_get("before_state_id").map_err(memory_error)?,
             row.try_get("after_state_id").map_err(memory_error)?,
             row.try_get("decision_json").map_err(memory_error)?,
@@ -2933,6 +3796,24 @@ fn context_variable_json(
         "value_source_config": value_source_config,
         "enabled": enabled,
         "visibility_rule": visibility_rule,
+    })
+}
+
+fn context_variable_value_json(
+    value_id: String,
+    variable_id: String,
+    key: String,
+    data_json: String,
+    updated_at: String,
+) -> serde_json::Value {
+    let data = serde_json::from_str::<serde_json::Value>(&data_json)
+        .unwrap_or_else(|_| serde_json::Value::String(data_json));
+    serde_json::json!({
+        "value_id": value_id,
+        "variable_id": variable_id,
+        "key": key,
+        "data": data,
+        "updated_at": updated_at,
     })
 }
 
@@ -3155,5 +4036,248 @@ mod tests {
             loaded.active_journey_instance_id.as_deref(),
             Some("journey-1")
         );
+    }
+
+    #[test]
+    fn context_variable_values_round_trip_and_delete() {
+        let store = test_store();
+        let variable_id = "var-1";
+
+        store
+            .upsert_context_variable(
+                variable_id,
+                "scope-a",
+                "customer_tier",
+                "session_value",
+                "{}",
+                None,
+                true,
+            )
+            .unwrap();
+        store
+            .upsert_context_variable_value("value-1", variable_id, "session-1", r#"{"tier":"vip"}"#)
+            .unwrap();
+
+        let loaded = store
+            .get_context_variable_value(variable_id, "session-1")
+            .unwrap()
+            .unwrap();
+        let listed = store.list_context_variable_values(variable_id).unwrap();
+
+        assert_eq!(
+            loaded.get("variable_id").and_then(|v| v.as_str()),
+            Some(variable_id)
+        );
+        assert_eq!(
+            loaded.get("key").and_then(|v| v.as_str()),
+            Some("session-1")
+        );
+        assert_eq!(
+            loaded
+                .get("data")
+                .and_then(|v| v.get("tier"))
+                .and_then(|v| v.as_str()),
+            Some("vip")
+        );
+        assert_eq!(listed.len(), 1);
+
+        assert!(store
+            .delete_context_variable_value(variable_id, "session-1")
+            .unwrap());
+        assert!(store
+            .get_context_variable_value(variable_id, "session-1")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn deleting_context_variable_cascades_value_rows() {
+        let store = test_store();
+        let variable_id = "var-delete";
+
+        store
+            .upsert_context_variable(
+                variable_id,
+                "scope-a",
+                "customer_status",
+                "session_value",
+                "{}",
+                None,
+                true,
+            )
+            .unwrap();
+        store
+            .upsert_context_variable_value("value-delete", variable_id, "session-1", "\"gold\"")
+            .unwrap();
+
+        assert!(store.delete_context_variable(variable_id).unwrap());
+        assert!(store.get_context_variable(variable_id).unwrap().is_none());
+        assert!(store
+            .get_context_variable_value(variable_id, "session-1")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn canned_response_round_trip_and_delete() {
+        let store = test_store();
+        let response_id = "resp-1";
+
+        store
+            .upsert_canned_response(
+                response_id,
+                "scope-a",
+                "handoff_message",
+                "A human will take over shortly.",
+                Some("contains:handoff"),
+                10,
+                true,
+            )
+            .unwrap();
+
+        let loaded = store.get_canned_response(response_id).unwrap().unwrap();
+        assert_eq!(
+            loaded.get("template_text").and_then(|v| v.as_str()),
+            Some("A human will take over shortly.")
+        );
+
+        assert!(store.delete_canned_response(response_id).unwrap());
+        assert!(store.get_canned_response(response_id).unwrap().is_none());
+    }
+
+    #[test]
+    fn glossary_term_round_trip_and_delete() {
+        let store = test_store();
+        store
+            .upsert_glossary_term(
+                "term-1",
+                "scope-a",
+                "SLA",
+                "Response guarantee",
+                "[\"service level agreement\"]",
+                true,
+                true,
+            )
+            .unwrap();
+
+        let loaded = store.get_glossary_term("term-1").unwrap().unwrap();
+        assert_eq!(loaded.get("name").and_then(|v| v.as_str()), Some("SLA"));
+
+        assert!(store.delete_glossary_term("term-1").unwrap());
+        assert!(store.get_glossary_term("term-1").unwrap().is_none());
+    }
+
+    #[test]
+    fn journey_state_round_trip_update_and_delete() {
+        let store = test_store();
+        {
+            let conn = store.db.sqlite().unwrap();
+            let conn = conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO journeys (journey_id, scope_id, name, trigger_config, completion_rule, entry_state_id, enabled)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    "journey-state",
+                    "scope-a",
+                    "state_flow",
+                    "{\"always\":true}",
+                    Option::<String>::None,
+                    "state-a",
+                    1i64,
+                ],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO journey_states (state_id, journey_id, name, description, required_fields, guideline_actions_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params!["state-a", "journey-state", "Start", Option::<String>::None, "[]", "[]"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO journey_states (state_id, journey_id, name, description, required_fields, guideline_actions_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params!["state-b", "journey-state", "Next", Option::<String>::None, "[]", "[]"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO journey_transitions (transition_id, journey_id, from_state_id, to_state_id, condition_config, transition_type)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params!["transition-state", "journey-state", "state-a", "state-b", "{}", "auto"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO journey_instances (journey_instance_id, scope_id, session_id, journey_id, current_state_id, status, state_payload, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'active', '{}', datetime('now'))",
+                params!["instance-state", "scope-a", "session-state", "journey-state", "state-a"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO session_bindings (binding_id, scope_id, channel_type, external_user_id, external_chat_id, agent_id, session_id, manual_mode, active_journey_instance_id, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, NULL, NULL, ?4, ?5, 0, ?6, datetime('now'), datetime('now'))",
+                params!["binding-state", "scope-a", "web", uuid::Uuid::new_v4().to_string(), "session-state", "instance-state"],
+            )
+            .unwrap();
+        }
+
+        assert!(store
+            .update_journey_state(
+                "state-a",
+                "Start Updated",
+                Some("Updated"),
+                "[\"email\"]",
+                "[\"Act\"]",
+            )
+            .unwrap());
+        let loaded = store.get_journey_state("state-a").unwrap().unwrap();
+        assert_eq!(
+            loaded.get("name").and_then(|v| v.as_str()),
+            Some("Start Updated")
+        );
+
+        assert!(store.delete_journey_state("state-a").unwrap());
+        assert!(store.get_journey_state("state-a").unwrap().is_none());
+    }
+
+    #[test]
+    fn journey_transition_round_trip_update_and_delete() {
+        let store = test_store();
+        {
+            let conn = store.db.sqlite().unwrap();
+            let conn = conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO journey_transitions (transition_id, journey_id, from_state_id, to_state_id, condition_config, transition_type)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params!["transition-a", "journey-a", "state-a", "state-b", "{}", "auto"],
+            )
+            .unwrap();
+        }
+
+        assert!(store
+            .update_journey_transition(
+                "transition-a",
+                "state-a",
+                "state-c",
+                "{\"always\":true}",
+                "manual",
+            )
+            .unwrap());
+        let loaded = store
+            .get_journey_transition("transition-a")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            loaded.get("to_state_id").and_then(|v| v.as_str()),
+            Some("state-c")
+        );
+        assert_eq!(
+            loaded.get("transition_type").and_then(|v| v.as_str()),
+            Some("manual")
+        );
+
+        assert!(store.delete_journey_transition("transition-a").unwrap());
+        assert!(store
+            .get_journey_transition("transition-a")
+            .unwrap()
+            .is_none());
     }
 }

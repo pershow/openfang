@@ -1,4 +1,4 @@
-//! OpenFangKernel — assembles all subsystems and provides the main API.
+//! SiliCrewKernel — assembles all subsystems and provides the main API.
 
 use crate::auth::AuthManager;
 use crate::background::{self, BackgroundExecutor};
@@ -31,7 +31,7 @@ use openparlant_runtime::tool_runner::builtin_tool_definitions;
 use openparlant_types::agent::*;
 use openparlant_types::capability::Capability;
 use openparlant_types::config::{KernelConfig, OutputFormat};
-use openparlant_types::error::OpenFangError;
+use openparlant_types::error::SiliCrewError;
 use openparlant_types::event::*;
 use openparlant_types::memory::Memory;
 use openparlant_types::tool::ToolDefinition;
@@ -58,7 +58,7 @@ impl LlmDriver for StubDriver {
     }
 }
 
-pub struct OpenFangKernel {
+pub struct SiliCrewKernel {
     /// Kernel configuration.
     pub config: KernelConfig,
     /// Agent registry.
@@ -164,7 +164,7 @@ pub struct OpenFangKernel {
     /// messages via Telegram). Different agents can still run in parallel.
     agent_msg_locks: dashmap::DashMap<AgentId, Arc<tokio::sync::Mutex<()>>>,
     /// Weak self-reference for trigger dispatch (set after Arc wrapping).
-    self_handle: OnceLock<Weak<OpenFangKernel>>,
+    self_handle: OnceLock<Weak<SiliCrewKernel>>,
     /// Optional control-plane coordinator — if set, compile_turn is called before each
     /// LLM loop and its output is injected into the system prompt.
     pub control_coordinator: OnceLock<Arc<dyn openparlant_types::control::TurnControlCoordinator>>,
@@ -183,7 +183,7 @@ struct IterativeControlState {
 }
 
 struct KernelIterativeControlCallback<'a> {
-    kernel: &'a OpenFangKernel,
+    kernel: &'a SiliCrewKernel,
     coordinator: Arc<dyn openparlant_types::control::TurnControlCoordinator>,
     turn_input: openparlant_types::control::TurnInput,
     manifest: AgentManifest,
@@ -305,7 +305,7 @@ impl DeliveryTracker {
 fn ensure_workspace(workspace: &Path) -> KernelResult<()> {
     for subdir in &["data", "output", "sessions", "skills", "logs", "memory"] {
         std::fs::create_dir_all(workspace.join(subdir)).map_err(|e| {
-            KernelError::OpenParlant(OpenFangError::Internal(format!(
+            KernelError::OpenParlant(SiliCrewError::Internal(format!(
                 "Failed to create workspace dir {}/{subdir}: {e}",
                 workspace.display()
             )))
@@ -539,7 +539,7 @@ impl IterativeControlCallback for KernelIterativeControlCallback<'_> {
     async fn on_tool_results(
         &self,
         tool_calls: &[openparlant_types::control::ToolCallRecord],
-    ) -> openparlant_types::error::OpenFangResult<Option<IterativeControlUpdate>> {
+    ) -> openparlant_types::error::SiliCrewResult<Option<IterativeControlUpdate>> {
         let mut turn_input = self.turn_input.clone();
         turn_input.prior_tool_calls = tool_calls.to_vec();
 
@@ -548,7 +548,7 @@ impl IterativeControlCallback for KernelIterativeControlCallback<'_> {
             .compile_turn_iterative(turn_input)
             .await
             .map_err(|e| {
-                openparlant_types::error::OpenFangError::Internal(format!(
+                openparlant_types::error::SiliCrewError::Internal(format!(
                     "compile_turn_iterative failed: {e}"
                 ))
             })?;
@@ -580,7 +580,7 @@ impl IterativeControlCallback for KernelIterativeControlCallback<'_> {
     }
 }
 
-impl OpenFangKernel {
+impl SiliCrewKernel {
     /// Boot the kernel with configuration from the given path.
     pub fn boot(config_path: Option<&Path>) -> KernelResult<Self> {
         let config = load_config(config_path);
@@ -1533,12 +1533,12 @@ impl OpenFangKernel {
     pub fn verify_signed_manifest(&self, signed_json: &str) -> KernelResult<String> {
         let signed: openparlant_types::manifest_signing::SignedManifest =
             serde_json::from_str(signed_json).map_err(|e| {
-                KernelError::OpenParlant(openparlant_types::error::OpenFangError::Config(format!(
+                KernelError::OpenParlant(openparlant_types::error::SiliCrewError::Config(format!(
                     "Invalid signed manifest JSON: {e}"
                 )))
             })?;
         signed.verify().map_err(|e| {
-            KernelError::OpenParlant(openparlant_types::error::OpenFangError::Config(format!(
+            KernelError::OpenParlant(openparlant_types::error::SiliCrewError::Config(format!(
                 "Manifest signature verification failed: {e}"
             )))
         })?;
@@ -1653,7 +1653,7 @@ impl OpenFangKernel {
             .map_err(KernelError::OpenParlant)?;
 
         let entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(OpenFangError::AgentNotFound(agent_id.to_string()))
+            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         // Dispatch based on module type
@@ -1740,7 +1740,7 @@ impl OpenFangKernel {
             .map_err(KernelError::OpenParlant)?;
 
         let entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(OpenFangError::AgentNotFound(agent_id.to_string()))
+            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         let is_wasm = entry.manifest.module.starts_with("wasm:");
@@ -2236,7 +2236,7 @@ impl OpenFangKernel {
                 sender_id.as_deref(),
                 sender_name.as_deref(),
             );
-            OpenFangKernel::apply_runtime_prompt_overlay(&mut manifest, prompt_overlay);
+            SiliCrewKernel::apply_runtime_prompt_overlay(&mut manifest, prompt_overlay);
 
             let mut skill_snapshot = kernel_clone
                 .skill_registry
@@ -2490,7 +2490,7 @@ impl OpenFangKernel {
         info!(agent = %entry.name, path = %wasm_path.display(), "Executing WASM agent");
 
         let wasm_bytes = std::fs::read(&wasm_path).map_err(|e| {
-            KernelError::OpenParlant(OpenFangError::Internal(format!(
+            KernelError::OpenParlant(SiliCrewError::Internal(format!(
                 "Failed to read WASM module '{}': {e}",
                 wasm_path.display()
             )))
@@ -2522,7 +2522,7 @@ impl OpenFangKernel {
             )
             .await
             .map_err(|e| {
-                KernelError::OpenParlant(OpenFangError::Internal(format!(
+                KernelError::OpenParlant(SiliCrewError::Internal(format!(
                     "WASM execution failed: {e}"
                 )))
             })?;
@@ -2596,7 +2596,7 @@ impl OpenFangKernel {
         )
         .await
         .map_err(|e| {
-            KernelError::OpenParlant(OpenFangError::Internal(format!(
+            KernelError::OpenParlant(SiliCrewError::Internal(format!(
                 "Python execution failed: {e}"
             )))
         })?;
@@ -3530,7 +3530,7 @@ impl OpenFangKernel {
     /// and creates a fresh session ID.
     pub fn reset_session(&self, agent_id: AgentId) -> KernelResult<()> {
         let entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(OpenFangError::AgentNotFound(agent_id.to_string()))
+            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         // Auto-save session context to workspace memory before clearing
@@ -3566,7 +3566,7 @@ impl OpenFangKernel {
     /// Creates a fresh empty session afterward so the agent is still usable.
     pub fn clear_agent_history(&self, agent_id: AgentId) -> KernelResult<()> {
         let _entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(OpenFangError::AgentNotFound(agent_id.to_string()))
+            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         // Delete all regular sessions
@@ -3594,7 +3594,7 @@ impl OpenFangKernel {
     pub fn list_agent_sessions(&self, agent_id: AgentId) -> KernelResult<Vec<serde_json::Value>> {
         // Verify agent exists
         let entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(OpenFangError::AgentNotFound(agent_id.to_string()))
+            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         let mut sessions = self
@@ -3625,7 +3625,7 @@ impl OpenFangKernel {
     ) -> KernelResult<serde_json::Value> {
         // Verify agent exists
         let _entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(OpenFangError::AgentNotFound(agent_id.to_string()))
+            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         let session = self
@@ -3654,7 +3654,7 @@ impl OpenFangKernel {
     ) -> KernelResult<()> {
         // Verify agent exists
         let _entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(OpenFangError::AgentNotFound(agent_id.to_string()))
+            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         // Verify session exists and belongs to this agent
@@ -3663,11 +3663,11 @@ impl OpenFangKernel {
             .get_session(session_id)
             .map_err(KernelError::OpenParlant)?
             .ok_or_else(|| {
-                KernelError::OpenParlant(OpenFangError::Internal("Session not found".to_string()))
+                KernelError::OpenParlant(SiliCrewError::Internal("Session not found".to_string()))
             })?;
 
         if session.agent_id != agent_id {
-            return Err(KernelError::OpenParlant(OpenFangError::Internal(
+            return Err(KernelError::OpenParlant(SiliCrewError::Internal(
                 "Session belongs to a different agent".to_string(),
             )));
         }
@@ -3852,7 +3852,7 @@ impl OpenFangKernel {
             let known = registry.skill_names();
             for name in &skills {
                 if !known.contains(name) {
-                    return Err(KernelError::OpenParlant(OpenFangError::Internal(format!(
+                    return Err(KernelError::OpenParlant(SiliCrewError::Internal(format!(
                         "Unknown skill: {name}"
                     ))));
                 }
@@ -3890,7 +3890,7 @@ impl OpenFangKernel {
                 for name in &servers {
                     let normalized = openparlant_runtime::mcp::normalize_name(name);
                     if !known_servers.contains(&normalized) {
-                        return Err(KernelError::OpenParlant(OpenFangError::Internal(format!(
+                        return Err(KernelError::OpenParlant(SiliCrewError::Internal(format!(
                             "Unknown MCP server: {name}"
                         ))));
                     }
@@ -3937,7 +3937,7 @@ impl OpenFangKernel {
     /// Get session token usage and estimated cost for an agent.
     pub fn session_usage_cost(&self, agent_id: AgentId) -> KernelResult<(u64, u64, f64)> {
         let entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(OpenFangError::AgentNotFound(agent_id.to_string()))
+            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         let session = self
@@ -3993,7 +3993,7 @@ impl OpenFangKernel {
         use openparlant_runtime::compactor::{compact_session, needs_compaction, CompactionConfig};
 
         let entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(OpenFangError::AgentNotFound(agent_id.to_string()))
+            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         let session = self
@@ -4023,7 +4023,7 @@ impl OpenFangKernel {
 
         let result = compact_session(driver, &model, &session, &config)
             .await
-            .map_err(|e| KernelError::OpenParlant(OpenFangError::Internal(e)))?;
+            .map_err(|e| KernelError::OpenParlant(SiliCrewError::Internal(e)))?;
 
         // Store the LLM summary in the canonical session
         self.memory
@@ -4077,7 +4077,7 @@ impl OpenFangKernel {
         use openparlant_runtime::compactor::generate_context_report;
 
         let entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(OpenFangError::AgentNotFound(agent_id.to_string()))
+            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         let session = self
@@ -4159,7 +4159,7 @@ impl OpenFangKernel {
             .hand_registry
             .get_definition(hand_id)
             .ok_or_else(|| {
-                KernelError::OpenParlant(OpenFangError::AgentNotFound(format!(
+                KernelError::OpenParlant(SiliCrewError::AgentNotFound(format!(
                     "Hand not found: {hand_id}"
                 )))
             })?
@@ -4170,10 +4170,10 @@ impl OpenFangKernel {
             .hand_registry
             .activate(hand_id, config)
             .map_err(|e| match e {
-                HandError::AlreadyActive(id) => KernelError::OpenParlant(OpenFangError::Internal(
+                HandError::AlreadyActive(id) => KernelError::OpenParlant(SiliCrewError::Internal(
                     format!("Hand already active: {id}"),
                 )),
-                other => KernelError::OpenParlant(OpenFangError::Internal(other.to_string())),
+                other => KernelError::OpenParlant(SiliCrewError::Internal(other.to_string())),
             })?;
 
         // Build an agent manifest from the hand definition.
@@ -4333,7 +4333,7 @@ impl OpenFangKernel {
         // Link agent to instance
         self.hand_registry
             .set_agent(instance.instance_id, agent_id)
-            .map_err(|e| KernelError::OpenParlant(OpenFangError::Internal(e.to_string())))?;
+            .map_err(|e| KernelError::OpenParlant(SiliCrewError::Internal(e.to_string())))?;
 
         info!(
             hand = %hand_id,
@@ -4357,7 +4357,7 @@ impl OpenFangKernel {
         let instance = self
             .hand_registry
             .deactivate(instance_id)
-            .map_err(|e| KernelError::OpenParlant(OpenFangError::Internal(e.to_string())))?;
+            .map_err(|e| KernelError::OpenParlant(SiliCrewError::Internal(e.to_string())))?;
 
         if let Some(agent_id) = instance.agent_id {
             if let Err(e) = self.kill_agent(agent_id) {
@@ -4393,14 +4393,14 @@ impl OpenFangKernel {
     pub fn pause_hand(&self, instance_id: uuid::Uuid) -> KernelResult<()> {
         self.hand_registry
             .pause(instance_id)
-            .map_err(|e| KernelError::OpenParlant(OpenFangError::Internal(e.to_string())))
+            .map_err(|e| KernelError::OpenParlant(SiliCrewError::Internal(e.to_string())))
     }
 
     /// Resume a paused hand.
     pub fn resume_hand(&self, instance_id: uuid::Uuid) -> KernelResult<()> {
         self.hand_registry
             .resume(instance_id)
-            .map_err(|e| KernelError::OpenParlant(OpenFangError::Internal(e.to_string())))
+            .map_err(|e| KernelError::OpenParlant(SiliCrewError::Internal(e.to_string())))
     }
 
     /// Set the weak self-reference for trigger dispatch.
@@ -4564,7 +4564,7 @@ impl OpenFangKernel {
     ) -> KernelResult<TriggerId> {
         // Verify agent exists
         if self.registry.get(agent_id).is_none() {
-            return Err(KernelError::OpenParlant(OpenFangError::AgentNotFound(
+            return Err(KernelError::OpenParlant(SiliCrewError::AgentNotFound(
                 agent_id.to_string(),
             )));
         }
@@ -4607,7 +4607,7 @@ impl OpenFangKernel {
             .create_run(workflow_id, input)
             .await
             .ok_or_else(|| {
-                KernelError::OpenParlant(OpenFangError::Internal("Workflow not found".to_string()))
+                KernelError::OpenParlant(SiliCrewError::Internal("Workflow not found".to_string()))
             })?;
 
         // Agent resolver: looks up by name or ID in the registry
@@ -4648,12 +4648,12 @@ impl OpenFangKernel {
         )
         .await
         .map_err(|_| {
-            KernelError::OpenParlant(OpenFangError::Internal(format!(
+            KernelError::OpenParlant(SiliCrewError::Internal(format!(
                 "Workflow timed out after {MAX_WORKFLOW_SECS}s"
             )))
         })?
         .map_err(|e| {
-            KernelError::OpenParlant(OpenFangError::Internal(format!("Workflow failed: {e}")))
+            KernelError::OpenParlant(SiliCrewError::Internal(format!("Workflow failed: {e}")))
         })?;
 
         Ok((run_id, output))
@@ -6586,7 +6586,7 @@ pub fn shared_memory_agent_id() -> AgentId {
 
 /// Deliver a cron job's agent response to the configured delivery target.
 async fn cron_deliver_response(
-    kernel: &OpenFangKernel,
+    kernel: &SiliCrewKernel,
     agent_id: AgentId,
     response: &str,
     delivery: &openparlant_types::scheduler::CronDelivery,
@@ -6669,7 +6669,7 @@ async fn cron_deliver_response(
 }
 
 #[async_trait]
-impl KernelHandle for OpenFangKernel {
+impl KernelHandle for SiliCrewKernel {
     async fn spawn_agent(
         &self,
         manifest_toml: &str,
@@ -6727,7 +6727,7 @@ impl KernelHandle for OpenFangKernel {
         let id: AgentId = agent_id
             .parse()
             .map_err(|_| "Invalid agent ID".to_string())?;
-        OpenFangKernel::kill_agent(self, id).map_err(|e| format!("Kill failed: {e}"))
+        SiliCrewKernel::kill_agent(self, id).map_err(|e| format!("Kill failed: {e}"))
     }
 
     fn memory_store(&self, key: &str, value: serde_json::Value) -> Result<(), String> {
@@ -6822,7 +6822,7 @@ impl KernelHandle for OpenFangKernel {
             EventTarget::Broadcast,
             EventPayload::Custom(payload_bytes),
         );
-        OpenFangKernel::publish_event(self, event).await;
+        SiliCrewKernel::publish_event(self, event).await;
         Ok(())
     }
 
@@ -7357,7 +7357,7 @@ impl KernelHandle for OpenFangKernel {
 // --- OFP Wire Protocol integration ---
 
 #[async_trait]
-impl openparlant_wire::peer::PeerHandle for OpenFangKernel {
+impl openparlant_wire::peer::PeerHandle for SiliCrewKernel {
     fn local_agents(&self) -> Vec<openparlant_wire::message::RemoteAgentInfo> {
         self.registry
             .list()
@@ -7653,7 +7653,7 @@ mod tests {
             ..KernelConfig::default()
         };
 
-        let kernel = OpenFangKernel::boot_with_config(config).expect("Kernel should boot");
+        let kernel = SiliCrewKernel::boot_with_config(config).expect("Kernel should boot");
         let instance = kernel
             .activate_hand("browser", HashMap::new())
             .expect("browser hand should activate");

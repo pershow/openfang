@@ -2,7 +2,7 @@
 //!
 //! Run with: GROQ_API_KEY=gsk_... cargo test -p openparlant-kernel --test integration_test -- --nocapture
 
-use openparlant_kernel::OpenFangKernel;
+use openparlant_kernel::SiliCrewKernel;
 use openparlant_types::agent::AgentManifest;
 use openparlant_types::config::{DefaultModelConfig, KernelConfig};
 
@@ -33,7 +33,7 @@ async fn test_full_pipeline_with_groq() {
 
     // Boot kernel
     let config = test_config();
-    let kernel = OpenFangKernel::boot_with_config(config).expect("Kernel should boot");
+    let kernel = SiliCrewKernel::boot_with_config(config).expect("Kernel should boot");
 
     // Spawn agent
     let manifest: AgentManifest = toml::from_str(
@@ -91,7 +91,7 @@ async fn test_multiple_agents_different_models() {
     }
 
     let config = test_config();
-    let kernel = OpenFangKernel::boot_with_config(config).expect("Kernel should boot");
+    let kernel = SiliCrewKernel::boot_with_config(config).expect("Kernel should boot");
 
     // Spawn agent 1: llama 70b
     let manifest1: AgentManifest = toml::from_str(

@@ -10,7 +10,7 @@ use openparlant_api::middleware;
 use openparlant_api::routes::{self, AppState};
 use openparlant_control::{ControlStore, DefaultTurnControlCoordinator};
 use openparlant_journey::{JourneyStore, StoreJourneyRuntime};
-use openparlant_kernel::OpenFangKernel;
+use openparlant_kernel::SiliCrewKernel;
 use openparlant_memory::migration::run_migrations;
 use openparlant_policy::{PolicyStore, StoreObservationMatcher, StorePolicyResolver};
 use openparlant_types::config::{DefaultModelConfig, KernelConfig};
@@ -52,7 +52,7 @@ async fn start_test_server() -> TestServer {
         ..KernelConfig::default()
     };
 
-    let kernel = OpenFangKernel::boot_with_config(config).expect("Kernel should boot");
+    let kernel = SiliCrewKernel::boot_with_config(config).expect("Kernel should boot");
     let kernel = Arc::new(kernel);
     kernel.set_self_handle();
 

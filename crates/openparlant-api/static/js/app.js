@@ -123,7 +123,7 @@ function toolIcon(toolName) {
 document.addEventListener('alpine:init', function() {
   // Restore saved API key on load
   var savedKey = localStorage.getItem('openparlant-api-key');
-  if (savedKey) OpenFangAPI.setAuthToken(savedKey);
+  if (savedKey) SiliCrewAPI.setAuthToken(savedKey);
 
   Alpine.store('app', {
     agents: [],
@@ -150,7 +150,7 @@ document.addEventListener('alpine:init', function() {
 
     async refreshAgents() {
       try {
-        var agents = await OpenFangAPI.get('/api/agents');
+        var agents = await SiliCrewAPI.get('/api/agents');
         this.agents = Array.isArray(agents) ? agents : [];
         this.agentCount = this.agents.length;
       } catch(e) { /* silent */ }
@@ -158,15 +158,15 @@ document.addEventListener('alpine:init', function() {
 
     async refreshApprovals() {
       try {
-        var data = await OpenFangAPI.get('/api/approvals');
+        var data = await SiliCrewAPI.get('/api/approvals');
         var approvals = Array.isArray(data) ? data : (data.approvals || []);
         var pending = approvals.filter(function(a) { return a.status === 'pending'; });
         var signature = pending
           .map(function(a) { return a.id; })
           .sort()
           .join(',');
-        if (pending.length > 0 && signature !== this.lastPendingApprovalSignature && typeof OpenFangToast !== 'undefined') {
-          OpenFangToast.warn('An agent is waiting for approval. Open Approvals to review.');
+        if (pending.length > 0 && signature !== this.lastPendingApprovalSignature && typeof SiliCrewToast !== 'undefined') {
+          SiliCrewToast.warn('An agent is waiting for approval. Open Approvals to review.');
         }
         this.pendingApprovalCount = pending.length;
         this.lastPendingApprovalSignature = signature;
@@ -175,7 +175,7 @@ document.addEventListener('alpine:init', function() {
 
     async checkStatus() {
       try {
-        var s = await OpenFangAPI.get('/api/status');
+        var s = await SiliCrewAPI.get('/api/status');
         this.connected = true;
         this.booting = false;
         this.lastError = '';
@@ -191,7 +191,7 @@ document.addEventListener('alpine:init', function() {
     async checkOnboarding() {
       if (localStorage.getItem('openparlant-onboarded')) return;
       try {
-        var config = await OpenFangAPI.get('/api/config');
+        var config = await SiliCrewAPI.get('/api/config');
         var apiKey = config && config.api_key;
         var noKey = !apiKey || apiKey === 'not set' || apiKey === '';
         if (noKey && this.agentCount === 0) {
@@ -211,7 +211,7 @@ document.addEventListener('alpine:init', function() {
     async checkAuth() {
       try {
         // First check if session-based auth is configured
-        var authInfo = await OpenFangAPI.get('/api/auth/check');
+        var authInfo = await SiliCrewAPI.get('/api/auth/check');
         if (authInfo.mode === 'none') {
           // No session auth — fall back to API key detection
           this.authMode = 'apikey';
@@ -231,13 +231,13 @@ document.addEventListener('alpine:init', function() {
 
       // API key mode detection
       try {
-        await OpenFangAPI.get('/api/tools');
+        await SiliCrewAPI.get('/api/tools');
         this.showAuthPrompt = false;
       } catch(e) {
         if (e.message && (e.message.indexOf('Not authorized') >= 0 || e.message.indexOf('401') >= 0 || e.message.indexOf('Missing Authorization') >= 0 || e.message.indexOf('Unauthorized') >= 0)) {
           var saved = localStorage.getItem('openparlant-api-key');
           if (saved) {
-            OpenFangAPI.setAuthToken('');
+            SiliCrewAPI.setAuthToken('');
             localStorage.removeItem('openparlant-api-key');
           }
           this.showAuthPrompt = true;
@@ -247,7 +247,7 @@ document.addEventListener('alpine:init', function() {
 
     submitApiKey(key) {
       if (!key || !key.trim()) return;
-      OpenFangAPI.setAuthToken(key.trim());
+      SiliCrewAPI.setAuthToken(key.trim());
       localStorage.setItem('openparlant-api-key', key.trim());
       this.showAuthPrompt = false;
       this.refreshAgents();
@@ -255,29 +255,29 @@ document.addEventListener('alpine:init', function() {
 
     async sessionLogin(username, password) {
       try {
-        var result = await OpenFangAPI.post('/api/auth/login', { username: username, password: password });
+        var result = await SiliCrewAPI.post('/api/auth/login', { username: username, password: password });
         if (result.status === 'ok') {
           this.sessionUser = result.username;
           this.showAuthPrompt = false;
           this.refreshAgents();
         } else {
-          OpenFangToast.error(result.error || 'Login failed');
+          SiliCrewToast.error(result.error || 'Login failed');
         }
       } catch(e) {
-        OpenFangToast.error(e.message || 'Login failed');
+        SiliCrewToast.error(e.message || 'Login failed');
       }
     },
 
     async sessionLogout() {
       try {
-        await OpenFangAPI.post('/api/auth/logout');
+        await SiliCrewAPI.post('/api/auth/logout');
       } catch(e) { /* ignore */ }
       this.sessionUser = null;
       this.showAuthPrompt = true;
     },
 
     clearApiKey() {
-      OpenFangAPI.setAuthToken('');
+      SiliCrewAPI.setAuthToken('');
       localStorage.removeItem('openparlant-api-key');
     }
   });
@@ -367,7 +367,7 @@ function app() {
       });
 
       // Connection state listener
-      OpenFangAPI.onConnectionChange(function(state) {
+      SiliCrewAPI.onConnectionChange(function(state) {
         Alpine.store('app').connectionState = state;
       });
 
@@ -416,7 +416,7 @@ function app() {
       this.connected = store.connected;
       this.version = store.version;
       this.agentCount = store.agentCount;
-      this.wsConnected = OpenFangAPI.isWsConnected();
+      this.wsConnected = SiliCrewAPI.isWsConnected();
     }
   };
 }

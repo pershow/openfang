@@ -3,7 +3,7 @@
 use crate::db::{block_on, SharedDb};
 use chrono::Utc;
 use openparlant_types::agent::{AgentEntry, AgentId, AgentIdentity, SessionId};
-use openparlant_types::error::{OpenFangError, OpenFangResult};
+use openparlant_types::error::{SiliCrewError, SiliCrewResult};
 use sqlx::Row;
 use std::sync::Arc;
 
@@ -21,11 +21,11 @@ fn decode_agent_entry(
     created_str: String,
     session_id_str: Option<String>,
     identity_str: Option<String>,
-) -> OpenFangResult<AgentEntry> {
+) -> SiliCrewResult<AgentEntry> {
     let manifest = rmp_serde::from_slice(&manifest_blob)
-        .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+        .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
     let state = serde_json::from_str(&state_str)
-        .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+        .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
     let created_at = chrono::DateTime::parse_from_rfc3339(&created_str)
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or_else(|_| Utc::now());
@@ -62,15 +62,15 @@ impl StructuredStore {
     }
 
     /// Get a value from the key-value store.
-    pub fn get(&self, agent_id: AgentId, key: &str) -> OpenFangResult<Option<serde_json::Value>> {
+    pub fn get(&self, agent_id: AgentId, key: &str) -> SiliCrewResult<Option<serde_json::Value>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare("SELECT value FROM kv_store WHERE agent_id = ?1 AND key = ?2")
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let result =
                     stmt.query_row(rusqlite::params![agent_id.0.to_string(), key], |row| {
                         let blob: Vec<u8> = row.get(0)?;
@@ -79,11 +79,11 @@ impl StructuredStore {
                 match result {
                     Ok(blob) => {
                         let value: serde_json::Value = serde_json::from_slice(&blob)
-                            .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+                            .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
                         Ok(Some(value))
                     }
                     Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                    Err(e) => Err(OpenFangError::Memory(e.to_string())),
+                    Err(e) => Err(SiliCrewError::Memory(e.to_string())),
                 }
             }
             SharedDb::Postgres(pool) => {
@@ -107,7 +107,7 @@ impl StructuredStore {
                         None => Ok(None),
                     }
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
             }
         }
     }
@@ -118,21 +118,21 @@ impl StructuredStore {
         agent_id: AgentId,
         key: &str,
         value: serde_json::Value,
-    ) -> OpenFangResult<()> {
+    ) -> SiliCrewResult<()> {
         let blob =
-            serde_json::to_vec(&value).map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+            serde_json::to_vec(&value).map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
         let now = Utc::now().to_rfc3339();
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "INSERT INTO kv_store (agent_id, key, value, version, updated_at) VALUES (?1, ?2, ?3, 1, ?4)
                      ON CONFLICT(agent_id, key) DO UPDATE SET value = ?3, version = version + 1, updated_at = ?4",
                     rusqlite::params![agent_id.0.to_string(), key, blob, now],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -153,24 +153,24 @@ impl StructuredStore {
                     .execute(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
     }
 
     /// Delete a value from the key-value store.
-    pub fn delete(&self, agent_id: AgentId, key: &str) -> OpenFangResult<()> {
+    pub fn delete(&self, agent_id: AgentId, key: &str) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "DELETE FROM kv_store WHERE agent_id = ?1 AND key = ?2",
                     rusqlite::params![agent_id.0.to_string(), key],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -182,33 +182,33 @@ impl StructuredStore {
                         .execute(&*pool)
                         .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
     }
 
     /// List all key-value pairs for an agent.
-    pub fn list_kv(&self, agent_id: AgentId) -> OpenFangResult<Vec<(String, serde_json::Value)>> {
+    pub fn list_kv(&self, agent_id: AgentId) -> SiliCrewResult<Vec<(String, serde_json::Value)>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare("SELECT key, value FROM kv_store WHERE agent_id = ?1 ORDER BY key")
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let rows = stmt
                     .query_map(rusqlite::params![agent_id.0.to_string()], |row| {
                         let key: String = row.get(0)?;
                         let blob: Vec<u8> = row.get(1)?;
                         Ok((key, blob))
                     })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 let mut pairs = Vec::new();
                 for row in rows {
-                    let (key, blob) = row.map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    let (key, blob) = row.map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     let value: serde_json::Value =
                         serde_json::from_slice(&blob).unwrap_or_else(|_| {
                             String::from_utf8(blob)
@@ -244,25 +244,25 @@ impl StructuredStore {
                             .collect(),
                     )
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
             }
         }
     }
 
     /// Save an agent entry to the database.
-    pub fn save_agent(&self, entry: &AgentEntry) -> OpenFangResult<()> {
+    pub fn save_agent(&self, entry: &AgentEntry) -> SiliCrewResult<()> {
         let manifest_blob = rmp_serde::to_vec_named(&entry.manifest)
-            .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+            .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
         let state_str = serde_json::to_string(&entry.state)
-            .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+            .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
         let now = Utc::now().to_rfc3339();
         let identity_json = serde_json::to_string(&entry.identity)
-            .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+            .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let _ = conn.execute(
                     "ALTER TABLE agents ADD COLUMN session_id TEXT DEFAULT ''",
                     [],
@@ -287,7 +287,7 @@ impl StructuredStore {
                         identity_json,
                     ],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -318,19 +318,19 @@ impl StructuredStore {
                     .execute(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
     }
 
     /// Load an agent entry from the database.
-    pub fn load_agent(&self, agent_id: AgentId) -> OpenFangResult<Option<AgentEntry>> {
+    pub fn load_agent(&self, agent_id: AgentId) -> SiliCrewResult<Option<AgentEntry>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
 
                 let mut stmt = conn
                     .prepare("SELECT id, name, manifest, state, created_at, updated_at, session_id, identity FROM agents WHERE id = ?1")
@@ -338,7 +338,7 @@ impl StructuredStore {
                         conn.prepare("SELECT id, name, manifest, state, created_at, updated_at, session_id FROM agents WHERE id = ?1")
                             .or_else(|_| conn.prepare("SELECT id, name, manifest, state, created_at, updated_at FROM agents WHERE id = ?1"))
                     })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 let col_count = stmt.column_count();
                 let result = stmt.query_row(rusqlite::params![agent_id.0.to_string()], |row| {
@@ -385,7 +385,7 @@ impl StructuredStore {
                     )
                     .map(Some),
                     Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                    Err(e) => Err(OpenFangError::Memory(e.to_string())),
+                    Err(e) => Err(SiliCrewError::Memory(e.to_string())),
                 }
             }
             SharedDb::Postgres(pool) => {
@@ -420,23 +420,23 @@ impl StructuredStore {
                         None => Ok::<Option<AgentEntry>, sqlx::Error>(None),
                     }
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
             }
         }
     }
 
     /// Remove an agent from the database.
-    pub fn remove_agent(&self, agent_id: AgentId) -> OpenFangResult<()> {
+    pub fn remove_agent(&self, agent_id: AgentId) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 conn.execute(
                     "DELETE FROM agents WHERE id = ?1",
                     rusqlite::params![agent_id.0.to_string()],
                 )
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
             SharedDb::Postgres(pool) => {
                 let pool = Arc::clone(pool);
@@ -446,7 +446,7 @@ impl StructuredStore {
                         .execute(&*pool)
                         .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
             }
         }
         Ok(())
@@ -458,12 +458,12 @@ impl StructuredStore {
     /// fields gracefully. When an agent is loaded with lenient defaults, it is
     /// automatically re-saved to upgrade the stored blob. Duplicate agent names
     /// are deduplicated (first occurrence wins).
-    pub fn load_all_agents(&self) -> OpenFangResult<Vec<AgentEntry>> {
+    pub fn load_all_agents(&self) -> SiliCrewResult<Vec<AgentEntry>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
 
                 let mut stmt = conn
                     .prepare(
@@ -475,7 +475,7 @@ impl StructuredStore {
                     .or_else(|_| {
                         conn.prepare("SELECT id, name, manifest, state, created_at, updated_at FROM agents")
                     })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 let col_count = stmt.column_count();
                 let rows = stmt
@@ -499,7 +499,7 @@ impl StructuredStore {
                             identity_str,
                         ))
                     })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 let mut agents = Vec::new();
                 let mut seen_names = std::collections::HashSet::new();
@@ -547,7 +547,7 @@ impl StructuredStore {
                     ) {
                         Ok(entry) => {
                             let new_blob = rmp_serde::to_vec_named(&entry.manifest)
-                                .map_err(|e| OpenFangError::Serialization(e.to_string()))?;
+                                .map_err(|e| SiliCrewError::Serialization(e.to_string()))?;
                             if new_blob != manifest_blob {
                                 tracing::info!(
                                     agent = %entry.name,
@@ -591,7 +591,7 @@ impl StructuredStore {
                     .fetch_all(&*pool)
                     .await
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                 let mut agents = Vec::new();
                 let mut seen_names = std::collections::HashSet::new();
@@ -599,25 +599,25 @@ impl StructuredStore {
                 for row in rows {
                     let id_str: String = row
                         .try_get("id")
-                        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     let name: String = row
                         .try_get("name")
-                        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     let manifest_blob: Vec<u8> = row
                         .try_get("manifest")
-                        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     let state_str: String = row
                         .try_get("state")
-                        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     let created_str: String = row
                         .try_get("created_at")
-                        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     let session_id_str: Option<String> = row
                         .try_get("session_id")
-                        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     let identity_str: Option<String> = row
                         .try_get("identity")
-                        .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                        .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
 
                     let name_lower = name.to_lowercase();
                     if !seen_names.insert(name_lower) {
@@ -655,15 +655,15 @@ impl StructuredStore {
     }
 
     /// List all agents in the database.
-    pub fn list_agents(&self) -> OpenFangResult<Vec<(String, String, String)>> {
+    pub fn list_agents(&self) -> SiliCrewResult<Vec<(String, String, String)>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
-                    .map_err(|e| OpenFangError::Internal(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
                 let mut stmt = conn
                     .prepare("SELECT id, name, state FROM agents")
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let rows = stmt
                     .query_map([], |row| {
                         Ok((
@@ -672,10 +672,10 @@ impl StructuredStore {
                             row.get::<_, String>(2)?,
                         ))
                     })
-                    .map_err(|e| OpenFangError::Memory(e.to_string()))?;
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                 let mut agents = Vec::new();
                 for row in rows {
-                    agents.push(row.map_err(|e| OpenFangError::Memory(e.to_string()))?);
+                    agents.push(row.map_err(|e| SiliCrewError::Memory(e.to_string()))?);
                 }
                 Ok(agents)
             }
@@ -697,7 +697,7 @@ impl StructuredStore {
                             .collect(),
                     )
                 })
-                .map_err(|e| OpenFangError::Memory(e.to_string()))
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))
             }
         }
     }

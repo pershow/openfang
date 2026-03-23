@@ -16,7 +16,7 @@ mod ui;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use openparlant_api::server::read_daemon_info;
-use openparlant_kernel::OpenFangKernel;
+use openparlant_kernel::SiliCrewKernel;
 use openparlant_types::agent::{AgentId, AgentManifest};
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
@@ -143,6 +143,9 @@ enum Commands {
     /// Show or edit configuration (show, edit, get, set, keys) [*].
     #[command(subcommand)]
     Config(ConfigCommands),
+    /// Dashboard authentication: hash a password, bootstrap platform admin [*].
+    #[command(subcommand)]
+    Auth(AuthCommands),
     /// Quick chat with the default agent.
     Chat {
         /// Optional agent name or ID to chat with.
@@ -473,6 +476,25 @@ enum ConfigCommands {
     TestKey {
         /// Provider name.
         provider: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum AuthCommands {
+    /// Print SHA256 hex hash of a password (for [auth].password_hash in config.toml).
+    HashPassword {
+        /// Password (omit to read one line from stdin).
+        #[arg(short, long)]
+        password: Option<String>,
+    },
+    /// Write [auth] to config.toml and enable platform admin bootstrap on next daemon start.
+    BootstrapAdmin {
+        /// Admin username (default: admin).
+        #[arg(short, long, default_value = "admin")]
+        username: String,
+        /// Plain-text password (min 6 chars; omit to prompt).
+        #[arg(short, long)]
+        password: Option<String>,
     },
 }
 
@@ -993,6 +1015,12 @@ fn main() {
             ConfigCommands::DeleteKey { provider } => cmd_config_delete_key(&provider),
             ConfigCommands::TestKey { provider } => cmd_config_test_key(&provider),
         },
+        Some(Commands::Auth(sub)) => match sub {
+            AuthCommands::HashPassword { password } => cmd_auth_hash_password(password),
+            AuthCommands::BootstrapAdmin { username, password } => {
+                cmd_auth_bootstrap_admin(cli.config.clone(), username, password)
+            }
+        },
         Some(Commands::Chat { agent }) => cmd_quick_chat(cli.config, agent),
         Some(Commands::Status { json }) => cmd_status(cli.config, json),
         Some(Commands::Doctor { json, repair }) => cmd_doctor(json, repair),
@@ -1465,6 +1493,109 @@ decay_rate = 0.05
     }
 }
 
+fn cmd_auth_hash_password(password: Option<String>) {
+    let pw = match password {
+        Some(p) if !p.is_empty() => p,
+        _ => {
+            print!("Password: ");
+            let _ = io::stdout().flush();
+            let mut line = String::new();
+            io::stdin().read_line(&mut line).expect("read password");
+            let t = line.trim().to_string();
+            if t.is_empty() {
+                ui::error("Password is empty");
+                std::process::exit(1);
+            }
+            t
+        }
+    };
+    println!("{}", openparlant_api::session_auth::hash_password(&pw));
+}
+
+fn cmd_auth_bootstrap_admin(
+    config_override: Option<PathBuf>,
+    username: String,
+    password: Option<String>,
+) {
+    let config_path = config_override.unwrap_or_else(|| cli_openparlant_home().join("config.toml"));
+
+    if !config_path.exists() {
+        ui::error_with_fix(
+            &format!("Config not found: {}", config_path.display()),
+            "Run `openparlant init` first",
+        );
+        std::process::exit(1);
+    }
+
+    let pw = match password {
+        Some(p) if !p.is_empty() => p,
+        _ => {
+            print!("Password (min 6 chars): ");
+            let _ = io::stdout().flush();
+            let mut line = String::new();
+            io::stdin().read_line(&mut line).expect("read password");
+            line.trim().to_string()
+        }
+    };
+    if pw.len() < 6 {
+        ui::error("Password must be at least 6 characters");
+        std::process::exit(1);
+    }
+
+    let hash = openparlant_api::session_auth::hash_password(&pw);
+
+    let content = std::fs::read_to_string(&config_path).unwrap_or_else(|e| {
+        ui::error(&format!("Failed to read config: {e}"));
+        std::process::exit(1);
+    });
+
+    let mut table: toml::Value = toml::from_str(&content).unwrap_or_else(|e| {
+        ui::error(&format!("Config parse error: {e}"));
+        std::process::exit(1);
+    });
+
+    let root = table.as_table_mut().unwrap_or_else(|| {
+        ui::error("Config root is not a table");
+        std::process::exit(1);
+    });
+    let mut auth_table = toml::map::Map::new();
+    auth_table.insert("enabled".to_string(), toml::Value::Boolean(true));
+    auth_table.insert(
+        "username".to_string(),
+        toml::Value::String(username.clone()),
+    );
+    auth_table.insert(
+        "password_hash".to_string(),
+        toml::Value::String(hash),
+    );
+    auth_table.insert(
+        "session_ttl_hours".to_string(),
+        toml::Value::Integer(168),
+    );
+    root.insert(
+        "auth".to_string(),
+        toml::Value::Table(auth_table),
+    );
+
+    let serialized = toml::to_string_pretty(&table).unwrap_or_else(|e| {
+        ui::error(&format!("Failed to serialize config: {e}"));
+        std::process::exit(1);
+    });
+
+    let _ = std::fs::copy(&config_path, config_path.with_extension("toml.bak"));
+    std::fs::write(&config_path, serialized).unwrap_or_else(|e| {
+        ui::error(&format!("Failed to write config: {e}"));
+        std::process::exit(1);
+    });
+
+    ui::success("Updated [auth] in config.toml");
+    ui::kv("Config", &config_path.display().to_string());
+    ui::kv("Username", &username);
+    ui::blank();
+    ui::hint("Restart the daemon (`openparlant start`) so the platform admin is written to the database.");
+    ui::hint("Then sign in at the web UI with this username and password.");
+}
+
 fn cmd_start(config: Option<PathBuf>, yolo: bool) {
     if let Some(base) = find_daemon() {
         ui::error_with_fix(
@@ -1486,7 +1617,7 @@ fn cmd_start(config: Option<PathBuf>, yolo: bool) {
             kernel_config.approval.auto_approve = true;
             kernel_config.approval.apply_shorthands();
         }
-        let kernel = match OpenFangKernel::boot_with_config(kernel_config) {
+        let kernel = match SiliCrewKernel::boot_with_config(kernel_config) {
             Ok(k) => k,
             Err(e) => {
                 boot_kernel_error(&e);
@@ -3416,8 +3547,8 @@ fn require_daemon(command: &str) -> String {
     })
 }
 
-fn boot_kernel(config: Option<PathBuf>) -> OpenFangKernel {
-    match OpenFangKernel::boot(config.as_deref()) {
+fn boot_kernel(config: Option<PathBuf>) -> SiliCrewKernel {
+    match SiliCrewKernel::boot(config.as_deref()) {
         Ok(k) => k,
         Err(e) => {
             boot_kernel_error(&e);
