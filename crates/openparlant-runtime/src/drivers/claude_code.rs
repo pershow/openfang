@@ -74,7 +74,7 @@ impl ClaudeCodeDriver {
             warn!(
                 "Claude Code driver: --dangerously-skip-permissions enabled. \
                  The CLI will not prompt for tool approvals. \
-                 OpenParlant's own capability/RBAC system enforces access control."
+                 SiliCrew's own capability/RBAC system enforces access control."
             );
         }
 

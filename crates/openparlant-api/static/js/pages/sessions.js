@@ -1,4 +1,4 @@
-// OpenParlant Sessions Page — Session listing + Memory tab
+// SiliCrew Sessions Page — Session listing + Memory tab
 'use strict';
 
 function sessionsPage() {

@@ -34,7 +34,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: OpenParlant Version
+      label: SiliCrew Version
       description: Output of `silicrew -V`
       placeholder: "0.3.23"
     validations:

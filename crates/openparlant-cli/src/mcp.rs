@@ -1,4 +1,4 @@
-//! MCP (Model Context Protocol) server for OpenParlant.
+//! MCP (Model Context Protocol) server for SiliCrew.
 //!
 //! Exposes running agents as MCP tools over JSON-RPC 2.0 stdio.
 //! Each agent becomes a callable tool named `silicrew_agent_{name}`.
@@ -260,7 +260,7 @@ fn handle_message(backend: &McpBackend, msg: &Value) -> Option<Value> {
                 .map(|(_, name, description)| {
                     let tool_name = format!("silicrew_agent_{}", name.replace('-', "_"));
                     let desc = if description.is_empty() {
-                        format!("Send a message to OpenParlant agent '{name}'")
+                        format!("Send a message to SiliCrew agent '{name}'")
                     } else {
                         description.clone()
                     };

@@ -1,4 +1,4 @@
-//! OpenParlant CLI — command-line interface for the OpenParlant Agent OS.
+//! SiliCrew CLI — command-line interface for the SiliCrew Agent OS.
 //!
 //! When a daemon is running (`silicrew start`), the CLI talks to it over HTTP.
 //! Otherwise, commands boot an in-process kernel (single-shot mode).
@@ -73,7 +73,7 @@ const AFTER_HELP: &str = "\
   silicrew doctor               Run diagnostic health checks
   silicrew channel setup        Interactive channel setup wizard
   silicrew cron list            List scheduled jobs
-  silicrew uninstall            Completely remove OpenParlant from your system
+  silicrew uninstall            Completely remove SiliCrew from your system
 
 \x1b[1;36mQuick Start:\x1b[0m
   1. silicrew init              Set up config + API key
@@ -84,13 +84,13 @@ const AFTER_HELP: &str = "\
   Docs:       https://github.com/RightNow-AI/silicrew
   Dashboard:  http://127.0.0.1:4200/ (when daemon is running)";
 
-/// OpenParlant — the open-source Agent Operating System.
+/// SiliCrew — the open-source Agent Operating System.
 #[derive(Parser)]
 #[command(
     name = "silicrew",
     version,
-    about = "\u{1F40D} OpenParlant \u{2014} Open-source Agent Operating System",
-    long_about = "\u{1F40D} OpenParlant \u{2014} Open-source Agent Operating System\n\n\
+    about = "\u{1F40D} SiliCrew \u{2014} Open-source Agent Operating System",
+    long_about = "\u{1F40D} SiliCrew \u{2014} Open-source Agent Operating System\n\n\
                   Deploy, manage, and orchestrate AI agents from your terminal.\n\
                   40 channels \u{00b7} 60 skills \u{00b7} 50+ models \u{00b7} infinite possibilities.",
     after_help = AFTER_HELP,
@@ -106,13 +106,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize OpenParlant (create ~/.silicrew/ and default config).
+    /// Initialize SiliCrew (create ~/.silicrew/ and default config).
     Init {
         /// Quick mode: no prompts, just write config + .env (for CI/scripts).
         #[arg(long)]
         quick: bool,
     },
-    /// Start the OpenParlant kernel daemon (API server + kernel).
+    /// Start the SiliCrew kernel daemon (API server + kernel).
     Start {
         /// Auto-approve all tool calls (no confirmation prompts).
         #[arg(long)]
@@ -129,7 +129,7 @@ enum Commands {
     /// Manage event triggers (list, create, delete) [*].
     #[command(subcommand)]
     Trigger(TriggerCommands),
-    /// Migrate from another agent framework to OpenParlant.
+    /// Migrate from another agent framework to SiliCrew.
     Migrate(MigrateArgs),
     /// Manage skills (install, list, search, create, remove) [*].
     #[command(subcommand)]
@@ -225,7 +225,7 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
-    /// Tail the OpenParlant log file.
+    /// Tail the SiliCrew log file.
     Logs {
         /// Number of lines to show.
         #[arg(long, default_value = "50")]
@@ -287,7 +287,7 @@ enum Commands {
         #[arg(long)]
         confirm: bool,
     },
-    /// Completely uninstall OpenParlant from your system.
+    /// Completely uninstall SiliCrew from your system.
     Uninstall {
         /// Skip confirmation prompt (also --yes).
         #[arg(long, alias = "yes")]
@@ -854,7 +854,7 @@ fn init_tracing_stderr() {
         .init();
 }
 
-/// Get the OpenParlant home directory, respecting OPENFANG_HOME env var.
+/// Get the SiliCrew home directory, respecting OPENFANG_HOME env var.
 fn cli_silicrew_home() -> std::path::PathBuf {
     if let Ok(home) = std::env::var("OPENFANG_HOME") {
         return std::path::PathBuf::from(home);
@@ -1278,7 +1278,7 @@ fn cmd_init_quick(silicrew_dir: &std::path::Path) {
     write_config_if_missing(silicrew_dir, provider, model, api_key_env);
 
     ui::blank();
-    ui::success("OpenParlant initialized (quick mode)");
+    ui::success("SiliCrew initialized (quick mode)");
     ui::kv("Provider", provider);
     ui::kv("Model", model);
     ui::blank();
@@ -1301,7 +1301,7 @@ fn cmd_init_interactive(silicrew_dir: &std::path::Path) {
         } => {
             // Print summary after TUI restores terminal
             ui::blank();
-            ui::success("OpenParlant initialized!");
+            ui::success("SiliCrew initialized!");
             ui::kv("Provider", &provider);
             ui::kv("Model", &model);
 
@@ -1360,7 +1360,7 @@ fn launch_desktop_app(_silicrew_dir: &std::path::Path) {
 
     match desktop_bin {
         Some(ref path) if path.exists() => {
-            ui::success("Launching OpenParlant Desktop...");
+            ui::success("Launching SiliCrew Desktop...");
             match std::process::Command::new(path)
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
@@ -1469,7 +1469,7 @@ fn write_config_if_missing(
         ui::check_ok(&format!("Config already exists: {}", config_path.display()));
     } else {
         let default_config = format!(
-            r#"# OpenParlant Agent OS configuration
+            r#"# SiliCrew Agent OS configuration
 # See https://github.com/RightNow-AI/silicrew for documentation
 
 # For Docker, change to "0.0.0.0:4200" or set OPENFANG_LISTEN env var.
@@ -1661,7 +1661,7 @@ fn cmd_start(config: Option<PathBuf>, yolo: bool) {
         }
 
         ui::blank();
-        println!("  OpenParlant daemon stopped.");
+        println!("  SiliCrew daemon stopped.");
     });
 }
 
@@ -1759,7 +1759,7 @@ fn boot_kernel_error(e: &silicrew_kernel::error::KernelError) {
     } else if msg.contains("database") || msg.contains("locked") || msg.contains("sqlite") {
         ui::error_with_fix(
             "Database error (file may be locked)",
-            "Check if another OpenParlant process is running: silicrew status",
+            "Check if another SiliCrew process is running: silicrew status",
         );
     } else if msg.contains("key") || msg.contains("API") || msg.contains("auth") {
         ui::error_with_fix(
@@ -2099,7 +2099,7 @@ fn cmd_status(config: Option<PathBuf>, json: bool) {
             return;
         }
 
-        ui::section("OpenParlant Daemon Status");
+        ui::section("SiliCrew Daemon Status");
         ui::blank();
         ui::kv_ok("Status", body["status"].as_str().unwrap_or("?"));
         ui::kv(
@@ -2152,7 +2152,7 @@ fn cmd_status(config: Option<PathBuf>, json: bool) {
             return;
         }
 
-        ui::section("OpenParlant Status (in-process)");
+        ui::section("SiliCrew Status (in-process)");
         ui::blank();
         ui::kv("Agents", &agent_count.to_string());
         ui::kv("Provider", &kernel.config.default_model.provider);
@@ -2178,7 +2178,7 @@ fn cmd_doctor(json: bool, repair: bool) {
     let mut repaired = false;
 
     if !json {
-        ui::step("OpenParlant Doctor");
+        ui::step("SiliCrew Doctor");
         println!();
     }
 
@@ -2186,18 +2186,18 @@ fn cmd_doctor(json: bool, repair: bool) {
     if let Some(_h) = &home {
         let silicrew_dir = cli_silicrew_home();
 
-        // --- Check 1: OpenParlant directory ---
+        // --- Check 1: SiliCrew directory ---
         if silicrew_dir.exists() {
             if !json {
                 ui::check_ok(&format!(
-                    "OpenParlant directory: {}",
+                    "SiliCrew directory: {}",
                     silicrew_dir.display()
                 ));
             }
             checks.push(serde_json::json!({"check": "silicrew_dir", "status": "ok", "path": silicrew_dir.display().to_string()}));
         } else if repair {
             if !json {
-                ui::check_fail("OpenParlant directory not found.");
+                ui::check_fail("SiliCrew directory not found.");
             }
             let answer = prompt_input("    Create it now? [Y/n] ");
             if answer.is_empty() || answer.starts_with('y') || answer.starts_with('Y') {
@@ -2207,7 +2207,7 @@ fn cmd_doctor(json: bool, repair: bool) {
                         let _ = std::fs::create_dir_all(silicrew_dir.join(sub));
                     }
                     if !json {
-                        ui::check_ok("Created OpenParlant directory");
+                        ui::check_ok("Created SiliCrew directory");
                     }
                     repaired = true;
                 } else {
@@ -2222,7 +2222,7 @@ fn cmd_doctor(json: bool, repair: bool) {
             checks.push(serde_json::json!({"check": "silicrew_dir", "status": if repaired { "repaired" } else { "fail" }}));
         } else {
             if !json {
-                ui::check_fail("OpenParlant directory not found. Run `silicrew init` first.");
+                ui::check_fail("SiliCrew directory not found. Run `silicrew init` first.");
             }
             checks.push(serde_json::json!({"check": "silicrew_dir", "status": "fail"}));
             all_ok = false;
@@ -2307,7 +2307,7 @@ fn cmd_doctor(json: bool, repair: bool) {
             if answer.is_empty() || answer.starts_with('y') || answer.starts_with('Y') {
                 let (provider, api_key_env, model) = detect_best_provider();
                 let default_config = format!(
-                    r#"# OpenParlant Agent OS configuration
+                    r#"# SiliCrew Agent OS configuration
 # See https://github.com/RightNow-AI/silicrew for documentation
 
 # For Docker, change to "0.0.0.0:4200" or set OPENFANG_LISTEN env var.
@@ -3079,7 +3079,7 @@ decay_rate = 0.05
     } else {
         println!();
         if all_ok {
-            ui::success("All checks passed! OpenParlant is ready.");
+            ui::success("All checks passed! SiliCrew is ready.");
             ui::hint("Start the daemon: silicrew start");
         } else if repaired {
             ui::success("Repairs applied. Re-run `silicrew doctor` to verify.");
@@ -3814,7 +3814,7 @@ capabilities = []
     let entry_content = match runtime.as_str() {
         "python" => format!(
             r#"#!/usr/bin/env python3
-"""OpenParlant skill: {name}"""
+"""SiliCrew skill: {name}"""
 import json
 import sys
 
@@ -6264,7 +6264,7 @@ fn cmd_devices_pair() {
         ui::section("Device Pairing");
         ui::blank();
         // Render a simple text-based QR representation
-        println!("  Scan this QR code with the OpenParlant mobile app:");
+        println!("  Scan this QR code with the SiliCrew mobile app:");
         ui::blank();
         println!("  {qr}");
         ui::blank();
@@ -6430,7 +6430,7 @@ fn cmd_system_info(json: bool) {
             );
             return;
         }
-        ui::section("OpenParlant System Info");
+        ui::section("SiliCrew System Info");
         ui::blank();
         ui::kv("Version", env!("CARGO_PKG_VERSION"));
         ui::kv("Status", body["status"].as_str().unwrap_or("?"));
@@ -6457,7 +6457,7 @@ fn cmd_system_info(json: bool) {
             );
             return;
         }
-        ui::section("OpenParlant System Info");
+        ui::section("SiliCrew System Info");
         ui::blank();
         ui::kv("Version", env!("CARGO_PKG_VERSION"));
         ui::kv_warn("Daemon", "NOT RUNNING");
@@ -6525,7 +6525,7 @@ fn cmd_uninstall(confirm: bool, keep_config: bool) {
     println!();
     println!(
         "  {}",
-        "This will completely uninstall OpenParlant from your system."
+        "This will completely uninstall SiliCrew from your system."
             .bold()
             .red()
     );
@@ -6626,7 +6626,7 @@ fn cmd_uninstall(confirm: bool, keep_config: bool) {
     }
 
     println!();
-    ui::success("OpenParlant has been uninstalled. Goodbye!");
+    ui::success("SiliCrew has been uninstalled. Goodbye!");
 }
 
 /// Remove auto-start / launch-agent / systemd entries.
@@ -6640,7 +6640,7 @@ fn remove_autostart_entries(home: &std::path::Path) {
                 "delete",
                 r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
                 "/v",
-                "OpenParlant",
+                "SiliCrew",
                 "/f",
             ])
             .output();
@@ -6669,7 +6669,7 @@ fn remove_autostart_entries(home: &std::path::Path) {
 
     #[cfg(target_os = "linux")]
     {
-        let desktop_file = home.join(".config/autostart/OpenParlant.desktop");
+        let desktop_file = home.join(".config/autostart/SiliCrew.desktop");
         if desktop_file.exists() {
             match std::fs::remove_file(&desktop_file) {
                 Ok(()) => ui::success("Removed Linux autostart entry"),

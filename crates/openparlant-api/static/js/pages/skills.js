@@ -1,4 +1,4 @@
-// OpenParlant Skills Page — OpenClaw/ClawHub ecosystem + local skills + MCP servers
+// SiliCrew Skills Page — OpenClaw/ClawHub ecosystem + local skills + MCP servers
 'use strict';
 
 function skillsPage() {

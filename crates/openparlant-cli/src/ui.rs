@@ -42,12 +42,12 @@ pub fn error(msg: &str) {
 // New themed output helpers
 // ---------------------------------------------------------------------------
 
-/// Brand banner: ">> OpenParlant Agent OS"
+/// Brand banner: ">> SiliCrew Agent OS"
 pub fn banner() {
     println!(
         "  {} {}",
         ">>".bright_cyan().bold(),
-        "OpenParlant Agent OS".bold()
+        "SiliCrew Agent OS".bold()
     );
     println!("     {}", "The open-source agent operating system".dimmed());
 }

@@ -59,7 +59,7 @@ impl QwenCodeDriver {
             warn!(
                 "Qwen Code driver: --yolo enabled. \
                  The CLI will not prompt for tool approvals. \
-                 OpenParlant's own capability/RBAC system enforces access control."
+                 SiliCrew's own capability/RBAC system enforces access control."
             );
         }
 

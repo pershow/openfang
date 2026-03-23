@@ -1,6 +1,6 @@
 //! MCP (Model Context Protocol) client — connect to external MCP servers.
 //!
-//! MCP uses JSON-RPC 2.0 over stdio or HTTP+SSE. This module lets OpenParlant
+//! MCP uses JSON-RPC 2.0 over stdio or HTTP+SSE. This module lets SiliCrew
 //! agents use tools from any MCP server (100+ available: GitHub, filesystem,
 //! databases, APIs, etc.).
 //!

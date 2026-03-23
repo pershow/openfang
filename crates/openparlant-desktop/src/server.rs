@@ -1,6 +1,6 @@
 //! Kernel lifecycle management for the desktop app.
 //!
-//! Boots the OpenParlant kernel, binds to a random localhost port, and runs the
+//! Boots the SiliCrew kernel, binds to a random localhost port, and runs the
 //! API server on a background thread with its own tokio runtime.
 
 use silicrew_api::server::build_router;
@@ -39,7 +39,7 @@ impl ServerHandle {
                 let _ = handle.join();
             }
             self.kernel.shutdown();
-            info!("OpenParlant embedded server stopped");
+            info!("SiliCrew embedded server stopped");
         }
     }
 }
@@ -79,7 +79,7 @@ pub fn start_server() -> Result<ServerHandle, Box<dyn std::error::Error>> {
     let port = std_listener.local_addr()?.port();
     let listen_addr: SocketAddr = std_listener.local_addr()?;
 
-    info!("OpenParlant embedded server bound to http://127.0.0.1:{port}");
+    info!("SiliCrew embedded server bound to http://127.0.0.1:{port}");
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let kernel_clone = kernel.clone();
@@ -127,7 +127,7 @@ async fn run_embedded_server(
     let listener = tokio::net::TcpListener::from_std(std_listener)
         .expect("Failed to convert std TcpListener to tokio");
 
-    info!("OpenParlant embedded server listening on http://{listen_addr}");
+    info!("SiliCrew embedded server listening on http://{listen_addr}");
 
     let server = axum::serve(
         listener,

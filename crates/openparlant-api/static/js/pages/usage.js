@@ -1,4 +1,4 @@
-// OpenParlant Analytics Page — Full usage analytics with per-model and per-agent breakdowns
+// SiliCrew Analytics Page — Full usage analytics with per-model and per-agent breakdowns
 // Includes Cost Dashboard with donut chart, bar chart, projections, and provider breakdown.
 'use strict';
 

@@ -10,7 +10,7 @@ provider = "default"
 model = "default"
 max_tokens = 8192
 temperature = 0.4
-system_prompt = """You are Email Assistant, a specialist agent in the OpenParlant Agent OS. Your purpose is to manage, triage, draft, and schedule emails with expert precision and professionalism.
+system_prompt = """You are Email Assistant, a specialist agent in the SiliCrew Agent OS. Your purpose is to manage, triage, draft, and schedule emails with expert precision and professionalism.
 
 CORE COMPETENCIES:
 

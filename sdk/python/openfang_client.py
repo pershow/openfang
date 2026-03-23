@@ -1,11 +1,11 @@
 """
-OpenParlant Python Client — REST API client for controlling OpenParlant remotely.
+SiliCrew Python Client — REST API client for controlling SiliCrew remotely.
 
 Usage:
 
-    from silicrew_client import OpenParlant
+    from silicrew_client import SiliCrew
 
-    client = OpenParlant("http://localhost:3000")
+    client = SiliCrew("http://localhost:3000")
 
     # Create an agent
     agent = client.agents.create(template="assistant")
@@ -21,7 +21,7 @@ Usage:
             print(event["delta"], end="", flush=True)
 
 Note: This is the REST API *client* library.
-      For writing Python agents that run inside OpenParlant, see silicrew_sdk.py instead.
+      For writing Python agents that run inside SiliCrew, see silicrew_sdk.py instead.
 """
 
 import json
@@ -39,12 +39,12 @@ class SiliCrewError(Exception):
 
 
 class _Resource:
-    def __init__(self, client: "OpenParlant"):
+    def __init__(self, client: "SiliCrew"):
         self._c = client
 
 
-class OpenParlant:
-    """OpenParlant REST API client. Zero dependencies — uses only stdlib urllib."""
+class SiliCrew:
+    """SiliCrew REST API client. Zero dependencies — uses only stdlib urllib."""
 
     def __init__(self, base_url: str, headers: Optional[Dict[str, str]] = None):
         self.base_url = base_url.rstrip("/")

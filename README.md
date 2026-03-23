@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="public/assets/silicrew-logo.png" width="160" alt="OpenParlant Logo" />
+  <img src="public/assets/silicrew-logo.png" width="160" alt="SiliCrew Logo" />
 </p>
 
-<h1 align="center">OpenParlant</h1>
+<h1 align="center">SiliCrew</h1>
 <h3 align="center">The Agent Operating System</h3>
 
 <p align="center">
@@ -29,15 +29,15 @@
 
 > **v0.3.30 — Security Hardening Release (March 2026)**
 >
-> OpenParlant is feature-complete but still pre-1.0. You may encounter rough edges or breaking changes between minor versions. We ship fast and fix fast. Pin to a specific commit for production use until v1.0. [Report issues here.](https://github.com/RightNow-AI/silicrew/issues)
+> SiliCrew is feature-complete but still pre-1.0. You may encounter rough edges or breaking changes between minor versions. We ship fast and fix fast. Pin to a specific commit for production use until v1.0. [Report issues here.](https://github.com/RightNow-AI/silicrew/issues)
 
 ---
 
-## What is OpenParlant?
+## What is SiliCrew?
 
-OpenParlant is an **open-source Agent Operating System** — not a chatbot framework, not a Python wrapper around an LLM, not a "multi-agent orchestrator." It is a full operating system for autonomous agents, built from scratch in Rust.
+SiliCrew is an **open-source Agent Operating System** — not a chatbot framework, not a Python wrapper around an LLM, not a "multi-agent orchestrator." It is a full operating system for autonomous agents, built from scratch in Rust.
 
-Traditional agent frameworks wait for you to type something. OpenParlant runs **autonomous agents that work for you** — on schedules, 24/7, building knowledge graphs, monitoring targets, generating leads, managing your social media, and reporting results to your dashboard.
+Traditional agent frameworks wait for you to type something. SiliCrew runs **autonomous agents that work for you** — on schedules, 24/7, building knowledge graphs, monitoring targets, generating leads, managing your social media, and reporting results to your dashboard.
 
 The entire system compiles to a **single ~32MB binary**. One install, one command, your agents are live.
 
@@ -65,7 +65,7 @@ silicrew start
 
 <p align="center"><em>"Traditional agents wait for you to type. Hands work <strong>for</strong> you."</em></p>
 
-**Hands** are OpenParlant's core innovation — pre-built autonomous capability packages that run independently, on schedules, without you having to prompt them. This is not a chatbot. This is an agent that wakes up at 6 AM, researches your competitors, builds a knowledge graph, scores the findings, and delivers a report to your Telegram before you've had coffee.
+**Hands** are SiliCrew's core innovation — pre-built autonomous capability packages that run independently, on schedules, without you having to prompt them. This is not a chatbot. This is an agent that wakes up at 6 AM, researches your competitors, builds a knowledge graph, scores the findings, and delivers a report to your Telegram before you've had coffee.
 
 Each Hand bundles:
 - **HAND.toml** — Manifest declaring tools, settings, requirements, and dashboard metrics
@@ -108,10 +108,10 @@ silicrew hand list
 
 ---
 
-## OpenParlant vs The Landscape
+## SiliCrew vs The Landscape
 
 <p align="center">
-  <img src="public/assets/silicrew-vs-claws.png" width="600" alt="OpenParlant vs OpenClaw vs ZeroClaw" />
+  <img src="public/assets/silicrew-vs-claws.png" width="600" alt="SiliCrew vs OpenClaw vs ZeroClaw" />
 </p>
 
 ### Benchmarks: Measured, Not Marketed
@@ -122,7 +122,7 @@ All data from official documentation and public repositories — February 2026.
 
 ```
 ZeroClaw   ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   10 ms
-OpenParlant   ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  180 ms    ★
+SiliCrew   ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  180 ms    ★
 LangGraph  █████████████████░░░░░░░░░░░░░░░░░░░░░░░░░  2.5 sec
 CrewAI     ████████████████████░░░░░░░░░░░░░░░░░░░░░░  3.0 sec
 AutoGen    ██████████████████████████░░░░░░░░░░░░░░░░░  4.0 sec
@@ -133,7 +133,7 @@ OpenClaw   ███████████████████████
 
 ```
 ZeroClaw   █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░    5 MB
-OpenParlant   ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   40 MB    ★
+SiliCrew   ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   40 MB    ★
 LangGraph  ██████████████████░░░░░░░░░░░░░░░░░░░░░░░░░  180 MB
 CrewAI     ████████████████████░░░░░░░░░░░░░░░░░░░░░░░  200 MB
 AutoGen    █████████████████████████░░░░░░░░░░░░░░░░░░  250 MB
@@ -144,7 +144,7 @@ OpenClaw   ███████████████████████
 
 ```
 ZeroClaw   █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  8.8 MB
-OpenParlant   ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   32 MB    ★
+SiliCrew   ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   32 MB    ★
 CrewAI     ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  100 MB
 LangGraph  ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  150 MB
 AutoGen    ████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░  200 MB
@@ -154,7 +154,7 @@ OpenClaw   ███████████████████████
 #### Security Systems (higher is better)
 
 ```
-OpenParlant   ████████████████████████████████████████████   16      ★
+SiliCrew   ████████████████████████████████████████████   16      ★
 ZeroClaw   ███████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░    6
 OpenClaw   ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░    3
 AutoGen    █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░    2
@@ -165,7 +165,7 @@ CrewAI     ███░░░░░░░░░░░░░░░░░░░░
 #### Channel Adapters (higher is better)
 
 ```
-OpenParlant   ████████████████████████████████████████████   40      ★
+SiliCrew   ████████████████████████████████████████████   40      ★
 ZeroClaw   ███████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░   15
 OpenClaw   █████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   13
 CrewAI     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░    0
@@ -177,7 +177,7 @@ LangGraph  ░░░░░░░░░░░░░░░░░░░░░░░
 
 ```
 ZeroClaw   ████████████████████████████████████████████   28
-OpenParlant   ██████████████████████████████████████████░░   27      ★
+SiliCrew   ██████████████████████████████████████████░░   27      ★
 LangGraph  ██████████████████████░░░░░░░░░░░░░░░░░░░░░   15
 CrewAI     ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   10
 OpenClaw   ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   10
@@ -186,7 +186,7 @@ AutoGen    ███████████░░░░░░░░░░░░
 
 ### Feature-by-Feature Comparison
 
-| Feature | OpenParlant | OpenClaw | ZeroClaw | CrewAI | AutoGen | LangGraph |
+| Feature | SiliCrew | OpenClaw | ZeroClaw | CrewAI | AutoGen | LangGraph |
 |---------|----------|----------|----------|--------|---------|-----------|
 | **Language** | **Rust** | TypeScript | **Rust** | Python | Python | Python |
 | **Autonomous Hands** | **7 built-in** | None | None | None | None | None |
@@ -205,7 +205,7 @@ AutoGen    ███████████░░░░░░░░░░░░
 
 ## 16 Security Systems — Defense in Depth
 
-OpenParlant doesn't bolt security on after the fact. Every layer is independently testable and operates without a single point of failure.
+SiliCrew doesn't bolt security on after the fact. Every layer is independently testable and operates without a single point of failure.
 
 | # | System | What It Does |
 |---|--------|-------------|
@@ -268,12 +268,12 @@ Each adapter supports per-channel model overrides, DM/group policies, rate limit
 
 ## WhatsApp Web Gateway (QR Code)
 
-Connect your personal WhatsApp account to OpenParlant via QR code — just like WhatsApp Web. No Meta Business account required.
+Connect your personal WhatsApp account to SiliCrew via QR code — just like WhatsApp Web. No Meta Business account required.
 
 ### Prerequisites
 
 - **Node.js >= 18** installed ([download](https://nodejs.org/))
-- OpenParlant installed and initialized
+- SiliCrew installed and initialized
 
 ### Setup
 
@@ -316,7 +316,7 @@ node packages/whatsapp-gateway/index.js
 
 The gateway listens on port `3009` by default. Override with `WHATSAPP_GATEWAY_PORT`.
 
-**5. Start OpenParlant:**
+**5. Start SiliCrew:**
 
 ```bash
 silicrew start
@@ -335,9 +335,9 @@ Once scanned, the status changes to `connected` and incoming messages are routed
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `WHATSAPP_WEB_GATEWAY_URL` | Gateway URL for OpenParlant to connect to | _(empty = disabled)_ |
+| `WHATSAPP_WEB_GATEWAY_URL` | Gateway URL for SiliCrew to connect to | _(empty = disabled)_ |
 | `WHATSAPP_GATEWAY_PORT` | Port the gateway listens on | `3009` |
-| `OPENFANG_URL` | OpenParlant API URL the gateway reports to | `http://127.0.0.1:4200` |
+| `OPENFANG_URL` | SiliCrew API URL the gateway reports to | `http://127.0.0.1:4200` |
 | `OPENFANG_DEFAULT_AGENT` | Agent that handles incoming messages | `assistant` |
 
 ### Gateway API Endpoints
@@ -382,13 +382,13 @@ silicrew migrate --from openclaw --path ~/.openclaw
 silicrew migrate --from openclaw --dry-run
 ```
 
-The migration engine imports your agents, conversation history, skills, and configuration. OpenParlant reads SKILL.md natively and is compatible with the ClawHub marketplace.
+The migration engine imports your agents, conversation history, skills, and configuration. SiliCrew reads SKILL.md natively and is compatible with the ClawHub marketplace.
 
 ---
 
 ## OpenAI-Compatible API
 
-Drop-in replacement. Point your existing tools at OpenParlant:
+Drop-in replacement. Point your existing tools at SiliCrew:
 
 ```bash
 curl -X POST localhost:4200/v1/chat/completions \
@@ -462,7 +462,7 @@ cargo fmt --all -- --check
 
 ## Stability Notice
 
-OpenParlant v0.3.30 is pre-1.0. The architecture is solid, the test suite is comprehensive, and the security model is comprehensive. That said:
+SiliCrew v0.3.30 is pre-1.0. The architecture is solid, the test suite is comprehensive, and the security model is comprehensive. That said:
 
 - **Breaking changes** may occur between minor versions until v1.0
 - **Some Hands** are more mature than others (Browser and Researcher are the most battle-tested)
@@ -504,7 +504,7 @@ MIT — use it however you want.
 </p>
 
 <p align="center">
-  OpenParlant is built and maintained by <a href="https://x.com/Akashi203"><strong>Jaber</strong></a>, Founder of <a href="https://www.rightnowai.co/"><strong>RightNow</strong></a>.
+  SiliCrew is built and maintained by <a href="https://x.com/Akashi203"><strong>Jaber</strong></a>, Founder of <a href="https://www.rightnowai.co/"><strong>RightNow</strong></a>.
 </p>
 
 <p align="center">

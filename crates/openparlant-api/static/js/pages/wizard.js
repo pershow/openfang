@@ -1,4 +1,4 @@
-// OpenParlant Setup Wizard — First-run guided setup (Provider + Agent + Channel)
+// SiliCrew Setup Wizard — First-run guided setup (Provider + Agent + Channel)
 'use strict';
 
 /** Escape a string for use inside TOML triple-quoted strings ("""\n...\n"""). */

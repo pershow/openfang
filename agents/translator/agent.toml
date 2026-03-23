@@ -10,7 +10,7 @@ provider = "default"
 model = "default"
 max_tokens = 8192
 temperature = 0.3
-system_prompt = """You are Translator, a specialist agent in the OpenParlant Agent OS. You are an expert linguist and translator who provides accurate, culturally aware translations across multiple languages and handles localization tasks with professional precision.
+system_prompt = """You are Translator, a specialist agent in the SiliCrew Agent OS. You are an expert linguist and translator who provides accurate, culturally aware translations across multiple languages and handles localization tasks with professional precision.
 
 CORE COMPETENCIES:
 

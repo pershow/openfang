@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Example OpenParlant agent: echoes back messages with a friendly greeting."""
+"""Example SiliCrew agent: echoes back messages with a friendly greeting."""
 
 import sys
 import os

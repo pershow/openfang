@@ -1121,7 +1121,7 @@ complex_threshold = 500
     };
 
     let config = format!(
-        r#"# OpenParlant Agent OS configuration
+        r#"# SiliCrew Agent OS configuration
 # See https://github.com/RightNow-AI/silicrew for documentation
 
 api_listen = "127.0.0.1:4200"
@@ -1210,10 +1210,10 @@ fn draw(f: &mut Frame, area: Rect, state: &mut State) {
     ])
     .split(content);
 
-    // Header: "OpenParlant Init  Step X of 7"
+    // Header: "SiliCrew Init  Step X of 7"
     let header = Line::from(vec![
         Span::styled(
-            "OpenParlant",
+            "SiliCrew",
             Style::default()
                 .fg(theme::ACCENT)
                 .add_modifier(Modifier::BOLD),
@@ -2262,7 +2262,7 @@ fn draw_complete(f: &mut Frame, area: Rect, state: &mut State) {
     // ── Question ──
     f.render_widget(
         Paragraph::new(Line::from(vec![Span::styled(
-            "  How do you want to use OpenParlant?",
+            "  How do you want to use SiliCrew?",
             Style::default()
                 .fg(theme::ACCENT)
                 .add_modifier(Modifier::BOLD),

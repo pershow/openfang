@@ -5,10 +5,10 @@
  *   node basic.js
  */
 
-const { OpenParlant } = require("../index");
+const { SiliCrew } = require("../index");
 
 async function main() {
-  const client = new OpenParlant("http://localhost:3000");
+  const client = new SiliCrew("http://localhost:3000");
 
   // Check server health
   const health = await client.health();

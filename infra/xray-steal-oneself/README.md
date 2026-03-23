@@ -7,4 +7,4 @@
 - **Agent 说明**：`docs/agent-vless-reality-steal-oneself.md`
 - **Clash Meta 示例**：`docs/examples/clash-meta-vless-reality.yaml.example`
 
-与 OpenParlant 控制面（`compile_turn`、scope 等）相互独立；仅在需要自建 VLESS+REALITY 出口时使用。
+与 SiliCrew 控制面（`compile_turn`、scope 等）相互独立；仅在需要自建 VLESS+REALITY 出口时使用。

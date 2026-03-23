@@ -1,6 +1,6 @@
 # Troubleshooting & FAQ
 
-Common issues, diagnostics, and answers to frequently asked questions about OpenParlant.
+Common issues, diagnostics, and answers to frequently asked questions about SiliCrew.
 
 ## Table of Contents
 
@@ -48,12 +48,12 @@ curl http://127.0.0.1:4200/api/health/detail  # Requires auth
 
 ### View Logs
 
-OpenParlant uses `tracing` for structured logging. Set the log level via environment:
+SiliCrew uses `tracing` for structured logging. Set the log level via environment:
 
 ```bash
 RUST_LOG=info silicrew start          # Default
 RUST_LOG=debug silicrew start         # Verbose
-RUST_LOG=silicrew=debug silicrew start  # Only OpenParlant debug, deps at info
+RUST_LOG=silicrew=debug silicrew start  # Only SiliCrew debug, deps at info
 ```
 
 ---
@@ -283,7 +283,7 @@ RUST_LOG=silicrew_channels=debug silicrew start
 
 **Cause**: The agent is repeatedly calling the same tool with the same parameters.
 
-**Automatic protection**: OpenParlant has a built-in loop guard:
+**Automatic protection**: SiliCrew has a built-in loop guard:
 - **Warn** at 3 identical tool calls
 - **Block** at 5 identical tool calls
 - **Circuit breaker** at 30 total blocked calls (stops the agent)
@@ -463,7 +463,7 @@ Yes. Each agent can use a different provider via its manifest `[model]` section.
 2. Set the required environment variables (tokens, secrets)
 3. Restart the daemon
 
-### How do I update OpenParlant?
+### How do I update SiliCrew?
 
 ```bash
 # From source
@@ -495,7 +495,7 @@ rm -rf ~/.silicrew
 silicrew init  # Start fresh
 ```
 
-### Can I run OpenParlant without an internet connection?
+### Can I run SiliCrew without an internet connection?
 
 Yes, if you use a local LLM provider:
 - **Ollama**: `ollama serve` + `ollama pull llama3.2`
@@ -509,9 +509,9 @@ provider = "ollama"
 model = "llama3.2"
 ```
 
-### What's the difference between OpenParlant and OpenClaw?
+### What's the difference between SiliCrew and OpenClaw?
 
-| Aspect | OpenParlant | OpenClaw |
+| Aspect | SiliCrew | OpenClaw |
 |--------|----------|----------|
 | Language | Rust | Python |
 | Channels | 40 | 38 |
@@ -521,7 +521,7 @@ model = "llama3.2"
 | Binary size | ~30 MB | ~200 MB |
 | Startup | <200 ms | ~3 s |
 
-OpenParlant can import OpenClaw configs: `silicrew migrate --from openclaw`
+SiliCrew can import OpenClaw configs: `silicrew migrate --from openclaw`
 
 ### How do I report a bug or request a feature?
 
@@ -545,7 +545,7 @@ OpenParlant can import OpenClaw configs: `silicrew migrate --from openclaw`
 RUST_LOG=silicrew_runtime=debug,silicrew_channels=info silicrew start
 ```
 
-### Can I use OpenParlant as a library?
+### Can I use SiliCrew as a library?
 
 Yes. Each crate is independently usable:
 ```toml
@@ -560,7 +560,7 @@ The `silicrew-kernel` crate assembles everything, but you can use individual cra
 
 ## Common Community Questions
 
-### How do I update OpenParlant?
+### How do I update SiliCrew?
 
 Re-run the install script to get the latest release:
 ```bash
@@ -572,7 +572,7 @@ git pull origin main
 cargo build --release -p silicrew-cli
 ```
 
-### How do I run OpenParlant in Docker?
+### How do I run SiliCrew in Docker?
 
 ```bash
 docker run -d --name silicrew \
@@ -583,7 +583,7 @@ docker run -d --name silicrew \
 
 ### How do I protect the dashboard with a password?
 
-OpenParlant doesn't have built-in login. Use a reverse proxy with basic auth:
+SiliCrew doesn't have built-in login. Use a reverse proxy with basic auth:
 
 **Caddy example:**
 ```
@@ -644,7 +644,7 @@ api_key_env = "MOONSHOT_API_KEY"
 
 ### Can I use multiple Telegram bots?
 
-Not yet — each channel type currently supports one bot. Multi-bot routing is tracked as a feature request (#586). As a workaround, run multiple OpenParlant instances on different ports with different configs.
+Not yet — each channel type currently supports one bot. Multi-bot routing is tracked as a feature request (#586). As a workaround, run multiple SiliCrew instances on different ports with different configs.
 
 ### Claude Code integration shows errors
 

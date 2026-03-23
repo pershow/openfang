@@ -1,4 +1,4 @@
-//! Cron/scheduled job types for the OpenParlant scheduler.
+//! Cron/scheduled job types for the SiliCrew scheduler.
 //!
 //! Defines the core types for recurring and one-shot scheduled jobs that can
 //! trigger agent turns, system events, or webhook deliveries.

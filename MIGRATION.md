@@ -1,6 +1,6 @@
-# Migrating to OpenParlant
+# Migrating to SiliCrew
 
-This guide covers migrating from OpenClaw (and other frameworks) to OpenParlant. The migration engine handles config conversion, agent import, memory transfer, channel re-configuration, and skill scanning.
+This guide covers migrating from OpenClaw (and other frameworks) to SiliCrew. The migration engine handles config conversion, agent import, memory transfer, channel re-configuration, and skill scanning.
 
 ## Table of Contents
 
@@ -51,7 +51,7 @@ silicrew migrate --from autogpt     # Coming soon
 
 ## What Gets Migrated
 
-| Item | Source (OpenClaw) | Destination (OpenParlant) | Status |
+| Item | Source (OpenClaw) | Destination (SiliCrew) | Status |
 |------|-------------------|------------------------|--------|
 | **Config** | `~/.openclaw/config.yaml` | `~/.silicrew/config.toml` | Fully automated |
 | **Agents** | `~/.openclaw/agents/*/agent.yaml` | `~/.silicrew/agents/*/agent.toml` | Fully automated |
@@ -73,7 +73,7 @@ OpenClaw skills (Node.js) are detected and listed in the migration report but no
 silicrew skill install <skill-name-or-path>
 ```
 
-OpenParlant automatically detects OpenClaw-format skills and converts them during installation.
+SiliCrew automatically detects OpenClaw-format skills and converts them during installation.
 
 ---
 
@@ -81,7 +81,7 @@ OpenParlant automatically detects OpenClaw-format skills and converts them durin
 
 If you prefer migrating by hand (or need to handle edge cases), follow these steps:
 
-### 1. Initialize OpenParlant
+### 1. Initialize SiliCrew
 
 ```bash
 silicrew init
@@ -103,7 +103,7 @@ memory:
   decay_rate: 0.05
 ```
 
-**OpenParlant** (`~/.silicrew/config.toml`):
+**SiliCrew** (`~/.silicrew/config.toml`):
 ```toml
 [default_model]
 provider = "anthropic"
@@ -136,7 +136,7 @@ tags:
   - dev
 ```
 
-**OpenParlant** (`~/.silicrew/agents/coder/agent.toml`):
+**SiliCrew** (`~/.silicrew/agents/coder/agent.toml`):
 ```toml
 name = "coder"
 version = "0.1.0"
@@ -166,7 +166,7 @@ allowed_users:
   - "123456789"
 ```
 
-**OpenParlant** (add to `~/.silicrew/config.toml`):
+**SiliCrew** (add to `~/.silicrew/config.toml`):
 ```toml
 [channels.telegram]
 bot_token_env = "TELEGRAM_BOT_TOKEN"
@@ -176,7 +176,7 @@ allowed_users = ["123456789"]
 
 ### 5. Import Memory
 
-Copy any `MEMORY.md` files from OpenClaw agents to OpenParlant agent directories:
+Copy any `MEMORY.md` files from OpenClaw agents to SiliCrew agent directories:
 
 ```bash
 cp ~/.openclaw/agents/coder/MEMORY.md ~/.silicrew/agents/coder/imported_memory.md
@@ -188,7 +188,7 @@ The kernel will ingest these on first boot.
 
 ## Config Format Differences
 
-| Aspect | OpenClaw | OpenParlant |
+| Aspect | OpenClaw | SiliCrew |
 |--------|----------|----------|
 | Format | YAML | TOML |
 | Config location | `~/.openclaw/config.yaml` | `~/.silicrew/config.toml` |
@@ -205,9 +205,9 @@ The kernel will ingest these on first boot.
 
 ## Tool Name Mapping
 
-Tools were renamed between OpenClaw and OpenParlant for consistency. The migration engine handles this automatically.
+Tools were renamed between OpenClaw and SiliCrew for consistency. The migration engine handles this automatically.
 
-| OpenClaw Tool | OpenParlant Tool | Notes |
+| OpenClaw Tool | SiliCrew Tool | Notes |
 |---------------|---------------|-------|
 | `read_file` | `file_read` | Noun-first naming |
 | `write_file` | `file_write` | |
@@ -225,7 +225,7 @@ Tools were renamed between OpenClaw and OpenParlant for consistency. The migrati
 | `agents_list` | `agent_list` | |
 | `agent_list` | `agent_list` | |
 
-### New Tools in OpenParlant
+### New Tools in SiliCrew
 
 These tools have no OpenClaw equivalent:
 
@@ -251,7 +251,7 @@ These tools have no OpenClaw equivalent:
 
 OpenClaw's tool profiles map to explicit tool lists:
 
-| OpenClaw Profile | OpenParlant Tools |
+| OpenClaw Profile | SiliCrew Tools |
 |------------------|----------------|
 | `minimal` | `file_read`, `file_list` |
 | `coding` | `file_read`, `file_write`, `file_list`, `shell_exec`, `web_fetch` |
@@ -263,7 +263,7 @@ OpenClaw's tool profiles map to explicit tool lists:
 
 ## Provider Mapping
 
-| OpenClaw Name | OpenParlant Name | API Key Env Var |
+| OpenClaw Name | SiliCrew Name | API Key Env Var |
 |---------------|---------------|-----------------|
 | `anthropic` | `anthropic` | `ANTHROPIC_API_KEY` |
 | `claude` | `anthropic` | `ANTHROPIC_API_KEY` |
@@ -277,7 +277,7 @@ OpenClaw's tool profiles map to explicit tool lists:
 | `mistral` | `mistral` | `MISTRAL_API_KEY` |
 | `fireworks` | `fireworks` | `FIREWORKS_API_KEY` |
 
-### New Providers in OpenParlant
+### New Providers in SiliCrew
 
 | Provider | Description |
 |----------|-------------|
@@ -288,7 +288,7 @@ OpenClaw's tool profiles map to explicit tool lists:
 
 ## Feature Comparison
 
-| Feature | OpenClaw | OpenParlant |
+| Feature | OpenClaw | SiliCrew |
 |---------|----------|----------|
 | **Language** | Node.js / TypeScript | Rust |
 | **Config format** | YAML | TOML |
@@ -305,7 +305,7 @@ OpenClaw's tool profiles map to explicit tool lists:
 | **Event triggers** | None | Pattern-matching event triggers with templated prompts |
 | **WASM sandbox** | None | Wasmtime-based sandboxed execution |
 | **Python runtime** | None | Subprocess-based Python agent execution |
-| **Networking** | None | OFP (OpenParlant Protocol) peer-to-peer |
+| **Networking** | None | OFP (SiliCrew Protocol) peer-to-peer |
 | **API server** | Basic REST | REST + WebSocket + SSE streaming |
 | **WebChat UI** | Separate | Embedded in daemon |
 | **Channel adapters** | Telegram, Discord | Telegram, Discord, Slack, WhatsApp, Signal, Matrix, Email |

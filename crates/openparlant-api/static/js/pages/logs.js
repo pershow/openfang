@@ -1,4 +1,4 @@
-// OpenParlant Logs Page — Real-time log viewer (SSE streaming + polling fallback) + Audit Trail tab
+// SiliCrew Logs Page — Real-time log viewer (SSE streaming + polling fallback) + Audit Trail tab
 'use strict';
 
 function logsPage() {

@@ -1,4 +1,4 @@
-# OpenParlant Launch Roadmap
+# SiliCrew Launch Roadmap
 
 > Competitive gap analysis vs OpenClaw. Organized into 4 sprints.
 > Each item has: what, why, files to touch, and done criteria.
@@ -80,7 +80,7 @@ These are showstoppers. The app literally crashes or looks broken without them.
 - `silicrew-animated.svg` (310KB) — for loading screens
 
 **Done when:**
-- Desktop app shows OpenParlant logo in taskbar, title bar, and installer
+- Desktop app shows SiliCrew logo in taskbar, title bar, and installer
 - Web UI shows correct logo in sidebar and favicon
 
 ---
@@ -103,7 +103,7 @@ These are showstoppers. The app literally crashes or looks broken without them.
 
 ## Sprint 2 — Competitive Parity (4-5 days)
 
-These close the gaps that would make users pick OpenClaw over OpenParlant.
+These close the gaps that would make users pick OpenClaw over SiliCrew.
 
 ### 2.1 Browser Screenshot Rendering in Chat -- DONE
 
@@ -206,7 +206,7 @@ These close the gaps that would make users pick OpenClaw over OpenParlant.
 
 ## Sprint 3 — Differentiation (5-7 days)
 
-These are features where OpenParlant can leapfrog OpenClaw.
+These are features where SiliCrew can leapfrog OpenClaw.
 
 ### 3.1 Voice Input/Output in Web UI -- DONE
 
@@ -276,7 +276,7 @@ These are features where OpenParlant can leapfrog OpenClaw.
 
 **Status: COMPLETE** — Added `GET /api/metrics` endpoint returning Prometheus text format. Metrics: `silicrew_uptime_seconds`, `silicrew_agents_active`, `silicrew_agents_total`, `silicrew_tokens_total{agent,provider,model}`, `silicrew_tool_calls_total{agent}`, `silicrew_panics_total`, `silicrew_restarts_total`, `silicrew_info{version}`.
 
-**Problem (was):** No way to monitor OpenParlant in production (no Prometheus, no OpenTelemetry).
+**Problem (was):** No way to monitor SiliCrew in production (no Prometheus, no OpenTelemetry).
 
 **What to do:**
 1. Add `/api/metrics` endpoint with Prometheus format
@@ -300,7 +300,7 @@ These are features where OpenParlant can leapfrog OpenClaw.
 
 **Status: COMPLETE** — Added `workflow-builder.js` with full SVG canvas-based visual builder. Node palette with 7 types (Agent, Parallel Fan-out, Condition, Loop, Collect, Start, End). Drag-and-drop from palette, node dragging, bezier curve connections between ports, zoom/pan, auto-layout. Node editor panel for configuring agent, condition expression, loop iterations, fan-out count, collect strategy. TOML export, save-to-API, and clipboard copy. CSS styles in components.css. Integrated into workflows page as "Visual Builder" tab.
 
-**Problem (was):** Both OpenParlant and OpenClaw define workflows in TOML/config only. No visual builder exists in either. First to ship this wins.
+**Problem (was):** Both SiliCrew and OpenClaw define workflows in TOML/config only. No visual builder exists in either. First to ship this wins.
 
 **What to do:**
 1. Add drag-and-drop workflow builder to the Workflows page
@@ -394,29 +394,29 @@ These are features where OpenParlant can leapfrog OpenClaw.
 
 ## Feature Comparison Scoreboard
 
-| Feature | OpenClaw | OpenParlant | Winner |
+| Feature | OpenClaw | SiliCrew | Winner |
 |---------|----------|----------|--------|
-| Language/Performance | Node.js (~200MB) | Rust (~30MB single binary) | **OpenParlant** |
-| Channels | ~15 | **40** | **OpenParlant** |
-| Built-in Tools | ~19 | **41** | **OpenParlant** |
-| Security Systems | Token + sandbox | **16 defense systems** | **OpenParlant** |
-| Agent Templates | Manual config | **30 pre-configured** | **OpenParlant** |
-| Hands (autonomous) | None | **7 packages** | **OpenParlant** |
-| Workflow Engine | Cron + webhooks | **Full DAG with parallel/loops** | **OpenParlant** |
-| Knowledge Graph | Flat vector store | **Entity-relation graph** | **OpenParlant** |
-| P2P Networking | None | **OFP wire protocol** | **OpenParlant** |
-| WASM Sandbox | Docker only | **Dual-metered WASM** | **OpenParlant** |
-| Desktop App | Electron (~200MB) | **Tauri (~30MB)** | **OpenParlant** |
-| Migration | N/A | **`migrate --from openclaw`** | **OpenParlant** |
-| Skills | 54 bundled | **60 bundled** | **OpenParlant** |
-| LLM Providers | ~15 | **27 providers, 130+ models** | **OpenParlant** |
+| Language/Performance | Node.js (~200MB) | Rust (~30MB single binary) | **SiliCrew** |
+| Channels | ~15 | **40** | **SiliCrew** |
+| Built-in Tools | ~19 | **41** | **SiliCrew** |
+| Security Systems | Token + sandbox | **16 defense systems** | **SiliCrew** |
+| Agent Templates | Manual config | **30 pre-configured** | **SiliCrew** |
+| Hands (autonomous) | None | **7 packages** | **SiliCrew** |
+| Workflow Engine | Cron + webhooks | **Full DAG with parallel/loops** | **SiliCrew** |
+| Knowledge Graph | Flat vector store | **Entity-relation graph** | **SiliCrew** |
+| P2P Networking | None | **OFP wire protocol** | **SiliCrew** |
+| WASM Sandbox | Docker only | **Dual-metered WASM** | **SiliCrew** |
+| Desktop App | Electron (~200MB) | **Tauri (~30MB)** | **SiliCrew** |
+| Migration | N/A | **`migrate --from openclaw`** | **SiliCrew** |
+| Skills | 54 bundled | **60 bundled** | **SiliCrew** |
+| LLM Providers | ~15 | **27 providers, 130+ models** | **SiliCrew** |
 | Plugin SDK | TypeScript published | JS + Python SDK | **Tie** |
 | Native Mobile | iOS + Android + macOS | Web responsive only | OpenClaw |
 | Voice/Talk Mode | Wake word + TTS + overlay | Mic + TTS playback | OpenClaw (slight) |
 | Browser Automation | Playwright with inline screenshots | Playwright + inline screenshots | **Tie** |
-| Visual Workflow Builder | None | **Drag-and-drop builder** | **OpenParlant** |
+| Visual Workflow Builder | None | **Drag-and-drop builder** | **SiliCrew** |
 
-**OpenParlant wins 15/18 categories.** The remaining gaps are: mobile apps (OpenClaw), voice wake word (OpenClaw slight edge).
+**SiliCrew wins 15/18 categories.** The remaining gaps are: mobile apps (OpenClaw), voice wake word (OpenClaw slight edge).
 
 ---
 

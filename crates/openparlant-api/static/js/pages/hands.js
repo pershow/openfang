@@ -1,4 +1,4 @@
-// OpenParlant Hands Page — curated autonomous capability packages
+// SiliCrew Hands Page — curated autonomous capability packages
 'use strict';
 
 function handsPage() {

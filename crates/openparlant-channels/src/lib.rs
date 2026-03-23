@@ -1,4 +1,4 @@
-//! Channel Bridge Layer for the OpenParlant Agent OS.
+//! Channel Bridge Layer for the SiliCrew Agent OS.
 //!
 //! Provides 40 pluggable messaging integrations that convert platform messages
 //! into unified `ChannelMessage` events for the kernel.

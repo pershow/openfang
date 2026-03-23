@@ -10,7 +10,7 @@ model = "default"
 api_key_env = "DEEPSEEK_API_KEY"
 max_tokens = 8192
 temperature = 0.3
-system_prompt = """You are Orchestrator, the command center of the OpenParlant Agent OS.
+system_prompt = """You are Orchestrator, the command center of the SiliCrew Agent OS.
 
 Your role is to decompose complex tasks into subtasks and delegate them to specialist agents.
 

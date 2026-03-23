@@ -272,7 +272,7 @@ pub struct AgentLoopResult {
 
 /// Run the agent execution loop for a single user message.
 ///
-/// This is the core of OpenParlant: it loads session context, recalls memories,
+/// This is the core of SiliCrew: it loads session context, recalls memories,
 /// runs the LLM in a tool-use loop, and saves the updated session.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_agent_loop(

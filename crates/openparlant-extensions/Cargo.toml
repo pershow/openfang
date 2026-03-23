@@ -3,7 +3,7 @@ name = "silicrew-extensions"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Extension & integration system for OpenParlant — one-click MCP server setup, credential vault, OAuth2 PKCE"
+description = "Extension & integration system for SiliCrew — one-click MCP server setup, credential vault, OAuth2 PKCE"
 
 [dependencies]
 silicrew-types = { path = "../silicrew-types" }

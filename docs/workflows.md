@@ -2,7 +2,7 @@
 
 ## Overview
 
-The OpenParlant workflow engine enables multi-step agent pipelines -- orchestrated sequences of tasks where each step routes work to a specific agent, and output from one step flows as input to the next. Workflows let you compose complex behaviors from simple, single-purpose agents without writing any Rust code.
+The SiliCrew workflow engine enables multi-step agent pipelines -- orchestrated sequences of tasks where each step routes work to a specific agent, and output from one step flows as input to the next. Workflows let you compose complex behaviors from simple, single-purpose agents without writing any Rust code.
 
 Use workflows when you need to:
 
@@ -683,7 +683,7 @@ Toggle a trigger's enabled state.
 
 ## CLI Commands
 
-All workflow and trigger CLI commands require a running OpenParlant daemon.
+All workflow and trigger CLI commands require a running SiliCrew daemon.
 
 ### Workflow Commands
 

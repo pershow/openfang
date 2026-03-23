@@ -1,4 +1,4 @@
-//! Channel bridge wiring — connects the OpenParlant kernel to channel adapters.
+//! Channel bridge wiring — connects the SiliCrew kernel to channel adapters.
 //!
 //! Implements `ChannelBridgeHandle` on `SiliCrewKernel` and provides the
 //! `start_channel_bridge()` entry point called by the daemon.
@@ -250,14 +250,14 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
         let mins = (secs % 3600) / 60;
         if hours > 0 {
             format!(
-                "OpenParlant status: {}h {}m uptime, {} agent(s)",
+                "SiliCrew status: {}h {}m uptime, {} agent(s)",
                 hours,
                 mins,
                 agents.len()
             )
         } else {
             format!(
-                "OpenParlant status: {}m uptime, {} agent(s)",
+                "SiliCrew status: {}m uptime, {} agent(s)",
                 mins,
                 agents.len()
             )

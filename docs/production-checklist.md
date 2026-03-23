@@ -258,7 +258,7 @@ docker run --rm ghcr.io/RightNow-AI/silicrew:latest --version
 2. Tag v0.1.1 and push
 3. Wait for release workflow to complete
 4. Open the v0.1.0 app — after 10 seconds it should:
-   - Show "OpenParlant Updating..." notification
+   - Show "SiliCrew Updating..." notification
    - Download and install v0.1.1
    - Restart automatically to v0.1.1
 5. Right-click tray → "Check for Updates" → should show "Up to Date"

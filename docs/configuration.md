@@ -1,6 +1,6 @@
-# OpenParlant Configuration Reference
+# SiliCrew Configuration Reference
 
-Complete reference for `config.toml`, covering every configurable field in the OpenParlant Agent OS.
+Complete reference for `config.toml`, covering every configurable field in the SiliCrew Agent OS.
 
 ---
 
@@ -28,7 +28,7 @@ Complete reference for `config.toml`, covering every configurable field in the O
 
 ## Overview
 
-OpenParlant reads its configuration from a single TOML file:
+SiliCrew reads its configuration from a single TOML file:
 
 ```
 ~/.silicrew/config.toml
@@ -47,7 +47,7 @@ On Windows, `~` resolves to `C:\Users\<username>`. If the home directory cannot 
 
 ## Minimal Configuration
 
-The simplest working configuration only needs an LLM provider API key set as an environment variable. With no config file at all, OpenParlant boots with Anthropic as the default provider:
+The simplest working configuration only needs an LLM provider API key set as an environment variable. With no config file at all, SiliCrew boots with Anthropic as the default provider:
 
 ```toml
 # ~/.silicrew/config.toml
@@ -76,11 +76,11 @@ api_key_env = ""
 
 ```toml
 # ============================================================
-# OpenParlant Agent OS -- Complete Configuration Reference
+# SiliCrew Agent OS -- Complete Configuration Reference
 # ============================================================
 
 # --- Top-level fields ---
-home_dir = "~/.silicrew"             # OpenParlant home directory
+home_dir = "~/.silicrew"             # SiliCrew home directory
 data_dir = "~/.silicrew/data"        # SQLite databases and data files
 log_level = "info"                   # trace | debug | info | warn | error
 api_listen = "127.0.0.1:50051"      # HTTP/WS API bind address
@@ -224,7 +224,7 @@ These fields sit at the root of `config.toml` (not inside any `[section]`).
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `home_dir` | path | `~/.silicrew` | OpenParlant home directory. Stores config, agents, skills. |
+| `home_dir` | path | `~/.silicrew` | SiliCrew home directory. Stores config, agents, skills. |
 | `data_dir` | path | `~/.silicrew/data` | Directory for SQLite databases and persistent data. |
 | `log_level` | string | `"info"` | Log verbosity. One of: `trace`, `debug`, `info`, `warn`, `error`. |
 | `api_listen` | string | `"127.0.0.1:50051"` | Bind address for the HTTP/WebSocket/SSE API server. |
@@ -297,7 +297,7 @@ decay_rate = 0.1
 
 ### `[network]`
 
-Configures the OFP (OpenParlant Protocol) peer-to-peer networking layer with HMAC-SHA256 mutual authentication.
+Configures the OFP (SiliCrew Protocol) peer-to-peer networking layer with HMAC-SHA256 mutual authentication.
 
 ```toml
 [network]
@@ -1138,7 +1138,7 @@ url = "https://mcp.example.com/sse"
 
 ### `[a2a]`
 
-Agent-to-Agent protocol configuration, enabling inter-agent communication across OpenParlant instances.
+Agent-to-Agent protocol configuration, enabling inter-agent communication across SiliCrew instances.
 
 ```toml
 [a2a]

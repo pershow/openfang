@@ -3,7 +3,7 @@ name = "silicrew-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "CLI tool for the OpenParlant Agent OS"
+description = "CLI tool for the SiliCrew Agent OS"
 
 [[bin]]
 name = "silicrew"

@@ -1,7 +1,7 @@
-# OpenParlant — Agent Instructions
+# SiliCrew — Agent Instructions
 
 ## Project Overview
-OpenParlant is an open-source Agent Operating System written in Rust (14 crates).
+SiliCrew is an open-source Agent Operating System written in Rust (14 crates).
 - Config: `~/.silicrew/config.toml`
 - Default API: `http://127.0.0.1:4200`
 - CLI binary: `target/release/silicrew.exe` (or `target/debug/silicrew.exe`)

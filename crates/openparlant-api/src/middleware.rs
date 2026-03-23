@@ -1,4 +1,4 @@
-//! Production middleware for the OpenParlant API server.
+//! Production middleware for the SiliCrew API server.
 //!
 //! Provides:
 //! - Request ID generation and propagation

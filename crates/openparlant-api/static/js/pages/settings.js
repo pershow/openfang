@@ -1,4 +1,4 @@
-// OpenParlant Settings Page — Provider Hub, Model Catalog, Config, Tools + Security, Network, Migration tabs
+// SiliCrew Settings Page — Provider Hub, Model Catalog, Config, Tools + Security, Network, Migration tabs
 'use strict';
 
 function settingsPage() {

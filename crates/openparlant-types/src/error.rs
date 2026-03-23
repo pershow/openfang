@@ -1,8 +1,8 @@
-//! Shared error types for the OpenParlant system.
+//! Shared error types for the SiliCrew system.
 
 use thiserror::Error;
 
-/// Top-level error type for the OpenParlant system.
+/// Top-level error type for the SiliCrew system.
 #[derive(Error, Debug)]
 pub enum SiliCrewError {
     /// The requested agent was not found.

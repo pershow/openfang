@@ -95,14 +95,14 @@ impl MumbleAdapter {
     ///
     /// Simplified encoding: version fields as varint-like protobuf.
     /// Field 1 (version): 0x00010500 (1.5.0)
-    /// Field 2 (release): "OpenParlant"
+    /// Field 2 (release): "SiliCrew"
     fn build_version_packet() -> Vec<u8> {
         let mut payload = Vec::new();
         // Field 1: fixed32 version = 0x00010500 (tag = 0x0D for wire type 5)
         payload.push(0x0D);
         payload.extend_from_slice(&0x0001_0500u32.to_le_bytes());
         // Field 2: string release (tag = 0x12)
-        let release = b"OpenParlant";
+        let release = b"SiliCrew";
         payload.push(0x12);
         payload.push(release.len() as u8);
         payload.extend_from_slice(release);

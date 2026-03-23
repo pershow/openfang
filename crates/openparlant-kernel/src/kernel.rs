@@ -41,7 +41,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, Weak};
 use tracing::{debug, info, warn};
 
-/// The main OpenParlant kernel — coordinates all subsystems.
+/// The main SiliCrew kernel — coordinates all subsystems.
 /// Stub LLM driver used when no providers are configured.
 /// Returns a helpful error so the dashboard still boots and users can configure providers.
 struct StubDriver;
@@ -305,7 +305,7 @@ impl DeliveryTracker {
 fn ensure_workspace(workspace: &Path) -> KernelResult<()> {
     for subdir in &["data", "output", "sessions", "skills", "logs", "memory"] {
         std::fs::create_dir_all(workspace.join(subdir)).map_err(|e| {
-            KernelError::OpenParlant(SiliCrewError::Internal(format!(
+            KernelError::SiliCrew(SiliCrewError::Internal(format!(
                 "Failed to create workspace dir {}/{subdir}: {e}",
                 workspace.display()
             )))
@@ -613,13 +613,13 @@ impl SiliCrewKernel {
 
         match config.mode {
             KernelMode::Stable => {
-                info!("Booting OpenParlant kernel in STABLE mode — conservative defaults enforced");
+                info!("Booting SiliCrew kernel in STABLE mode — conservative defaults enforced");
             }
             KernelMode::Dev => {
-                warn!("Booting OpenParlant kernel in DEV mode — experimental features enabled");
+                warn!("Booting SiliCrew kernel in DEV mode — experimental features enabled");
             }
             KernelMode::Default => {
-                info!("Booting OpenParlant kernel...");
+                info!("Booting SiliCrew kernel...");
             }
         }
 
@@ -1328,7 +1328,7 @@ impl SiliCrewKernel {
             }
         }
 
-        info!("OpenParlant kernel booted successfully");
+        info!("SiliCrew kernel booted successfully");
         Ok(kernel)
     }
 
@@ -1355,7 +1355,7 @@ impl SiliCrewKernel {
         let session = self
             .memory
             .create_session(agent_id)
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
         let session_id = session.id;
 
         // Inherit kernel exec_policy as fallback if agent manifest doesn't have one
@@ -1476,7 +1476,7 @@ impl SiliCrewKernel {
         };
         self.registry
             .register(entry.clone())
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         // Update parent's children list
         if let Some(parent_id) = parent {
@@ -1486,7 +1486,7 @@ impl SiliCrewKernel {
         // Persist agent so it survives restarts.
         self.memory
             .save_agent(&entry)
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         info!(agent = %name, id = %agent_id, "Agent spawned");
 
@@ -1533,12 +1533,12 @@ impl SiliCrewKernel {
     pub fn verify_signed_manifest(&self, signed_json: &str) -> KernelResult<String> {
         let signed: silicrew_types::manifest_signing::SignedManifest =
             serde_json::from_str(signed_json).map_err(|e| {
-                KernelError::OpenParlant(silicrew_types::error::SiliCrewError::Config(format!(
+                KernelError::SiliCrew(silicrew_types::error::SiliCrewError::Config(format!(
                     "Invalid signed manifest JSON: {e}"
                 )))
             })?;
         signed.verify().map_err(|e| {
-            KernelError::OpenParlant(silicrew_types::error::SiliCrewError::Config(format!(
+            KernelError::SiliCrew(silicrew_types::error::SiliCrewError::Config(format!(
                 "Manifest signature verification failed: {e}"
             )))
         })?;
@@ -1650,10 +1650,10 @@ impl SiliCrewKernel {
         // Enforce quota before running the agent loop
         self.scheduler
             .check_quota(agent_id)
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         let entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
+            KernelError::SiliCrew(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         // Dispatch based on module type
@@ -1737,10 +1737,10 @@ impl SiliCrewKernel {
         // Enforce quota before spawning the streaming task
         self.scheduler
             .check_quota(agent_id)
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         let entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
+            KernelError::SiliCrew(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         let is_wasm = entry.manifest.module.starts_with("wasm:");
@@ -1801,7 +1801,7 @@ impl SiliCrewKernel {
         let mut session = self
             .memory
             .get_session(entry.session_id)
-            .map_err(KernelError::OpenParlant)?
+            .map_err(KernelError::SiliCrew)?
             .unwrap_or_else(|| silicrew_memory::session::Session {
                 id: entry.session_id,
                 agent_id,
@@ -2044,7 +2044,7 @@ impl SiliCrewKernel {
                     memory
                         .save_session_async(&session)
                         .await
-                        .map_err(KernelError::OpenParlant)?;
+                        .map_err(KernelError::SiliCrew)?;
                     let result = AgentLoopResult {
                         response: "当前会话处于人工接管模式，AI 暂不回复。".to_string(),
                         total_usage: Default::default(),
@@ -2163,7 +2163,7 @@ impl SiliCrewKernel {
                     memory
                         .save_session_async(&session)
                         .await
-                        .map_err(KernelError::OpenParlant)?;
+                        .map_err(KernelError::SiliCrew)?;
                     let result = AgentLoopResult {
                         response: canned_text,
                         total_usage: Default::default(),
@@ -2459,7 +2459,7 @@ impl SiliCrewKernel {
                 Err(e) => {
                     kernel_clone.supervisor.record_panic();
                     warn!(agent_id = %agent_id, error = %e, "Streaming agent loop failed");
-                    Err(KernelError::OpenParlant(e))
+                    Err(KernelError::SiliCrew(e))
                 }
             }
         });
@@ -2490,7 +2490,7 @@ impl SiliCrewKernel {
         info!(agent = %entry.name, path = %wasm_path.display(), "Executing WASM agent");
 
         let wasm_bytes = std::fs::read(&wasm_path).map_err(|e| {
-            KernelError::OpenParlant(SiliCrewError::Internal(format!(
+            KernelError::SiliCrew(SiliCrewError::Internal(format!(
                 "Failed to read WASM module '{}': {e}",
                 wasm_path.display()
             )))
@@ -2522,7 +2522,7 @@ impl SiliCrewKernel {
             )
             .await
             .map_err(|e| {
-                KernelError::OpenParlant(SiliCrewError::Internal(format!(
+                KernelError::SiliCrew(SiliCrewError::Internal(format!(
                     "WASM execution failed: {e}"
                 )))
             })?;
@@ -2596,7 +2596,7 @@ impl SiliCrewKernel {
         )
         .await
         .map_err(|e| {
-            KernelError::OpenParlant(SiliCrewError::Internal(format!(
+            KernelError::SiliCrew(SiliCrewError::Internal(format!(
                 "Python execution failed: {e}"
             )))
         })?;
@@ -2952,12 +2952,12 @@ impl SiliCrewKernel {
         // Check metering quota before starting
         self.metering
             .check_quota(agent_id, &entry.manifest.resources)
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         let mut session = self
             .memory
             .get_session(entry.session_id)
-            .map_err(KernelError::OpenParlant)?
+            .map_err(KernelError::SiliCrew)?
             .unwrap_or_else(|| silicrew_memory::session::Session {
                 id: entry.session_id,
                 agent_id,
@@ -3047,7 +3047,7 @@ impl SiliCrewKernel {
                 self.memory
                     .save_session_async(&session)
                     .await
-                    .map_err(KernelError::OpenParlant)?;
+                    .map_err(KernelError::SiliCrew)?;
                 let mut result = AgentLoopResult {
                     response: "当前会话处于人工接管模式，AI 暂不回复。".to_string(),
                     total_usage: Default::default(),
@@ -3182,7 +3182,7 @@ impl SiliCrewKernel {
                 self.memory
                     .save_session_async(&session)
                     .await
-                    .map_err(KernelError::OpenParlant)?;
+                    .map_err(KernelError::SiliCrew)?;
                 let mut result = AgentLoopResult {
                     response: canned_text,
                     total_usage: Default::default(),
@@ -3420,7 +3420,7 @@ impl SiliCrewKernel {
             content_blocks,
         )
         .await
-        .map_err(KernelError::OpenParlant)?;
+        .map_err(KernelError::SiliCrew)?;
 
         if let Some((state, _)) = iterative_control_state.as_ref() {
             compiled_ctx_opt = Some(
@@ -3530,7 +3530,7 @@ impl SiliCrewKernel {
     /// and creates a fresh session ID.
     pub fn reset_session(&self, agent_id: AgentId) -> KernelResult<()> {
         let entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
+            KernelError::SiliCrew(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         // Auto-save session context to workspace memory before clearing
@@ -3547,12 +3547,12 @@ impl SiliCrewKernel {
         let new_session = self
             .memory
             .create_session(agent_id)
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         // Update registry with new session ID
         self.registry
             .update_session_id(agent_id, new_session.id)
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         // Reset quota tracking so /new clears "token quota exceeded"
         self.scheduler.reset_usage(agent_id);
@@ -3566,7 +3566,7 @@ impl SiliCrewKernel {
     /// Creates a fresh empty session afterward so the agent is still usable.
     pub fn clear_agent_history(&self, agent_id: AgentId) -> KernelResult<()> {
         let _entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
+            KernelError::SiliCrew(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         // Delete all regular sessions
@@ -3579,12 +3579,12 @@ impl SiliCrewKernel {
         let new_session = self
             .memory
             .create_session(agent_id)
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         // Update registry with new session ID
         self.registry
             .update_session_id(agent_id, new_session.id)
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         info!(agent_id = %agent_id, "All agent history cleared");
         Ok(())
@@ -3594,13 +3594,13 @@ impl SiliCrewKernel {
     pub fn list_agent_sessions(&self, agent_id: AgentId) -> KernelResult<Vec<serde_json::Value>> {
         // Verify agent exists
         let entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
+            KernelError::SiliCrew(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         let mut sessions = self
             .memory
             .list_agent_sessions(agent_id)
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         // Mark the active session
         for s in &mut sessions {
@@ -3625,18 +3625,18 @@ impl SiliCrewKernel {
     ) -> KernelResult<serde_json::Value> {
         // Verify agent exists
         let _entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
+            KernelError::SiliCrew(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         let session = self
             .memory
             .create_session_with_label(agent_id, label)
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         // Switch to the new session
         self.registry
             .update_session_id(agent_id, session.id)
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         info!(agent_id = %agent_id, label = ?label, "Created new session");
 
@@ -3654,27 +3654,27 @@ impl SiliCrewKernel {
     ) -> KernelResult<()> {
         // Verify agent exists
         let _entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
+            KernelError::SiliCrew(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         // Verify session exists and belongs to this agent
         let session = self
             .memory
             .get_session(session_id)
-            .map_err(KernelError::OpenParlant)?
+            .map_err(KernelError::SiliCrew)?
             .ok_or_else(|| {
-                KernelError::OpenParlant(SiliCrewError::Internal("Session not found".to_string()))
+                KernelError::SiliCrew(SiliCrewError::Internal("Session not found".to_string()))
             })?;
 
         if session.agent_id != agent_id {
-            return Err(KernelError::OpenParlant(SiliCrewError::Internal(
+            return Err(KernelError::SiliCrew(SiliCrewError::Internal(
                 "Session belongs to a different agent".to_string(),
             )));
         }
 
         self.registry
             .update_session_id(agent_id, session_id)
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         info!(agent_id = %agent_id, session_id = %session_id.0, "Switched session");
         Ok(())
@@ -3820,12 +3820,12 @@ impl SiliCrewKernel {
                     api_key_env,
                     None,
                 )
-                .map_err(KernelError::OpenParlant)?;
+                .map_err(KernelError::SiliCrew)?;
             info!(agent_id = %agent_id, model = %normalized_model, provider = %provider, "Agent model+provider updated");
         } else {
             self.registry
                 .update_model(agent_id, normalized_model.clone())
-                .map_err(KernelError::OpenParlant)?;
+                .map_err(KernelError::SiliCrew)?;
             info!(agent_id = %agent_id, model = %normalized_model, "Agent model updated (provider unchanged)");
         }
 
@@ -3852,7 +3852,7 @@ impl SiliCrewKernel {
             let known = registry.skill_names();
             for name in &skills {
                 if !known.contains(name) {
-                    return Err(KernelError::OpenParlant(SiliCrewError::Internal(format!(
+                    return Err(KernelError::SiliCrew(SiliCrewError::Internal(format!(
                         "Unknown skill: {name}"
                     ))));
                 }
@@ -3861,7 +3861,7 @@ impl SiliCrewKernel {
 
         self.registry
             .update_skills(agent_id, skills.clone())
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         if let Some(entry) = self.registry.get(agent_id) {
             let _ = self.memory.save_agent(&entry);
@@ -3890,7 +3890,7 @@ impl SiliCrewKernel {
                 for name in &servers {
                     let normalized = silicrew_runtime::mcp::normalize_name(name);
                     if !known_servers.contains(&normalized) {
-                        return Err(KernelError::OpenParlant(SiliCrewError::Internal(format!(
+                        return Err(KernelError::SiliCrew(SiliCrewError::Internal(format!(
                             "Unknown MCP server: {name}"
                         ))));
                     }
@@ -3900,7 +3900,7 @@ impl SiliCrewKernel {
 
         self.registry
             .update_mcp_servers(agent_id, servers.clone())
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         if let Some(entry) = self.registry.get(agent_id) {
             let _ = self.memory.save_agent(&entry);
@@ -3919,7 +3919,7 @@ impl SiliCrewKernel {
     ) -> KernelResult<()> {
         self.registry
             .update_tool_filters(agent_id, allowlist.clone(), blocklist.clone())
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         if let Some(entry) = self.registry.get(agent_id) {
             let _ = self.memory.save_agent(&entry);
@@ -3937,13 +3937,13 @@ impl SiliCrewKernel {
     /// Get session token usage and estimated cost for an agent.
     pub fn session_usage_cost(&self, agent_id: AgentId) -> KernelResult<(u64, u64, f64)> {
         let entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
+            KernelError::SiliCrew(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         let session = self
             .memory
             .get_session(entry.session_id)
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         let (input_tokens, output_tokens) = session
             .map(|s| {
@@ -3993,13 +3993,13 @@ impl SiliCrewKernel {
         use silicrew_runtime::compactor::{compact_session, needs_compaction, CompactionConfig};
 
         let entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
+            KernelError::SiliCrew(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         let session = self
             .memory
             .get_session(entry.session_id)
-            .map_err(KernelError::OpenParlant)?
+            .map_err(KernelError::SiliCrew)?
             .unwrap_or_else(|| silicrew_memory::session::Session {
                 id: entry.session_id,
                 agent_id,
@@ -4023,12 +4023,12 @@ impl SiliCrewKernel {
 
         let result = compact_session(driver, &model, &session, &config)
             .await
-            .map_err(|e| KernelError::OpenParlant(SiliCrewError::Internal(e)))?;
+            .map_err(|e| KernelError::SiliCrew(SiliCrewError::Internal(e)))?;
 
         // Store the LLM summary in the canonical session
         self.memory
             .store_llm_summary(agent_id, &result.summary, result.kept_messages.clone())
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         // Post-compaction audit: validate and repair the kept messages
         let (repaired_messages, repair_stats) =
@@ -4041,7 +4041,7 @@ impl SiliCrewKernel {
         updated_session.messages = repaired_messages;
         self.memory
             .save_session(&updated_session)
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
 
         // Build result message with audit summary
         let mut msg = format!(
@@ -4077,13 +4077,13 @@ impl SiliCrewKernel {
         use silicrew_runtime::compactor::generate_context_report;
 
         let entry = self.registry.get(agent_id).ok_or_else(|| {
-            KernelError::OpenParlant(SiliCrewError::AgentNotFound(agent_id.to_string()))
+            KernelError::SiliCrew(SiliCrewError::AgentNotFound(agent_id.to_string()))
         })?;
 
         let session = self
             .memory
             .get_session(entry.session_id)
-            .map_err(KernelError::OpenParlant)?
+            .map_err(KernelError::SiliCrew)?
             .unwrap_or_else(|| silicrew_memory::session::Session {
                 id: entry.session_id,
                 agent_id,
@@ -4115,7 +4115,7 @@ impl SiliCrewKernel {
         let entry = self
             .registry
             .remove(agent_id)
-            .map_err(KernelError::OpenParlant)?;
+            .map_err(KernelError::SiliCrew)?;
         self.background.stop_agent(agent_id);
         self.scheduler.unregister(agent_id);
         self.capabilities.revoke_all(agent_id);
@@ -4159,7 +4159,7 @@ impl SiliCrewKernel {
             .hand_registry
             .get_definition(hand_id)
             .ok_or_else(|| {
-                KernelError::OpenParlant(SiliCrewError::AgentNotFound(format!(
+                KernelError::SiliCrew(SiliCrewError::AgentNotFound(format!(
                     "Hand not found: {hand_id}"
                 )))
             })?
@@ -4170,10 +4170,10 @@ impl SiliCrewKernel {
             .hand_registry
             .activate(hand_id, config)
             .map_err(|e| match e {
-                HandError::AlreadyActive(id) => KernelError::OpenParlant(SiliCrewError::Internal(
+                HandError::AlreadyActive(id) => KernelError::SiliCrew(SiliCrewError::Internal(
                     format!("Hand already active: {id}"),
                 )),
-                other => KernelError::OpenParlant(SiliCrewError::Internal(other.to_string())),
+                other => KernelError::SiliCrew(SiliCrewError::Internal(other.to_string())),
             })?;
 
         // Build an agent manifest from the hand definition.
@@ -4333,7 +4333,7 @@ impl SiliCrewKernel {
         // Link agent to instance
         self.hand_registry
             .set_agent(instance.instance_id, agent_id)
-            .map_err(|e| KernelError::OpenParlant(SiliCrewError::Internal(e.to_string())))?;
+            .map_err(|e| KernelError::SiliCrew(SiliCrewError::Internal(e.to_string())))?;
 
         info!(
             hand = %hand_id,
@@ -4357,7 +4357,7 @@ impl SiliCrewKernel {
         let instance = self
             .hand_registry
             .deactivate(instance_id)
-            .map_err(|e| KernelError::OpenParlant(SiliCrewError::Internal(e.to_string())))?;
+            .map_err(|e| KernelError::SiliCrew(SiliCrewError::Internal(e.to_string())))?;
 
         if let Some(agent_id) = instance.agent_id {
             if let Err(e) = self.kill_agent(agent_id) {
@@ -4393,14 +4393,14 @@ impl SiliCrewKernel {
     pub fn pause_hand(&self, instance_id: uuid::Uuid) -> KernelResult<()> {
         self.hand_registry
             .pause(instance_id)
-            .map_err(|e| KernelError::OpenParlant(SiliCrewError::Internal(e.to_string())))
+            .map_err(|e| KernelError::SiliCrew(SiliCrewError::Internal(e.to_string())))
     }
 
     /// Resume a paused hand.
     pub fn resume_hand(&self, instance_id: uuid::Uuid) -> KernelResult<()> {
         self.hand_registry
             .resume(instance_id)
-            .map_err(|e| KernelError::OpenParlant(SiliCrewError::Internal(e.to_string())))
+            .map_err(|e| KernelError::SiliCrew(SiliCrewError::Internal(e.to_string())))
     }
 
     /// Set the weak self-reference for trigger dispatch.
@@ -4564,7 +4564,7 @@ impl SiliCrewKernel {
     ) -> KernelResult<TriggerId> {
         // Verify agent exists
         if self.registry.get(agent_id).is_none() {
-            return Err(KernelError::OpenParlant(SiliCrewError::AgentNotFound(
+            return Err(KernelError::SiliCrew(SiliCrewError::AgentNotFound(
                 agent_id.to_string(),
             )));
         }
@@ -4607,7 +4607,7 @@ impl SiliCrewKernel {
             .create_run(workflow_id, input)
             .await
             .ok_or_else(|| {
-                KernelError::OpenParlant(SiliCrewError::Internal("Workflow not found".to_string()))
+                KernelError::SiliCrew(SiliCrewError::Internal("Workflow not found".to_string()))
             })?;
 
         // Agent resolver: looks up by name or ID in the registry
@@ -4648,12 +4648,12 @@ impl SiliCrewKernel {
         )
         .await
         .map_err(|_| {
-            KernelError::OpenParlant(SiliCrewError::Internal(format!(
+            KernelError::SiliCrew(SiliCrewError::Internal(format!(
                 "Workflow timed out after {MAX_WORKFLOW_SECS}s"
             )))
         })?
         .map_err(|e| {
-            KernelError::OpenParlant(SiliCrewError::Internal(format!("Workflow failed: {e}")))
+            KernelError::SiliCrew(SiliCrewError::Internal(format!("Workflow failed: {e}")))
         })?;
 
         Ok((run_id, output))
@@ -5451,7 +5451,7 @@ impl SiliCrewKernel {
     /// This cleanly shuts down in-memory state but preserves persistent agent
     /// data so agents are restored on the next boot.
     pub fn shutdown(&self) {
-        info!("Shutting down OpenParlant kernel...");
+        info!("Shutting down SiliCrew kernel...");
 
         // Kill WhatsApp gateway child process if running
         if let Ok(guard) = self.whatsapp_gateway_pid.lock() {
@@ -5487,7 +5487,7 @@ impl SiliCrewKernel {
         }
 
         info!(
-            "OpenParlant kernel shut down ({} agents preserved)",
+            "SiliCrew kernel shut down ({} agents preserved)",
             self.registry.list().len()
         );
     }

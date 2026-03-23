@@ -6,7 +6,7 @@
 //! This module provides:
 //! - `AgentCard` — describes an agent's capabilities to external systems
 //! - `A2aTask` — unit of work exchanged between agents
-//! - `build_agent_card` — expose OpenParlant agents via A2A
+//! - `build_agent_card` — expose SiliCrew agents via A2A
 //! - `A2aClient` — discover and interact with external A2A agents
 
 use silicrew_types::agent::AgentManifest;
@@ -35,7 +35,7 @@ pub struct AgentCard {
     pub version: String,
     /// Agent capabilities.
     pub capabilities: AgentCapabilities,
-    /// Skills this agent can perform (A2A skill descriptors, not OpenParlant skills).
+    /// Skills this agent can perform (A2A skill descriptors, not SiliCrew skills).
     pub skills: Vec<AgentSkill>,
     /// Supported input content types.
     #[serde(default)]
@@ -57,7 +57,7 @@ pub struct AgentCapabilities {
     pub state_transition_history: bool,
 }
 
-/// A2A skill descriptor (not an OpenParlant skill — describes a capability).
+/// A2A skill descriptor (not an SiliCrew skill — describes a capability).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentSkill {
     /// Unique skill identifier.
@@ -354,10 +354,10 @@ pub async fn discover_external_agents(
 }
 
 // ---------------------------------------------------------------------------
-// A2A Server — expose OpenParlant agents via A2A
+// A2A Server — expose SiliCrew agents via A2A
 // ---------------------------------------------------------------------------
 
-/// Build an A2A Agent Card from an OpenParlant agent manifest.
+/// Build an A2A Agent Card from an SiliCrew agent manifest.
 pub fn build_agent_card(manifest: &AgentManifest, base_url: &str) -> AgentCard {
     let tools: Vec<String> = manifest.capabilities.tools.clone();
 
@@ -418,7 +418,7 @@ impl A2aClient {
         let response = self
             .client
             .get(&agent_json_url)
-            .header("User-Agent", "OpenParlant/0.1 A2A")
+            .header("User-Agent", "SiliCrew/0.1 A2A")
             .send()
             .await
             .map_err(|e| format!("A2A discovery failed: {e}"))?;

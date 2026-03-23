@@ -1,7 +1,7 @@
-//! PeerNode — TCP server and client for the OpenParlant Wire Protocol.
+//! PeerNode — TCP server and client for the SiliCrew Wire Protocol.
 //!
 //! A [`PeerNode`] binds a local TCP listener and accepts incoming connections
-//! from other OpenParlant kernels. It also connects outward to known peers. Each
+//! from other SiliCrew kernels. It also connects outward to known peers. Each
 //! connection performs a handshake to exchange identity and agent lists, then
 //! enters a message dispatch loop.
 //!

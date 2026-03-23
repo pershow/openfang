@@ -8,7 +8,7 @@ use thiserror::Error;
 pub enum KernelError {
     /// A wrapped SiliCrewError.
     #[error(transparent)]
-    OpenParlant(#[from] SiliCrewError),
+    SiliCrew(#[from] SiliCrewError),
 
     /// The kernel failed to boot.
     #[error("Boot failed: {0}")]

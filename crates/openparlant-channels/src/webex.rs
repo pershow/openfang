@@ -83,7 +83,7 @@ impl WebexAdapter {
         let bot_id = body["id"].as_str().unwrap_or("unknown").to_string();
         let display_name = body["displayName"]
             .as_str()
-            .unwrap_or("OpenParlant Bot")
+            .unwrap_or("SiliCrew Bot")
             .to_string();
 
         *self.bot_info.write().await = Some((bot_id.clone(), display_name.clone()));
@@ -122,7 +122,7 @@ impl WebexAdapter {
     ) -> Result<String, Box<dyn std::error::Error>> {
         let url = format!("{}/webhooks", WEBEX_API_BASE);
         let body = serde_json::json!({
-            "name": "OpenParlant Bot Webhook",
+            "name": "SiliCrew Bot Webhook",
             "targetUrl": target_url,
             "resource": "messages",
             "event": "created",

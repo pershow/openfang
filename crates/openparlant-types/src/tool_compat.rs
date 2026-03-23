@@ -1,12 +1,12 @@
-//! Shared tool name mappings between OpenClaw and OpenParlant.
+//! Shared tool name mappings between OpenClaw and SiliCrew.
 //!
 //! These mappings are used by both the migration engine and the skill system
-//! to normalize OpenClaw tool names into OpenParlant equivalents.
+//! to normalize OpenClaw tool names into SiliCrew equivalents.
 
-/// Map an OpenClaw tool name to its OpenParlant equivalent.
+/// Map an OpenClaw tool name to its SiliCrew equivalent.
 ///
 /// Returns `None` if the name has no known mapping (may already be
-/// an OpenParlant tool name — check with [`is_known_silicrew_tool`]).
+/// an SiliCrew tool name — check with [`is_known_silicrew_tool`]).
 pub fn map_tool_name(openclaw_name: &str) -> Option<&'static str> {
     match openclaw_name {
         // Claude-style tool names (capitalized)
@@ -37,9 +37,9 @@ pub fn map_tool_name(openclaw_name: &str) -> Option<&'static str> {
     }
 }
 
-/// Normalize a tool name to its canonical OpenParlant form.
+/// Normalize a tool name to its canonical SiliCrew form.
 ///
-/// If the name is already a known OpenParlant tool, returns it as-is.
+/// If the name is already a known SiliCrew tool, returns it as-is.
 /// Otherwise, tries to map it through [`map_tool_name`].
 /// Returns the original name if no mapping is found.
 pub fn normalize_tool_name(name: &str) -> &str {
@@ -49,7 +49,7 @@ pub fn normalize_tool_name(name: &str) -> &str {
     map_tool_name(name).unwrap_or(name)
 }
 
-/// Check if a tool name is a known OpenParlant built-in tool.
+/// Check if a tool name is a known SiliCrew built-in tool.
 pub fn is_known_silicrew_tool(name: &str) -> bool {
     matches!(
         name,
@@ -154,7 +154,7 @@ mod tests {
 
     #[test]
     fn test_normalize_tool_name() {
-        // Known OpenParlant tools pass through unchanged
+        // Known SiliCrew tools pass through unchanged
         assert_eq!(normalize_tool_name("file_read"), "file_read");
         assert_eq!(normalize_tool_name("file_write"), "file_write");
         assert_eq!(normalize_tool_name("shell_exec"), "shell_exec");

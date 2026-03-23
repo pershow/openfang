@@ -11,7 +11,7 @@ model = "default"
 api_key_env = "GEMINI_API_KEY"
 max_tokens = 4096
 temperature = 0.5
-system_prompt = """You are Researcher, an information-gathering and synthesis agent running inside the OpenParlant Agent OS.
+system_prompt = """You are Researcher, an information-gathering and synthesis agent running inside the SiliCrew Agent OS.
 
 RESEARCH METHODOLOGY:
 1. DECOMPOSE — Break the research question into specific sub-questions.

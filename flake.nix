@@ -1,5 +1,5 @@
 {
-  description = "The OpenParlant Agent OS";
+  description = "The SiliCrew Agent OS";
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -40,11 +40,11 @@
         apps = {
           silicrew-cli = {
             program = "${self'.packages.silicrew-cli}/bin/silicrew";
-            meta.description = "CLI tool for the OpenParlant Agent OS";
+            meta.description = "CLI tool for the SiliCrew Agent OS";
           };
           silicrew-desktop = {
             program = "${self'.packages.silicrew-desktop}/bin/silicrew-desktop";
-            meta.description = "Native desktop application for the OpenParlant Agent OS (Tauri 2.0)";
+            meta.description = "Native desktop application for the SiliCrew Agent OS (Tauri 2.0)";
           };
           default = self'.apps.silicrew-cli;
         };

@@ -1,6 +1,6 @@
 # MCP & A2A Integration Guide
 
-OpenParlant implements both the **Model Context Protocol (MCP)** and **Agent-to-Agent (A2A)** protocol, enabling deep interoperability with external tools, IDEs, and other agent frameworks.
+SiliCrew implements both the **Model Context Protocol (MCP)** and **Agent-to-Agent (A2A)** protocol, enabling deep interoperability with external tools, IDEs, and other agent frameworks.
 
 ---
 
@@ -9,7 +9,7 @@ OpenParlant implements both the **Model Context Protocol (MCP)** and **Agent-to-
 - [Part 1: MCP (Model Context Protocol)](#part-1-mcp-model-context-protocol)
   - [Overview](#mcp-overview)
   - [MCP Client -- Connecting to External Servers](#mcp-client)
-  - [MCP Server -- Exposing OpenParlant via MCP](#mcp-server)
+  - [MCP Server -- Exposing SiliCrew via MCP](#mcp-server)
   - [Configuration Examples](#mcp-configuration-examples)
   - [API Endpoints](#mcp-api-endpoints)
 - [Part 2: A2A (Agent-to-Agent Protocol)](#part-2-a2a-agent-to-agent-protocol)
@@ -28,12 +28,12 @@ OpenParlant implements both the **Model Context Protocol (MCP)** and **Agent-to-
 
 ### MCP Overview
 
-The Model Context Protocol (MCP) is a JSON-RPC 2.0 based protocol that standardizes how LLM applications discover and invoke tools. OpenParlant supports MCP in both directions:
+The Model Context Protocol (MCP) is a JSON-RPC 2.0 based protocol that standardizes how LLM applications discover and invoke tools. SiliCrew supports MCP in both directions:
 
-- **As a client**: OpenParlant connects to external MCP servers (GitHub, filesystem, databases, Puppeteer, etc.) and makes their tools available to all agents.
-- **As a server**: OpenParlant exposes its own agents as MCP tools, so IDEs like Cursor, VS Code, and Claude Desktop can call OpenParlant agents directly.
+- **As a client**: SiliCrew connects to external MCP servers (GitHub, filesystem, databases, Puppeteer, etc.) and makes their tools available to all agents.
+- **As a server**: SiliCrew exposes its own agents as MCP tools, so IDEs like Cursor, VS Code, and Claude Desktop can call SiliCrew agents directly.
 
-OpenParlant implements MCP protocol version `2024-11-05`.
+SiliCrew implements MCP protocol version `2024-11-05`.
 
 **Source files:**
 - Client: `crates/silicrew-runtime/src/mcp.rs`
@@ -45,7 +45,7 @@ OpenParlant implements MCP protocol version `2024-11-05`.
 
 ### MCP Client
 
-The MCP client (`McpConnection` in `silicrew-runtime`) allows OpenParlant to connect to any MCP-compatible server and use its tools as if they were built-in.
+The MCP client (`McpConnection` in `silicrew-runtime`) allows SiliCrew to connect to any MCP-compatible server and use its tools as if they were built-in.
 
 #### Configuration
 
@@ -74,7 +74,7 @@ Each entry maps to a `McpServerConfigEntry` struct:
 
 #### Transport Types
 
-OpenParlant supports two MCP transports, defined by `McpTransport`:
+SiliCrew supports two MCP transports, defined by `McpTransport`:
 
 **Stdio** -- Spawns a subprocess and communicates via stdin/stdout with newline-delimited JSON-RPC:
 
@@ -162,11 +162,11 @@ impl Drop for McpConnection {
 
 ### MCP Server
 
-OpenParlant can also act as an MCP server, exposing its agents as callable tools to external MCP clients.
+SiliCrew can also act as an MCP server, exposing its agents as callable tools to external MCP clients.
 
 #### How It Works
 
-Each OpenParlant agent becomes an MCP tool named `silicrew_agent_{name}` (with hyphens replaced by underscores). The tool accepts a single `message` string parameter and returns the agent's response.
+Each SiliCrew agent becomes an MCP tool named `silicrew_agent_{name}` (with hyphens replaced by underscores). The tool accepts a single `message` string parameter and returns the agent's response.
 
 For example, an agent named `code-reviewer` becomes the MCP tool `silicrew_agent_code_reviewer`.
 
@@ -179,19 +179,19 @@ silicrew mcp
 ```
 
 This command:
-1. Checks if an OpenParlant daemon is running (via `find_daemon()`)
+1. Checks if an SiliCrew daemon is running (via `find_daemon()`)
 2. If found, proxies all tool calls to the daemon via its HTTP API
 3. If no daemon is running, boots an in-process kernel as a fallback
 4. Reads Content-Length framed JSON-RPC messages from stdin
 5. Writes Content-Length framed JSON-RPC responses to stdout
 
 The MCP server uses `McpBackend` which supports two modes:
-- `McpBackend::Daemon` -- forwards requests to a running OpenParlant daemon via HTTP
+- `McpBackend::Daemon` -- forwards requests to a running SiliCrew daemon via HTTP
 - `McpBackend::InProcess` -- boots a full kernel when no daemon is available
 
 #### HTTP MCP Endpoint
 
-OpenParlant also exposes an MCP endpoint over HTTP at `POST /mcp`. Unlike the stdio server (which only exposes agents), the HTTP endpoint exposes the full tool set (built-in + skills + MCP tools) and executes tools via the kernel's `execute_tool()` pipeline. This means the HTTP MCP endpoint supports:
+SiliCrew also exposes an MCP endpoint over HTTP at `POST /mcp`. Unlike the stdio server (which only exposes agents), the HTTP endpoint exposes the full tool set (built-in + skills + MCP tools) and executes tools via the kernel's `execute_tool()` pipeline. This means the HTTP MCP endpoint supports:
 
 - All 23 built-in tools (file_read, web_fetch, etc.)
 - All installed skill tools
@@ -313,7 +313,7 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
-After configuration, all OpenParlant agents appear as tools in the IDE. For example, you can ask Claude Desktop to "use the silicrew code-reviewer agent to review this file."
+After configuration, all SiliCrew agents appear as tools in the IDE. For example, you can ask Claude Desktop to "use the silicrew code-reviewer agent to review this file."
 
 ---
 
@@ -456,7 +456,7 @@ args = ["-y", "@modelcontextprotocol/server-postgres"]
 
 The Agent-to-Agent (A2A) protocol, originally specified by Google, enables cross-framework agent interoperability. It allows agents built with different frameworks to discover each other's capabilities and exchange tasks.
 
-OpenParlant implements A2A in both directions:
+SiliCrew implements A2A in both directions:
 
 - **As a server**: Publishes Agent Cards describing each agent's capabilities, accepts task submissions, and tracks task lifecycle.
 - **As a client**: Discovers external A2A agents at boot time, sends tasks to them, and polls for results.
@@ -491,17 +491,17 @@ pub struct AgentCard {
 
 ```rust
 pub struct AgentCapabilities {
-    pub streaming: bool,                 // true -- OpenParlant supports streaming
+    pub streaming: bool,                 // true -- SiliCrew supports streaming
     pub push_notifications: bool,        // false -- not currently implemented
     pub state_transition_history: bool,  // true -- task status history available
 }
 ```
 
-**AgentSkill** (not the same as OpenParlant skills -- these are A2A capability descriptors):
+**AgentSkill** (not the same as SiliCrew skills -- these are A2A capability descriptors):
 
 ```rust
 pub struct AgentSkill {
-    pub id: String,           // matches the OpenParlant tool name
+    pub id: String,           // matches the SiliCrew tool name
     pub name: String,         // human-readable (underscores replaced with spaces)
     pub description: String,
     pub tags: Vec<String>,
@@ -509,7 +509,7 @@ pub struct AgentSkill {
 }
 ```
 
-Agent Cards are built from OpenParlant agent manifests via `build_agent_card()`. Each tool in the agent's capability list becomes an A2A skill descriptor. Example card:
+Agent Cards are built from SiliCrew agent manifests via `build_agent_card()`. Each tool in the agent's capability list becomes an A2A skill descriptor. Example card:
 
 ```json
 {
@@ -540,7 +540,7 @@ Agent Cards are built from OpenParlant agent manifests via `build_agent_card()`.
 
 ### A2A Server
 
-OpenParlant serves A2A requests through the REST API. The server-side implementation involves:
+SiliCrew serves A2A requests through the REST API. The server-side implementation involves:
 
 1. **Agent Card publication** at `/.well-known/agent.json`
 2. **Agent listing** at `/a2a/agents`
@@ -843,7 +843,7 @@ If `a2a` is `None` (not present in config), all A2A features are disabled. The A
 
 **Task Store Bounds**: The `A2aTaskStore` is bounded (default 1000 tasks) with FIFO eviction of completed/failed/cancelled tasks, preventing memory exhaustion from task accumulation.
 
-**External Agent Discovery**: The `A2aClient` uses a 30-second timeout and sends a `User-Agent: OpenParlant/0.1 A2A` header. Failed discoveries are logged but do not block kernel boot.
+**External Agent Discovery**: The `A2aClient` uses a 30-second timeout and sends a `User-Agent: SiliCrew/0.1 A2A` header. Failed discoveries are logged but do not block kernel boot.
 
 ### Kernel-Level Protection
 

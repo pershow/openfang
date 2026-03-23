@@ -1,4 +1,4 @@
-//! OpenParlant Extensions — one-click integration system.
+//! SiliCrew Extensions — one-click integration system.
 //!
 //! This crate provides:
 //! - **Integration Registry**: 25 bundled MCP server templates (GitHub, Slack, etc.)

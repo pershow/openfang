@@ -5,10 +5,10 @@
  *   node streaming.js
  */
 
-const { OpenParlant } = require("../index");
+const { SiliCrew } = require("../index");
 
 async function main() {
-  const client = new OpenParlant("http://localhost:3000");
+  const client = new SiliCrew("http://localhost:3000");
 
   // Create an agent
   const agent = await client.agents.create({ template: "assistant" });

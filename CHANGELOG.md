@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to OpenParlant will be documented in this file.
+All notable changes to SiliCrew will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -136,7 +136,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Interoperability
 - OpenClaw migration engine (YAML/JSON5 to TOML)
 - MCP client (JSON-RPC 2.0 over stdio/SSE, tool namespacing)
-- MCP server (exposes OpenParlant tools via MCP protocol)
+- MCP server (exposes SiliCrew tools via MCP protocol)
 - A2A protocol client and server
 - Tool name compatibility mappings (21 OpenClaw tool names)
 

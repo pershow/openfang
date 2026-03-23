@@ -1,4 +1,4 @@
-//! Route handlers for the OpenParlant API.
+//! Route handlers for the SiliCrew API.
 
 use crate::types::*;
 use axum::extract::{Path, Query, State};
@@ -3249,7 +3249,7 @@ pub async fn test_channel(
 /// Send a real test message to a specific channel/chat on the given platform.
 async fn send_channel_test_message(channel_name: &str, target_id: &str) -> Result<(), String> {
     let client = reqwest::Client::new();
-    let test_msg = "OpenParlant test message — your channel is connected!";
+    let test_msg = "SiliCrew test message — your channel is connected!";
 
     match channel_name {
         "discord" => {
@@ -3793,7 +3793,7 @@ pub async fn health_detail(State(state): State<Arc<AppState>>) -> impl IntoRespo
 
 /// GET /api/metrics — Prometheus text-format metrics.
 ///
-/// Returns counters and gauges for monitoring OpenParlant in production:
+/// Returns counters and gauges for monitoring SiliCrew in production:
 /// - `silicrew_agents_active` — number of active agents
 /// - `silicrew_uptime_seconds` — seconds since daemon started
 /// - `silicrew_tokens_total` — total tokens consumed (per agent)
@@ -3860,7 +3860,7 @@ pub async fn prometheus_metrics(State(state): State<Arc<AppState>>) -> impl Into
     ));
 
     // Version info
-    out.push_str("# HELP silicrew_info OpenParlant version and build info.\n");
+    out.push_str("# HELP silicrew_info SiliCrew version and build info.\n");
     out.push_str("# TYPE silicrew_info gauge\n");
     out.push_str(&format!(
         "silicrew_info{{version=\"{}\"}} 1\n",
@@ -6926,7 +6926,7 @@ pub async fn a2a_agent_card(State(state): State<Arc<AppState>>) -> impl IntoResp
     } else {
         let card = serde_json::json!({
             "name": "silicrew",
-            "description": "OpenParlant Agent OS — no agents spawned yet",
+            "description": "SiliCrew Agent OS — no agents spawned yet",
             "url": format!("{base_url}/a2a"),
             "version": "0.1.0",
             "capabilities": { "streaming": true },
@@ -11545,7 +11545,7 @@ pub async fn pairing_notify(
     let title = body
         .get("title")
         .and_then(|v| v.as_str())
-        .unwrap_or("OpenParlant");
+        .unwrap_or("SiliCrew");
     let message = body.get("message").and_then(|v| v.as_str()).unwrap_or("");
     if message.is_empty() {
         return (

@@ -1,7 +1,7 @@
 //! RBAC authentication and authorization for multi-user access control.
 //!
 //! The AuthManager maps platform user identities (Telegram ID, Discord ID, etc.)
-//! to OpenParlant users with roles, then enforces permission checks on actions.
+//! to SiliCrew users with roles, then enforces permission checks on actions.
 
 use dashmap::DashMap;
 use silicrew_types::agent::UserId;
@@ -86,7 +86,7 @@ impl Action {
 /// A resolved user identity.
 #[derive(Debug, Clone)]
 pub struct UserIdentity {
-    /// OpenParlant user ID.
+    /// SiliCrew user ID.
     pub id: UserId,
     /// Display name.
     pub name: String,
@@ -96,7 +96,7 @@ pub struct UserIdentity {
 
 /// RBAC authentication and authorization manager.
 pub struct AuthManager {
-    /// Known users by their OpenParlant user ID.
+    /// Known users by their SiliCrew user ID.
     users: DashMap<UserId, UserIdentity>,
     /// Channel binding index: "channel_type:platform_id" → UserId.
     channel_index: DashMap<String, UserId>,
@@ -140,7 +140,7 @@ impl AuthManager {
 
     /// Identify a user from a channel identity.
     ///
-    /// Returns the OpenParlant UserId if a matching channel binding exists,
+    /// Returns the SiliCrew UserId if a matching channel binding exists,
     /// or None for unrecognized users.
     pub fn identify(&self, channel_type: &str, platform_id: &str) -> Option<UserId> {
         let key = format!("{channel_type}:{platform_id}");

@@ -1,4 +1,4 @@
-//! Ratatui TUI for OpenParlant interactive mode.
+//! Ratatui TUI for SiliCrew interactive mode.
 //!
 //! Two-level navigation: Phase::Boot (Welcome/Wizard) → Phase::Main with 16 tabs.
 

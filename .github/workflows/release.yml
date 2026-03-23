@@ -104,7 +104,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.MAC_NOTARIZE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "OpenParlant ${{ github.ref_name }}"
+          releaseName: "SiliCrew ${{ github.ref_name }}"
           releaseBody: |
             ## What's New
 

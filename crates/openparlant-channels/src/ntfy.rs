@@ -329,7 +329,7 @@ impl ChannelAdapter for NtfyAdapter {
             ChannelContent::Text(t) => t,
             _ => "(Unsupported content type)".to_string(),
         };
-        self.publish(&text, Some("OpenParlant")).await
+        self.publish(&text, Some("SiliCrew")).await
     }
 
     async fn send_typing(

@@ -72,7 +72,7 @@ impl MigrationReport {
         let mode = if self.dry_run { " (Dry Run)" } else { "" };
 
         out.push_str(&format!(
-            "# Migration Report: {} -> OpenParlant{}\n\n",
+            "# Migration Report: {} -> SiliCrew{}\n\n",
             self.source, mode
         ));
 

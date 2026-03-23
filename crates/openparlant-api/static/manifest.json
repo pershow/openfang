@@ -1,6 +1,6 @@
 {
-  "name": "OpenParlant Agent OS",
-  "short_name": "OpenParlant",
+  "name": "SiliCrew Agent OS",
+  "short_name": "SiliCrew",
   "description": "Open-source Agent Operating System",
   "start_url": "/",
   "display": "standalone",

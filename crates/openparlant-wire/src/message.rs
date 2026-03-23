@@ -1,6 +1,6 @@
 //! Wire protocol message types.
 //!
-//! All communication between OpenParlant peers uses JSON-framed messages
+//! All communication between SiliCrew peers uses JSON-framed messages
 //! over TCP. Each message is prefixed with a 4-byte big-endian length header.
 
 use serde::{Deserialize, Serialize};

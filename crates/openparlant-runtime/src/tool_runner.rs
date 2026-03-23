@@ -117,7 +117,7 @@ pub async fn execute_tool(
     manifest: Option<&silicrew_types::agent::AgentManifest>,
 ) -> ToolResult {
     // Normalize the tool name through compat mappings so LLM-hallucinated aliases
-    // (e.g. "fs-write" → "file_write") resolve to the canonical OpenParlant name.
+    // (e.g. "fs-write" → "file_write") resolve to the canonical SiliCrew name.
     let tool_name = normalize_tool_name(tool_name);
 
     // Capability enforcement: reject tools not in the allowed list
@@ -1113,7 +1113,7 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "url": { "type": "string", "description": "Base URL of the remote OpenParlant/A2A-compatible agent (e.g., 'https://agent.example.com')" }
+                    "url": { "type": "string", "description": "Base URL of the remote SiliCrew/A2A-compatible agent (e.g., 'https://agent.example.com')" }
                 },
                 "required": ["url"]
             }),
@@ -2666,7 +2666,7 @@ async fn tool_location_get() -> Result<String, String> {
     // Use ip-api.com (free, no API key, JSON response)
     let resp = client
         .get("https://ip-api.com/json/?fields=status,message,country,regionName,city,zip,lat,lon,timezone,isp,query")
-        .header("User-Agent", "OpenParlant/0.1")
+        .header("User-Agent", "SiliCrew/0.1")
         .send()
         .await
         .map_err(|e| format!("Location request failed: {e}"))?;

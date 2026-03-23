@@ -1,4 +1,4 @@
-//! Event types for the OpenParlant internal event bus.
+//! Event types for the SiliCrew internal event bus.
 //!
 //! All inter-agent and system communication flows through events.
 
@@ -279,7 +279,7 @@ pub enum SystemEvent {
     },
 }
 
-/// A complete event in the OpenParlant event system.
+/// A complete event in the SiliCrew event system.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Event {
     /// Unique event ID.

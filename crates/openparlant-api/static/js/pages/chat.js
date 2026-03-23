@@ -1,4 +1,4 @@
-// OpenParlant Chat Page — Agent chat with markdown + streaming
+// SiliCrew Chat Page — Agent chat with markdown + streaming
 'use strict';
 
 function chatPage() {
@@ -492,7 +492,7 @@ function chatPage() {
         this.messages.push({
           id: ++localMsgId,
           role: 'system',
-          text: '**Welcome to OpenParlant Chat!**\n\n' +
+          text: '**Welcome to SiliCrew Chat!**\n\n' +
             '- Type `/` to see available commands\n' +
             '- `/help` shows all commands\n' +
             '- `/think on` enables extended reasoning\n' +

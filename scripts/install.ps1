@@ -1,4 +1,4 @@
-# OpenParlant installer for Windows
+# SiliCrew installer for Windows
 # Usage: iwr -useb https://silicrew.sh/install.ps1 | iex
 #   or:  powershell -c "irm https://silicrew.sh/install.ps1 | iex"
 #
@@ -14,7 +14,7 @@ $InstallDir = if ($env:OPENFANG_INSTALL_DIR) { $env:OPENFANG_INSTALL_DIR } else 
 
 function Write-Banner {
     Write-Host ""
-    Write-Host "  OpenParlant Installer" -ForegroundColor Cyan
+    Write-Host "  SiliCrew Installer" -ForegroundColor Cyan
     Write-Host "  ==================" -ForegroundColor Cyan
     Write-Host ""
 }
@@ -77,7 +77,7 @@ function Get-LatestVersion {
     }
 }
 
-function Install-OpenParlant {
+function Install-SiliCrew {
     Write-Banner
 
     $arch = Get-Architecture
@@ -87,7 +87,7 @@ function Install-OpenParlant {
     $url = "https://github.com/$Repo/releases/download/$version/$archive"
     $checksumUrl = "$url.sha256"
 
-    Write-Host "  Installing OpenParlant $version for $target..."
+    Write-Host "  Installing SiliCrew $version for $target..."
 
     # Create install directory
     if (-not (Test-Path $InstallDir)) {
@@ -171,11 +171,11 @@ function Install-OpenParlant {
         try {
             $versionOutput = & $installedExe --version 2>&1
             Write-Host ""
-            Write-Host "  OpenParlant installed successfully! ($versionOutput)" -ForegroundColor Green
+            Write-Host "  SiliCrew installed successfully! ($versionOutput)" -ForegroundColor Green
         }
         catch {
             Write-Host ""
-            Write-Host "  OpenParlant binary installed to $installedExe" -ForegroundColor Green
+            Write-Host "  SiliCrew binary installed to $installedExe" -ForegroundColor Green
         }
     }
 
@@ -188,4 +188,4 @@ function Install-OpenParlant {
     Write-Host ""
 }
 
-Install-OpenParlant
+Install-SiliCrew

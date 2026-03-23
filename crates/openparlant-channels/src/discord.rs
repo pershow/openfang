@@ -1,4 +1,4 @@
-//! Discord Gateway adapter for the OpenParlant channel bridge.
+//! Discord Gateway adapter for the SiliCrew channel bridge.
 //!
 //! Uses Discord Gateway WebSocket (v10) for receiving messages and the REST API
 //! for sending responses. No external Discord crate — just `tokio-tungstenite` + `reqwest`.

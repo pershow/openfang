@@ -1,6 +1,6 @@
-# Contributing to OpenParlant
+# Contributing to SiliCrew
 
-Thank you for your interest in contributing to OpenParlant. This guide covers everything you need to get started, from setting up your development environment to submitting pull requests.
+Thank you for your interest in contributing to SiliCrew. This guide covers everything you need to get started, from setting up your development environment to submitting pull requests.
 
 ## Table of Contents
 
@@ -127,7 +127,7 @@ cargo run -- doctor
 
 ## Architecture Overview
 
-OpenParlant is organized as a Cargo workspace with 14 crates:
+SiliCrew is organized as a Cargo workspace with 14 crates:
 
 | Crate | Role |
 |-------|------|
@@ -139,7 +139,7 @@ OpenParlant is organized as a Cargo workspace with 14 crates:
 | `silicrew-kernel` | Assembles all subsystems: workflow engine, RBAC auth, heartbeat monitor, cron scheduler, config hot-reload |
 | `silicrew-api` | REST/WS/SSE API (Axum 0.8), 76 endpoints, 14-page SPA dashboard, OpenAI-compatible `/v1/chat/completions` |
 | `silicrew-channels` | 40 channel adapters (Telegram, Discord, Slack, WhatsApp, and 36 more), formatter, rate limiter |
-| `silicrew-wire` | OFP (OpenParlant Protocol): TCP P2P networking with HMAC-SHA256 mutual authentication |
+| `silicrew-wire` | OFP (SiliCrew Protocol): TCP P2P networking with HMAC-SHA256 mutual authentication |
 | `silicrew-cli` | Clap CLI with daemon auto-detect (HTTP mode vs. in-process fallback), MCP server |
 | `silicrew-migrate` | Migration engine for importing from OpenClaw (and future frameworks) |
 | `silicrew-skills` | Skill system: 60 bundled skills, FangHub marketplace, OpenClaw compatibility, prompt injection scanning |

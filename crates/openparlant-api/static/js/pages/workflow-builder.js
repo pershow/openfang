@@ -1,4 +1,4 @@
-// OpenParlant Visual Workflow Builder — Drag-and-drop workflow designer
+// SiliCrew Visual Workflow Builder — Drag-and-drop workflow designer
 'use strict';
 
 function workflowBuilder() {

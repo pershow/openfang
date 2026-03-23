@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-/// Get the OpenParlant home directory, respecting OPENFANG_HOME env var.
+/// Get the SiliCrew home directory, respecting OPENFANG_HOME env var.
 fn dotenv_silicrew_home() -> Option<PathBuf> {
     if let Ok(home) = std::env::var("OPENFANG_HOME") {
         return Some(PathBuf::from(home));
@@ -165,7 +165,7 @@ fn read_env_file(path: &PathBuf) -> BTreeMap<String, String> {
 /// Write key-value pairs back to the .env file with a header comment.
 fn write_env_file(path: &PathBuf, entries: &BTreeMap<String, String>) -> Result<(), String> {
     let mut content =
-        String::from("# OpenParlant environment — managed by `silicrew config set-key`\n");
+        String::from("# SiliCrew environment — managed by `silicrew config set-key`\n");
     content.push_str("# Do not edit while the daemon is running.\n\n");
 
     for (key, value) in entries {

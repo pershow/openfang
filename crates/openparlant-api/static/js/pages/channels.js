@@ -1,4 +1,4 @@
-// OpenParlant Channels Page — OpenClaw-style setup UX with QR code support
+// SiliCrew Channels Page — OpenClaw-style setup UX with QR code support
 'use strict';
 
 function channelsPage() {

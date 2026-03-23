@@ -1,10 +1,10 @@
-# OpenParlant CLI Reference
+# SiliCrew CLI Reference
 
-Complete command-line reference for `silicrew`, the CLI tool for the OpenParlant Agent OS.
+Complete command-line reference for `silicrew`, the CLI tool for the SiliCrew Agent OS.
 
 ## Overview
 
-The `silicrew` binary is the primary interface for managing the OpenParlant Agent OS. It supports two modes of operation:
+The `silicrew` binary is the primary interface for managing the SiliCrew Agent OS. It supports two modes of operation:
 
 - **Daemon mode** -- When a daemon is running (`silicrew start`), CLI commands communicate with it over HTTP. This is the recommended mode for production use.
 - **In-process mode** -- When no daemon is detected, commands that support it will boot an ephemeral in-process kernel. Agents spawned in this mode are not persisted and will be lost when the process exits.
@@ -76,7 +76,7 @@ Press `Ctrl+C` to exit. A second `Ctrl+C` force-exits the process.
 
 ### silicrew init
 
-Initialize the OpenParlant workspace. Creates `~/.silicrew/` with subdirectories (`data/`, `agents/`) and a default `config.toml`.
+Initialize the SiliCrew workspace. Creates `~/.silicrew/` with subdirectories (`data/`, `agents/`) and a default `config.toml`.
 
 ```
 silicrew init [--quick]
@@ -109,7 +109,7 @@ silicrew init --quick
 
 ### silicrew start
 
-Start the OpenParlant daemon (kernel + API server).
+Start the SiliCrew daemon (kernel + API server).
 
 ```
 silicrew start [--config <PATH>]
@@ -118,7 +118,7 @@ silicrew start [--config <PATH>]
 **Behavior:**
 
 - Checks if a daemon is already running; exits with an error if so.
-- Boots the OpenParlant kernel (loads config, initializes SQLite database, loads agents, connects MCP servers, starts background tasks).
+- Boots the SiliCrew kernel (loads config, initializes SQLite database, loads agents, connects MCP servers, starts background tasks).
 - Starts the HTTP API server on the address specified in `config.toml` (default: `127.0.0.1:4200`).
 - Writes `daemon.json` to `~/.silicrew/` so other CLI commands can discover the running daemon.
 - Blocks until interrupted with `Ctrl+C`.
@@ -126,7 +126,7 @@ silicrew start [--config <PATH>]
 **Output:**
 
 ```
-  OpenParlant Agent OS v0.1.0
+  SiliCrew Agent OS v0.1.0
 
   Starting daemon...
 
@@ -186,7 +186,7 @@ silicrew status --json | jq '.agent_count'
 
 ### silicrew doctor
 
-Run diagnostic checks on the OpenParlant installation.
+Run diagnostic checks on the SiliCrew installation.
 
 ```
 silicrew doctor [--json] [--repair]
@@ -201,7 +201,7 @@ silicrew doctor [--json] [--repair]
 
 **Checks performed:**
 
-1. **OpenParlant directory** -- `~/.silicrew/` exists
+1. **SiliCrew directory** -- `~/.silicrew/` exists
 2. **.env file** -- exists and has correct permissions (0600 on Unix)
 3. **Config TOML syntax** -- `config.toml` parses without errors
 4. **Daemon status** -- whether a daemon is running
@@ -1026,7 +1026,7 @@ silicrew migrate --from <FRAMEWORK> [--source-dir <PATH>] [--dry-run]
 
 **Behavior:**
 
-- Converts agent configurations, YAML manifests, and settings from the source framework into OpenParlant format.
+- Converts agent configurations, YAML manifests, and settings from the source framework into SiliCrew format.
 - Saves imported data to `~/.silicrew/`.
 - Writes a `migration_report.md` summarizing what was imported.
 
@@ -1060,7 +1060,7 @@ silicrew mcp
 
 **Behavior:**
 
-- Exposes running OpenParlant agents as MCP tools via JSON-RPC 2.0 over stdin/stdout with Content-Length framing.
+- Exposes running SiliCrew agents as MCP tools via JSON-RPC 2.0 over stdin/stdout with Content-Length framing.
 - Each agent becomes a callable tool named `silicrew_agent_<name>` (hyphens replaced with underscores).
 - Connects to a running daemon via HTTP if available; otherwise boots an in-process kernel.
 - Protocol version: `2024-11-05`.
@@ -1120,7 +1120,7 @@ silicrew doctor --repair  # Cleans up stale daemon.json from crashes
 
 ## Environment File
 
-OpenParlant loads `~/.silicrew/.env` into the process environment on every CLI invocation. System environment variables take priority over `.env` values.
+SiliCrew loads `~/.silicrew/.env` into the process environment on every CLI invocation. System environment variables take priority over `.env` values.
 
 The `.env` file stores API keys and secrets:
 
@@ -1153,7 +1153,7 @@ Manage keys with the `config set-key` / `config delete-key` commands rather than
 # 1. Set your API key
 export GROQ_API_KEY="gsk_your_key_here"
 
-# 2. Initialize OpenParlant
+# 2. Initialize SiliCrew
 silicrew init --quick
 
 # 3. Start the daemon

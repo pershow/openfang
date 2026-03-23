@@ -249,7 +249,7 @@ pub fn default_config_path() -> PathBuf {
     silicrew_home().join("config.toml")
 }
 
-/// Get the OpenParlant home directory.
+/// Get the SiliCrew home directory.
 ///
 /// Priority: `OPENFANG_HOME` env var > `~/.silicrew`.
 pub fn silicrew_home() -> PathBuf {

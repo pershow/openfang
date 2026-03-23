@@ -1,4 +1,4 @@
-//! System-wide keyboard shortcuts for the OpenParlant desktop app.
+//! System-wide keyboard shortcuts for the SiliCrew desktop app.
 
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
@@ -6,7 +6,7 @@ use tracing::warn;
 
 /// Build the global shortcut plugin with 3 system-wide shortcuts:
 ///
-/// - `Ctrl+Shift+O` — Show/focus the OpenParlant window
+/// - `Ctrl+Shift+O` — Show/focus the SiliCrew window
 /// - `Ctrl+Shift+N` — Show window + navigate to agents page
 /// - `Ctrl+Shift+C` — Show window + navigate to chat page
 ///

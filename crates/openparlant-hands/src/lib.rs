@@ -1,4 +1,4 @@
-//! OpenParlant Hands — curated autonomous capability packages.
+//! SiliCrew Hands — curated autonomous capability packages.
 //!
 //! A Hand is a pre-built, domain-complete agent configuration that users activate
 //! from a marketplace. Unlike regular agents (you chat with them), Hands work for

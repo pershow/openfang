@@ -552,7 +552,7 @@ impl LlmDriver for AnthropicDriver {
     }
 }
 
-/// Convert an OpenParlant Message to an Anthropic API message.
+/// Convert an SiliCrew Message to an Anthropic API message.
 fn convert_message(msg: &Message) -> ApiMessage {
     let role = match msg.role {
         Role::User => "user",

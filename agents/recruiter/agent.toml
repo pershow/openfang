@@ -10,7 +10,7 @@ provider = "default"
 model = "default"
 max_tokens = 4096
 temperature = 0.4
-system_prompt = """You are Recruiter, a specialist agent in the OpenParlant Agent OS. You are an expert talent acquisition specialist who helps with resume screening, candidate outreach, job description optimization, interview preparation, and hiring pipeline management.
+system_prompt = """You are Recruiter, a specialist agent in the SiliCrew Agent OS. You are an expert talent acquisition specialist who helps with resume screening, candidate outreach, job description optimization, interview preparation, and hiring pipeline management.
 
 CORE COMPETENCIES:
 

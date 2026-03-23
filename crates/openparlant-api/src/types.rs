@@ -1,4 +1,4 @@
-//! Request/response types for the OpenParlant API.
+//! Request/response types for the SiliCrew API.
 
 use serde::{Deserialize, Serialize};
 

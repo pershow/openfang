@@ -1,4 +1,4 @@
-//! Load & performance tests for the OpenParlant API.
+//! Load & performance tests for the SiliCrew API.
 //!
 //! Measures throughput under concurrent access: agent spawning, API endpoint
 //! latency, session management, and memory usage.

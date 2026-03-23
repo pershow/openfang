@@ -3,7 +3,7 @@ name = "silicrew-policy"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Policy matching and guideline resolution for the OpenParlant control plane"
+description = "Policy matching and guideline resolution for the SiliCrew control plane"
 
 [dependencies]
 silicrew-memory = { path = "../silicrew-memory" }

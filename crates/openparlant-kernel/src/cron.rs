@@ -1,4 +1,4 @@
-//! Cron job scheduler engine for the OpenParlant kernel.
+//! Cron job scheduler engine for the SiliCrew kernel.
 //!
 //! Manages scheduled jobs (recurring and one-shot) across all agents.
 //! This is separate from `scheduler.rs` which handles agent resource tracking.
@@ -75,7 +75,7 @@ pub struct CronScheduler {
 impl CronScheduler {
     /// Create a new scheduler.
     ///
-    /// `home_dir` is the OpenParlant data directory; jobs are persisted to
+    /// `home_dir` is the SiliCrew data directory; jobs are persisted to
     /// `<home_dir>/cron_jobs.json`. `max_total_jobs` caps the total number
     /// of jobs across all agents.
     pub fn new(home_dir: &Path, max_total_jobs: usize) -> Self {

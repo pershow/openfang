@@ -1454,7 +1454,7 @@ pub async fn build_router(
     (app, state)
 }
 
-/// Start the OpenParlant daemon: boot kernel + HTTP API server.
+/// Start the SiliCrew daemon: boot kernel + HTTP API server.
 ///
 /// This function blocks until Ctrl+C or a shutdown request.
 pub async fn run_daemon(
@@ -1536,7 +1536,7 @@ pub async fn run_daemon(
         }
     }
 
-    info!("OpenParlant API server listening on http://{addr}");
+    info!("SiliCrew API server listening on http://{addr}");
     info!("WebChat UI available at http://{addr}/",);
     info!("WebSocket endpoint: ws://{addr}/api/agents/{{id}}/ws",);
 
@@ -1580,7 +1580,7 @@ pub async fn run_daemon(
     // Shutdown kernel
     kernel.shutdown();
 
-    info!("OpenParlant daemon stopped");
+    info!("SiliCrew daemon stopped");
     Ok(())
 }
 
@@ -1675,7 +1675,7 @@ fn is_process_alive(pid: u32) -> bool {
     }
 }
 
-/// Check if an OpenParlant daemon is actually responding at the given address.
+/// Check if an SiliCrew daemon is actually responding at the given address.
 /// This avoids false positives where a different process reused the same PID
 /// after a system reboot.
 fn is_daemon_responding(addr: &str) -> bool {

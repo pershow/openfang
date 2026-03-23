@@ -314,7 +314,7 @@ impl ChannelAdapter for GotifyAdapter {
             ChannelContent::Text(t) => t,
             _ => "(Unsupported content type)".to_string(),
         };
-        self.api_send_message("OpenParlant", &text, 5).await
+        self.api_send_message("SiliCrew", &text, 5).await
     }
 
     async fn send_typing(

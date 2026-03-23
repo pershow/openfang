@@ -1,4 +1,4 @@
-// OpenParlant API Client — Fetch wrapper, WebSocket manager, auth injection, toast notifications
+// SiliCrew API Client — Fetch wrapper, WebSocket manager, auth injection, toast notifications
 'use strict';
 
 // ── Toast Notification System ──

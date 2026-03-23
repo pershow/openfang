@@ -3,7 +3,7 @@ name = "silicrew-context"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Context compilation traits for the OpenParlant control plane"
+description = "Context compilation traits for the SiliCrew control plane"
 
 [dependencies]
 silicrew-memory = { path = "../silicrew-memory" }

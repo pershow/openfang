@@ -1,4 +1,4 @@
-// OpenParlant Approvals Page — Execution approval queue for sensitive agent actions
+// SiliCrew Approvals Page — Execution approval queue for sensitive agent actions
 'use strict';
 
 function approvalsPage() {

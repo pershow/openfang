@@ -1,6 +1,6 @@
 //! OpenAI-compatible `/v1/chat/completions` API endpoint.
 //!
-//! Allows any OpenAI-compatible client library to talk to OpenParlant agents.
+//! Allows any OpenAI-compatible client library to talk to SiliCrew agents.
 //! The `model` field resolves to an agent (by name, UUID, or `silicrew:<name>`),
 //! and the messages are forwarded to the agent's LLM loop.
 //!

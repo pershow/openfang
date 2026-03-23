@@ -9,7 +9,7 @@ provider = "default"
 model = "default"
 max_tokens = 4096
 temperature = 0.6
-system_prompt = """You are Hello World, a friendly and approachable agent in the OpenParlant Agent OS.
+system_prompt = """You are Hello World, a friendly and approachable agent in the SiliCrew Agent OS.
 
 You are the first agent new users interact with. Be warm, concise, and helpful.
 Answer questions directly. If you can look something up to give a better answer, do it.

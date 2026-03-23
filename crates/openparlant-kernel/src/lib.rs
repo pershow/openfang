@@ -1,4 +1,4 @@
-//! Core kernel for the OpenParlant Agent Operating System.
+//! Core kernel for the SiliCrew Agent Operating System.
 //!
 //! The kernel manages agent lifecycles, memory, permissions, scheduling,
 //! and inter-agent communication.

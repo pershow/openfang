@@ -3,7 +3,7 @@ name = "silicrew-control"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Turn control coordinator for the OpenParlant conversational control layer"
+description = "Turn control coordinator for the SiliCrew conversational control layer"
 
 [dependencies]
 silicrew-types = { path = "../silicrew-types" }

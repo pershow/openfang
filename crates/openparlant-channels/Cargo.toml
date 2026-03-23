@@ -3,7 +3,7 @@ name = "silicrew-channels"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Channel Bridge Layer — pluggable messaging integrations for OpenParlant"
+description = "Channel Bridge Layer — pluggable messaging integrations for SiliCrew"
 
 [dependencies]
 silicrew-types = { path = "../silicrew-types" }

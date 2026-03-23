@@ -1,9 +1,9 @@
 /**
- * @silicrew/sdk — Official JavaScript client for the OpenParlant Agent OS REST API.
+ * @silicrew/sdk — Official JavaScript client for the SiliCrew Agent OS REST API.
  *
  * Usage:
- *   const { OpenParlant } = require("@silicrew/sdk");
- *   const client = new OpenParlant("http://localhost:3000");
+ *   const { SiliCrew } = require("@silicrew/sdk");
+ *   const client = new SiliCrew("http://localhost:3000");
  *
  *   const agent = await client.agents.create({ template: "assistant" });
  *   const reply = await client.agents.message(agent.id, "Hello!");
@@ -26,9 +26,9 @@ class SiliCrewError extends Error {
   }
 }
 
-class OpenParlant {
+class SiliCrew {
   /**
-   * @param {string} baseUrl - OpenParlant server URL (e.g. "http://localhost:3000")
+   * @param {string} baseUrl - SiliCrew server URL (e.g. "http://localhost:3000")
    * @param {object} [opts]
    * @param {Record<string, string>} [opts.headers] - Extra headers for every request
    */
@@ -476,4 +476,4 @@ class ScheduleResource {
 
 // ── Exports ─────────────────────────────────────────────────────
 
-module.exports = { OpenParlant: OpenParlant, SiliCrewError: SiliCrewError };
+module.exports = { SiliCrew: SiliCrew, SiliCrewError: SiliCrewError };

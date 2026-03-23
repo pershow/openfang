@@ -27,7 +27,7 @@ const MAX_MESSAGE_LEN: usize = 500;
 /// Twitch IRC channel adapter.
 ///
 /// Connects to Twitch chat via the IRC protocol and bridges messages to the
-/// OpenParlant channel system. Supports multiple channels simultaneously.
+/// SiliCrew channel system. Supports multiple channels simultaneously.
 pub struct TwitchAdapter {
     /// SECURITY: OAuth token is zeroized on drop.
     oauth_token: Zeroizing<String>,

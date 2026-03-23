@@ -1,6 +1,6 @@
 # Channel Adapters
 
-OpenParlant connects to messaging platforms through **40 channel adapters**, allowing users to interact with their agents across every major communication platform. Adapters span consumer messaging, enterprise collaboration, social media, community platforms, privacy-focused protocols, and generic webhooks.
+SiliCrew connects to messaging platforms through **40 channel adapters**, allowing users to interact with their agents across every major communication platform. Adapters span consumer messaging, enterprise collaboration, social media, community platforms, privacy-focused protocols, and generic webhooks.
 
 All adapters share a common foundation: graceful shutdown via `watch::channel`, exponential backoff on connection failures, `Zeroizing<String>` for secrets, automatic message splitting for platform limits, per-channel model/prompt overrides, DM/group policy enforcement, per-user rate limiting, and output formatting (Markdown, TelegramHTML, SlackMrkdwn, PlainText).
 
@@ -147,7 +147,7 @@ default_agent = "social-media"
 
 ### Common Fields
 
-- `bot_token_env` / `token_env` -- The environment variable holding the bot/access token. OpenParlant reads the token from this env var at startup. All secrets are stored as `Zeroizing<String>` and wiped from memory on drop.
+- `bot_token_env` / `token_env` -- The environment variable holding the bot/access token. SiliCrew reads the token from this env var at startup. All secrets are stored as `Zeroizing<String>` and wiped from memory on drop.
 - `default_agent` -- The agent name (or ID) that receives messages when no specific routing applies.
 - `allowed_users` -- Optional list of platform user IDs allowed to interact. Empty means allow all.
 - `overrides` -- Optional per-channel behavior overrides (see [Channel Overrides](#channel-overrides) below).
@@ -482,8 +482,8 @@ Then configure Feishu event callback to:
 
 ### How It Works
 
-- **websocket mode**: OpenParlant obtains an endpoint from Feishu and receives events via a long-lived connection (no public inbound webhook required).
-- **webhook mode**: OpenParlant starts an HTTP callback server and receives Feishu push events.
+- **websocket mode**: SiliCrew obtains an endpoint from Feishu and receives events via a long-lived connection (no public inbound webhook required).
+- **webhook mode**: SiliCrew starts an HTTP callback server and receives Feishu push events.
 - **Send path (both modes)**: outbound messages still go through Feishu OpenAPI HTTP `im/v1/messages`.
 - **Typing UX**: while the agent is processing, the bot adds the official `Typing` message reaction on the user’s message via `im/v1/messages/:message_id/reactions`, and removes it when the reply is ready. Ensure the app has `im:message` or `im:message.reactions:write_only` (see [add reaction](https://open.feishu.cn/document/server-docs/im-v1/message-reaction/create)).
 

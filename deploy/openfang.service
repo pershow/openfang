@@ -1,5 +1,5 @@
 [Unit]
-Description=OpenParlant Agent OS Daemon
+Description=SiliCrew Agent OS Daemon
 Documentation=https://github.com/silicrew-ai/silicrew
 After=network-online.target
 Wants=network-online.target

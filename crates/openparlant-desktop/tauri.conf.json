@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OpenParlant",
+  "productName": "SiliCrew",
   "version": "0.1.0",
   "identifier": "ai.silicrew.desktop",
   "build": {},
@@ -33,7 +33,7 @@
     ],
     "category": "Productivity",
     "shortDescription": "Open-source Agent Operating System",
-    "longDescription": "OpenParlant is an open-source Agent Operating System — run, orchestrate, and extend AI agents across every channel from your desktop.",
+    "longDescription": "SiliCrew is an open-source Agent Operating System — run, orchestrate, and extend AI agents across every channel from your desktop.",
     "linux": {
       "deb": {
         "depends": []

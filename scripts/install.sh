@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# OpenParlant installer — works on Linux, macOS, WSL
+# SiliCrew installer — works on Linux, macOS, WSL
 # Usage: curl -sSf https://silicrew.sh | sh
 #
 # Environment variables:
@@ -42,7 +42,7 @@ install() {
     detect_platform
 
     echo ""
-    echo "  OpenParlant Installer"
+    echo "  SiliCrew Installer"
     echo "  =================="
     echo ""
 
@@ -65,7 +65,7 @@ install() {
     URL="https://github.com/$REPO/releases/download/$VERSION/silicrew-$PLATFORM.tar.gz"
     CHECKSUM_URL="$URL.sha256"
 
-    echo "  Installing OpenParlant $VERSION for $PLATFORM..."
+    echo "  Installing SiliCrew $VERSION for $PLATFORM..."
     mkdir -p "$INSTALL_DIR"
 
     # Download to temp
@@ -178,10 +178,10 @@ install() {
     if "$INSTALL_DIR/silicrew" --version >/dev/null 2>&1; then
         INSTALLED_VERSION=$("$INSTALL_DIR/silicrew" --version 2>/dev/null || echo "$VERSION")
         echo ""
-        echo "  OpenParlant installed successfully! ($INSTALLED_VERSION)"
+        echo "  SiliCrew installed successfully! ($INSTALLED_VERSION)"
     else
         echo ""
-        echo "  OpenParlant binary installed to $INSTALL_DIR/silicrew"
+        echo "  SiliCrew binary installed to $INSTALL_DIR/silicrew"
     fi
 
     echo ""

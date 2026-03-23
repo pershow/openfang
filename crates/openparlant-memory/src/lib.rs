@@ -1,4 +1,4 @@
-//! Memory substrate for the OpenParlant Agent Operating System.
+//! Memory substrate for the SiliCrew Agent Operating System.
 //!
 //! Provides a unified memory API over three storage backends:
 //! - **Structured store** (SQL): Key-value pairs, sessions, agent state

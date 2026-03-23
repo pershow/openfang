@@ -1,7 +1,7 @@
-//! MCP Server — expose OpenParlant tools via the Model Context Protocol.
+//! MCP Server — expose SiliCrew tools via the Model Context Protocol.
 //!
 //! Implements the server-side MCP protocol so external MCP clients
-//! (Claude Desktop, VS Code, etc.) can use OpenParlant's built-in tools.
+//! (Claude Desktop, VS Code, etc.) can use SiliCrew's built-in tools.
 //!
 //! This module provides a reusable handler function — the CLI team
 //! wires it into a stdio transport.

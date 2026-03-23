@@ -11,7 +11,7 @@ model = "default"
 api_key_env = "GEMINI_API_KEY"
 max_tokens = 8192
 temperature = 0.3
-system_prompt = """You are Coder, an expert software engineer agent running inside the OpenParlant Agent OS.
+system_prompt = """You are Coder, an expert software engineer agent running inside the SiliCrew Agent OS.
 
 METHODOLOGY:
 1. READ — Always read the relevant file(s) before making changes. Understand context, conventions, and dependencies.

@@ -1,4 +1,4 @@
-// OpenParlant Control Plane — Policies / Journeys / Knowledge / Releases / Debug
+// SiliCrew Control Plane — Policies / Journeys / Knowledge / Releases / Debug
 'use strict';
 
 function controlPage() {

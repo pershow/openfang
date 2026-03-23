@@ -7,7 +7,7 @@
 #   export SSL_KEY="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
 #   sudo -E ./install.sh
 #
-# 运行时目录固定为 /opt/xray-steal-oneself（与 OpenParlant 控制面文档一致）。
+# 运行时目录固定为 /opt/xray-steal-oneself（与 SiliCrew 控制面文档一致）。
 # 本仓库内模板路径：infra/xray-steal-oneself/
 
 set -euo pipefail

@@ -1,4 +1,4 @@
-//! Configuration types for the OpenParlant kernel.
+//! Configuration types for the SiliCrew kernel.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -963,7 +963,7 @@ impl Default for ThinkingConfig {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct KernelConfig {
-    /// OpenParlant home directory (default: ~/.silicrew).
+    /// SiliCrew home directory (default: ~/.silicrew).
     pub home_dir: PathBuf,
     /// Data directory for databases (default: ~/.silicrew/data).
     pub data_dir: PathBuf,
@@ -1473,7 +1473,7 @@ impl std::fmt::Debug for KernelConfig {
     }
 }
 
-/// Resolve the OpenParlant home directory.
+/// Resolve the SiliCrew home directory.
 ///
 /// Priority: `OPENFANG_HOME` env var > `~/.silicrew`.
 fn silicrew_home_dir() -> PathBuf {

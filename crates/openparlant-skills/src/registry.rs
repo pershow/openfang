@@ -154,7 +154,7 @@ impl SkillRegistry {
 
                             info!(
                                 skill = %converted.manifest.skill.name,
-                                "Auto-converting SKILL.md to OpenParlant format"
+                                "Auto-converting SKILL.md to SiliCrew format"
                             );
                             if let Err(e) = openclaw_compat::write_silicrew_manifest(
                                 &path,

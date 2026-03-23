@@ -1,4 +1,4 @@
-// OpenParlant Comms Page — Agent topology & inter-agent communication feed
+// SiliCrew Comms Page — Agent topology & inter-agent communication feed
 'use strict';
 
 function commsPage() {

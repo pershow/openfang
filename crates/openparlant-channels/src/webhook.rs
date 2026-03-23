@@ -23,7 +23,7 @@ const MAX_MESSAGE_LEN: usize = 65535;
 
 /// Generic HTTP webhook channel adapter.
 ///
-/// The most flexible adapter in the OpenParlant channel suite. Any system that
+/// The most flexible adapter in the SiliCrew channel suite. Any system that
 /// can send/receive HTTP requests with HMAC-SHA256 signatures can integrate
 /// through this adapter.
 ///
@@ -322,7 +322,7 @@ impl ChannelAdapter for WebhookAdapter {
         for chunk in chunks {
             let body = serde_json::json!({
                 "sender_id": "silicrew",
-                "sender_name": "OpenParlant",
+                "sender_name": "SiliCrew",
                 "recipient_id": user.platform_id,
                 "recipient_name": user.display_name,
                 "message": chunk,

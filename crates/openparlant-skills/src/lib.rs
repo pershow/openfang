@@ -1,4 +1,4 @@
-//! Skill system for OpenParlant.
+//! Skill system for SiliCrew.
 //!
 //! Skills are pluggable tool bundles that extend agent capabilities.
 //! They can be:
@@ -69,9 +69,9 @@ pub enum SkillRuntime {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum SkillSource {
-    /// Built into OpenParlant or manually installed.
+    /// Built into SiliCrew or manually installed.
     Native,
-    /// Bundled at compile time (ships with OpenParlant binary).
+    /// Bundled at compile time (ships with SiliCrew binary).
     Bundled,
     /// Converted from OpenClaw format.
     OpenClaw,

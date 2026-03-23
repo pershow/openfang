@@ -10,9 +10,9 @@ import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from silicrew_client import OpenParlant
+from silicrew_client import SiliCrew
 
-client = OpenParlant("http://localhost:3000")
+client = SiliCrew("http://localhost:3000")
 
 # Check server health
 health = client.health()

@@ -1,7 +1,7 @@
 {
   "name": "@silicrew/whatsapp-gateway",
   "version": "0.1.0",
-  "description": "WhatsApp Web gateway for OpenParlant — QR code login, bidirectional messaging via Baileys",
+  "description": "WhatsApp Web gateway for SiliCrew — QR code login, bidirectional messaging via Baileys",
   "bin": {
     "silicrew-whatsapp-gateway": "./index.js"
   },

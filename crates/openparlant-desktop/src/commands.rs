@@ -154,7 +154,7 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
     crate::updater::download_and_install_update(&app).await
 }
 
-/// Open the OpenParlant config directory (`~/.silicrew/`) in the OS file manager.
+/// Open the SiliCrew config directory (`~/.silicrew/`) in the OS file manager.
 #[tauri::command]
 pub fn open_config_dir() -> Result<(), String> {
     let dir = silicrew_home();
@@ -162,7 +162,7 @@ pub fn open_config_dir() -> Result<(), String> {
     open::that(&dir).map_err(|e| format!("Failed to open directory: {e}"))
 }
 
-/// Open the OpenParlant logs directory (`~/.silicrew/logs/`) in the OS file manager.
+/// Open the SiliCrew logs directory (`~/.silicrew/logs/`) in the OS file manager.
 #[tauri::command]
 pub fn open_logs_dir() -> Result<(), String> {
     let dir = silicrew_home().join("logs");

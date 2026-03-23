@@ -1,4 +1,4 @@
-//! Execution approval types for the OpenParlant agent OS.
+//! Execution approval types for the SiliCrew agent OS.
 //!
 //! When an agent attempts a dangerous operation (e.g. `shell_exec`), the kernel
 //! creates an [`ApprovalRequest`] and pauses the agent until a human operator

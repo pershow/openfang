@@ -1,6 +1,6 @@
-# OpenParlant Architecture
+# SiliCrew Architecture
 
-This document describes the internal architecture of OpenParlant, the open-source Agent Operating System built in Rust. It covers the crate structure, kernel boot sequence, agent lifecycle, memory substrate, LLM driver abstraction, capability-based security model, the OFP wire protocol, the security hardening stack, the channel and skill systems, and the agent stability subsystems.
+This document describes the internal architecture of SiliCrew, the open-source Agent Operating System built in Rust. It covers the crate structure, kernel boot sequence, agent lifecycle, memory substrate, LLM driver abstraction, capability-based security model, the OFP wire protocol, the security hardening stack, the channel and skill systems, and the agent stability subsystems.
 
 ## Table of Contents
 
@@ -24,7 +24,7 @@ This document describes the internal architecture of OpenParlant, the open-sourc
 
 ## Crate Structure
 
-OpenParlant is organized as a Cargo workspace with 14 crates (13 code crates + xtask). Dependencies flow downward (lower crates depend on nothing above them).
+SiliCrew is organized as a Cargo workspace with 14 crates (13 code crates + xtask). Dependencies flow downward (lower crates depend on nothing above them).
 
 ```
 silicrew-cli            CLI interface, daemon auto-detect, MCP server
@@ -51,13 +51,13 @@ silicrew-types          Shared types: Agent, Capability, Event, Memory, Message,
 
 | Crate | Description |
 |-------|-------------|
-| **silicrew-types** | Core type definitions used across all crates. Defines `AgentManifest`, `AgentId`, `Capability`, `Event`, `ToolDefinition`, `KernelConfig`, `SiliCrewError`, taint tracking (`TaintLabel`, `TaintSet`), Ed25519 manifest signing, model catalog types (`ModelCatalogEntry`, `ProviderInfo`, `ModelTier`), tool compatibility mappings (21 OpenClaw-to-OpenParlant), MCP/A2A config types, and web config types. All config structs use `#[serde(default)]` for forward-compatible TOML parsing. |
+| **silicrew-types** | Core type definitions used across all crates. Defines `AgentManifest`, `AgentId`, `Capability`, `Event`, `ToolDefinition`, `KernelConfig`, `SiliCrewError`, taint tracking (`TaintLabel`, `TaintSet`), Ed25519 manifest signing, model catalog types (`ModelCatalogEntry`, `ProviderInfo`, `ModelTier`), tool compatibility mappings (21 OpenClaw-to-SiliCrew), MCP/A2A config types, and web config types. All config structs use `#[serde(default)]` for forward-compatible TOML parsing. |
 | **silicrew-memory** | SQLite-backed memory substrate (schema v5). Uses `Arc<Mutex<Connection>>` with `spawn_blocking` for async bridge. Provides structured KV storage, semantic search with vector embeddings, knowledge graph (entities and relations), session management, task board, usage event persistence (`usage_events` table, `UsageStore`), and canonical sessions for cross-channel memory. Five schema versions: V1 core, V2 collab, V3 embeddings, V4 usage, V5 canonical_sessions. |
 | **silicrew-runtime** | Agent execution engine. Contains the agent loop (`run_agent_loop`, `run_agent_loop_streaming`), 3 native LLM drivers (Anthropic, Gemini, OpenAI-compatible covering 20 providers), 23 built-in tools, WASM sandbox (Wasmtime with dual fuel+epoch metering), MCP client/server (JSON-RPC 2.0 over stdio/SSE), A2A protocol (AgentCard, task management), web search engine (4 providers: Tavily/Brave/Perplexity/DuckDuckGo), web fetch with SSRF protection, loop guard (SHA256-based tool loop detection), session repair (history validation), LLM session compactor (block-aware), Merkle hash chain audit trail, and embedding driver. Defines the `KernelHandle` trait that enables inter-agent tools without circular crate dependencies. |
 | **silicrew-kernel** | The central coordinator. `SiliCrewKernel` assembles all subsystems: `AgentRegistry`, `AgentScheduler`, `CapabilityManager`, `EventBus`, `Supervisor`, `WorkflowEngine`, `TriggerEngine`, `BackgroundExecutor`, `WasmSandbox`, `ModelCatalog`, `MeteringEngine`, `ModelRouter`, `AuthManager` (RBAC), `HeartbeatMonitor`, `SetupWizard`, `SkillRegistry`, MCP connections, and `WebToolsContext`. Implements `KernelHandle` for inter-agent operations. Handles agent spawn/kill, message dispatch, workflow execution, trigger evaluation, capability inheritance validation, and graceful shutdown with state persistence. |
 | **silicrew-api** | HTTP API server built on Axum 0.8 with 76 endpoints. Routes for agents, workflows, triggers, memory, channels, templates, models, providers, skills, ClawHub, MCP, health, status, version, and shutdown. WebSocket handler for real-time agent chat with streaming. SSE endpoint for streaming responses. OpenAI-compatible endpoints (`POST /v1/chat/completions`, `GET /v1/models`). A2A endpoints (`/.well-known/agent.json`, `/a2a/*`). Middleware: Bearer token auth, request ID injection, structured request logging, GCRA rate limiter (cost-aware), security headers (CSP, X-Frame-Options, etc.), health endpoint redaction. |
 | **silicrew-channels** | Channel bridge layer with 40 adapters. Each adapter implements the `ChannelAdapter` trait. Includes: Telegram, Discord, Slack, WhatsApp, Signal, Matrix, Email, SMS, Webhook, Teams, Mattermost, IRC, Google Chat, Twitch, Rocket.Chat, Zulip, XMPP, LINE, Viber, Messenger, Reddit, Mastodon, Bluesky, Feishu, Revolt, Nextcloud, Guilded, Keybase, Threema, Nostr, Webex, Pumble, Flock, Twist, Mumble, DingTalk, Discourse, Gitter, Ntfy, Gotify, LinkedIn. Features: `AgentRouter` for message routing, `BridgeManager` for lifecycle coordination, `ChannelRateLimiter` (per-user DashMap tracking), `formatter.rs` (Markdown to TelegramHTML/SlackMrkdwn/PlainText), `ChannelOverrides` (model/system_prompt/dm_policy/group_policy/rate_limit/threading/output_format), DM/group policy enforcement. |
-| **silicrew-wire** | OpenParlant Protocol (OFP) for peer-to-peer agent communication. JSON-framed messages over TCP with HMAC-SHA256 mutual authentication (nonce + constant-time verify via `subtle`). `PeerNode` listens for connections and manages peers. `PeerRegistry` tracks known remote peers and their agents. |
+| **silicrew-wire** | SiliCrew Protocol (OFP) for peer-to-peer agent communication. JSON-framed messages over TCP with HMAC-SHA256 mutual authentication (nonce + constant-time verify via `subtle`). `PeerNode` listens for connections and manages peers. `PeerRegistry` tracks known remote peers and their agents. |
 | **silicrew-cli** | Clap-based CLI. Supports all commands: `init`, `start`, `status`, `doctor`, `agent spawn/list/chat/kill`, `workflow list/create/run`, `trigger list/create/delete`, `migrate`, `skill install/list/remove/search/create`, `channel list/setup/test/enable/disable`, `config show/edit`, `chat`, `mcp`. Daemon auto-detect: checks `~/.silicrew/daemon.json` and health pings; uses HTTP when a daemon is running, boots an in-process kernel as fallback. Built-in MCP server mode. |
 | **silicrew-desktop** | Tauri 2.0 native desktop application. Boots the kernel in-process, runs the axum server on a background thread, and points a WebView at `http://127.0.0.1:{random_port}`. Features: system tray (Show/Browser/Status/Quit), single-instance enforcement, desktop notifications, hide-to-tray on close. IPC commands: `get_port`, `get_status`. Mobile-ready with `#[cfg(desktop)]` guards. |
 | **silicrew-migrate** | Migration engine. Supports OpenClaw (`~/.openclaw/`). Converts YAML configs to TOML, maps tool names, maps provider names, imports agent manifests, copies memory files, converts channel configs. Produces a `MigrationReport` with imported items, skipped items, and warnings. |
@@ -512,7 +512,7 @@ The tool runner also enforces capabilities by filtering the tool list before pas
 
 ## Security Hardening
 
-OpenParlant implements 16 security systems organized into critical fixes and state-of-the-art defenses:
+SiliCrew implements 16 security systems organized into critical fixes and state-of-the-art defenses:
 
 ### Path Traversal Prevention
 
@@ -635,10 +635,10 @@ All skills pass through a security pipeline before activation:
 
 ### Ecosystem Bridges
 
-- **FangHub**: Native OpenParlant marketplace (`FangHubClient`).
+- **FangHub**: Native SiliCrew marketplace (`FangHubClient`).
 - **ClawHub**: Cross-ecosystem compatibility (`ClawHubClient` connects to clawhub.ai).
 - **SKILL.md Parser**: Auto-converts OpenClaw SKILL.md format (YAML frontmatter + Markdown body) to `skill.toml`.
-- **Tool Compat**: 21 OpenClaw-to-OpenParlant tool name mappings in `tool_compat.rs`.
+- **Tool Compat**: 21 OpenClaw-to-SiliCrew tool name mappings in `tool_compat.rs`.
 
 ---
 
@@ -646,10 +646,10 @@ All skills pass through a security pipeline before activation:
 
 ### Model Context Protocol (MCP)
 
-OpenParlant implements both MCP client and server:
+SiliCrew implements both MCP client and server:
 
 - **MCP Client** (`mcp.rs`): JSON-RPC 2.0 over stdio or SSE transports. Connects to external MCP servers. Tools are namespaced as `mcp_{server}_{tool}` to prevent collisions. Background connection in `start_background_agents()`.
-- **MCP Server** (`mcp_server.rs`): Exposes OpenParlant's 23 built-in tools via the MCP protocol. Enables external tools to use OpenParlant as a tool provider.
+- **MCP Server** (`mcp_server.rs`): Exposes SiliCrew's 23 built-in tools via the MCP protocol. Enables external tools to use SiliCrew as a tool provider.
 - **Configuration**: `KernelConfig.mcp_servers` (Vec of `McpServerConfigEntry` with name, command, args, env, transport).
 - **API**: `/api/mcp/servers` returns configured and connected servers with their tool lists.
 
@@ -666,7 +666,7 @@ Google's A2A protocol for inter-system agent communication:
 
 ## Wire Protocol (OFP)
 
-The OpenParlant Protocol (OFP) enables peer-to-peer agent communication across machines.
+The SiliCrew Protocol (OFP) enables peer-to-peer agent communication across machines.
 
 ### Architecture
 
@@ -748,7 +748,7 @@ OFP operations require capabilities:
 
 ## Desktop Application
 
-The desktop app (`silicrew-desktop`) wraps the full OpenParlant stack in a native Tauri 2.0 application.
+The desktop app (`silicrew-desktop`) wraps the full SiliCrew stack in a native Tauri 2.0 application.
 
 ### Architecture
 

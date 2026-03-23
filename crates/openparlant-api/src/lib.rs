@@ -1,4 +1,4 @@
-//! HTTP/WebSocket API server for the OpenParlant Agent OS daemon.
+//! HTTP/WebSocket API server for the SiliCrew Agent OS daemon.
 //!
 //! Exposes agent management, status, and chat via JSON REST endpoints.
 //! The kernel runs in-process; the CLI connects over HTTP.

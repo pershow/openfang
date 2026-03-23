@@ -3,7 +3,7 @@ name = "silicrew-kernel"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Core kernel for the OpenParlant Agent OS"
+description = "Core kernel for the SiliCrew Agent OS"
 
 [dependencies]
 silicrew-types = { path = "../silicrew-types" }

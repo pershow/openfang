@@ -1,4 +1,4 @@
-// OpenParlant Workflows Page — Workflow builder + run history
+// SiliCrew Workflows Page — Workflow builder + run history
 'use strict';
 
 function workflowsPage() {

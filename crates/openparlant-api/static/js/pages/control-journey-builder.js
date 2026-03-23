@@ -1,4 +1,4 @@
-// OpenParlant Control Plane Journey Builder — visual graph editor for journeys
+// SiliCrew Control Plane Journey Builder — visual graph editor for journeys
 'use strict';
 
 function controlJourneyBuilder() {

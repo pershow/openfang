@@ -1,4 +1,4 @@
-//! Mattermost channel adapter for the OpenParlant channel bridge.
+//! Mattermost channel adapter for the SiliCrew channel bridge.
 //!
 //! Uses the Mattermost WebSocket API v4 for real-time message reception and the
 //! REST API v4 for sending messages. No external Mattermost crate — just

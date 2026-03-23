@@ -1,4 +1,4 @@
-// OpenParlant Overview Dashboard — Landing page with system stats + provider status
+// SiliCrew Overview Dashboard — Landing page with system stats + provider status
 'use strict';
 
 function overviewPage() {

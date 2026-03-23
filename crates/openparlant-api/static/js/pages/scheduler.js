@@ -1,4 +1,4 @@
-// OpenParlant Scheduler Page — Cron job management + event triggers unified view
+// SiliCrew Scheduler Page — Cron job management + event triggers unified view
 'use strict';
 
 function schedulerPage() {

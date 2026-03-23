@@ -23,7 +23,7 @@ export interface StreamEvent {
   [key: string]: unknown;
 }
 
-export class OpenParlant {
+export class SiliCrew {
   baseUrl: string;
   agents: AgentResource;
   sessions: SessionResource;

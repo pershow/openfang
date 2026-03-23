@@ -1,4 +1,4 @@
-//! Channel bridge — connects channel adapters to the OpenParlant kernel.
+//! Channel bridge — connects channel adapters to the SiliCrew kernel.
 //!
 //! Defines `ChannelBridgeHandle` (implemented by silicrew-api on the kernel) and
 //! `BridgeManager` which owns running adapters and dispatches messages.
@@ -1574,7 +1574,7 @@ async fn handle_command(
         "start" => {
             let agents = handle.list_agents().await.unwrap_or_default();
             let mut msg =
-                "Welcome to OpenParlant! I connect you to AI agents.\n\nAvailable agents:\n"
+                "Welcome to SiliCrew! I connect you to AI agents.\n\nAvailable agents:\n"
                     .to_string();
             if agents.is_empty() {
                 msg.push_str("  (none running)\n");
@@ -1586,7 +1586,7 @@ async fn handle_command(
             msg.push_str("\nCommands:\n/agents - list agents\n/agent <name> - select an agent\n/help - show this help");
             msg
         }
-        "help" => "OpenParlant Bot Commands:\n\
+        "help" => "SiliCrew Bot Commands:\n\
              \n\
              Session:\n\
              /agents - list running agents\n\

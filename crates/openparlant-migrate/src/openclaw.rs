@@ -410,10 +410,10 @@ struct LegacyYamlChannelConfig {
 }
 
 // ---------------------------------------------------------------------------
-// OpenParlant output types (TOML)
+// SiliCrew output types (TOML)
 // ---------------------------------------------------------------------------
 
-/// OpenParlant config.toml structure for serialization.
+/// SiliCrew config.toml structure for serialization.
 #[derive(Serialize)]
 struct SiliCrewConfig {
     default_model: SiliCrewModelConfig,
@@ -486,7 +486,7 @@ fn write_secret_env(path: &Path, key: &str, value: &str) -> Result<(), std::io::
     Ok(())
 }
 
-/// Map OpenClaw DM policy to OpenParlant DM policy string.
+/// Map OpenClaw DM policy to SiliCrew DM policy string.
 fn map_dm_policy(oc: &str) -> &'static str {
     match oc.to_lowercase().as_str() {
         "open" => "respond",
@@ -496,7 +496,7 @@ fn map_dm_policy(oc: &str) -> &'static str {
     }
 }
 
-/// Map OpenClaw group policy to OpenParlant group policy string.
+/// Map OpenClaw group policy to SiliCrew group policy string.
 fn map_group_policy(oc: &str) -> &'static str {
     match oc.to_lowercase().as_str() {
         "open" => "respond",
@@ -667,7 +667,7 @@ fn find_config_file(dir: &Path) -> Option<PathBuf> {
 // Tool name mapping and recognition are shared with the skill system.
 use silicrew_types::tool_compat::{is_known_silicrew_tool, map_tool_name};
 
-/// Map OpenClaw tool profile to OpenParlant capability tool list.
+/// Map OpenClaw tool profile to SiliCrew capability tool list.
 /// Delegates to `ToolProfile` so the migration and kernel use identical definitions.
 fn tools_for_profile(profile: &str) -> Vec<String> {
     use silicrew_types::agent::ToolProfile;
@@ -682,7 +682,7 @@ fn tools_for_profile(profile: &str) -> Vec<String> {
     p.tools()
 }
 
-/// Map OpenClaw provider name to OpenParlant provider name.
+/// Map OpenClaw provider name to SiliCrew provider name.
 fn map_provider(openclaw_provider: &str) -> String {
     match openclaw_provider.to_lowercase().as_str() {
         "anthropic" | "claude" => "anthropic".to_string(),
@@ -706,7 +706,7 @@ fn map_provider(openclaw_provider: &str) -> String {
         "xai" | "grok" => "xai".to_string(),
         "cerebras" => "cerebras".to_string(),
         "sambanova" => "sambanova".to_string(),
-        // Additional OpenParlant-supported providers and aliases
+        // Additional SiliCrew-supported providers and aliases
         "perplexity" => "perplexity".to_string(),
         "cohere" => "cohere".to_string(),
         "ai21" => "ai21".to_string(),
@@ -1396,7 +1396,7 @@ fn migrate_config_from_json(
     let toml_str = toml::to_string_pretty(&of_config)?;
 
     let config_content = format!(
-        "# OpenParlant Agent OS configuration\n\
+        "# SiliCrew Agent OS configuration\n\
          # Migrated from OpenClaw on {}\n\n\
          {toml_str}",
         chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"),
@@ -1881,13 +1881,13 @@ fn migrate_channels_from_json(
         });
     }
 
-    // --- BlueBubbles (skip — no OpenParlant adapter) ---
+    // --- BlueBubbles (skip — no SiliCrew adapter) ---
     if oc_channels.bluebubbles.is_some() {
         report.skipped.push(SkippedItem {
             kind: ItemKind::Channel,
             name: "bluebubbles".to_string(),
             reason:
-                "No OpenParlant adapter available — consider using the iMessage channel instead"
+                "No SiliCrew adapter available — consider using the iMessage channel instead"
                     .to_string(),
         });
     }
@@ -1897,7 +1897,7 @@ fn migrate_channels_from_json(
         report.skipped.push(SkippedItem {
             kind: ItemKind::Channel,
             name: key.clone(),
-            reason: format!("Unknown channel '{key}' — not mapped to any OpenParlant adapter"),
+            reason: format!("Unknown channel '{key}' — not mapped to any SiliCrew adapter"),
         });
     }
 
@@ -1955,7 +1955,7 @@ fn migrate_agents_from_json(
 
                 for tool in &unmapped_tools {
                     report.warnings.push(format!(
-                        "Agent '{id}': tool '{tool}' has no OpenParlant equivalent and was skipped"
+                        "Agent '{id}': tool '{tool}' has no SiliCrew equivalent and was skipped"
                     ));
                 }
 
@@ -2053,14 +2053,14 @@ fn convert_agent_from_json(
         .or_else(|| defaults.and_then(|d| d.identity.clone()))
         .unwrap_or_else(|| {
             format!(
-                "You are {display_name}, an AI agent running on the OpenParlant Agent OS. You are helpful, concise, and accurate."
+                "You are {display_name}, an AI agent running on the SiliCrew Agent OS. You are helpful, concise, and accurate."
             )
         });
 
     // Build agent TOML
     let mut toml_str = String::new();
     toml_str.push_str(&format!(
-        "# OpenParlant agent manifest\n# Migrated from OpenClaw agent '{id}'\n\n"
+        "# SiliCrew agent manifest\n# Migrated from OpenClaw agent '{id}'\n\n"
     ));
     toml_str.push_str(&format!(
         "name = \"{}\"\n",
@@ -2464,7 +2464,7 @@ fn report_skipped_features(root: &OpenClawRoot, source: &Path, report: &mut Migr
         report.skipped.push(SkippedItem {
             kind: ItemKind::Config,
             name: "cron".to_string(),
-            reason: "Cron job scheduling not yet supported — use OpenParlant's ScheduleMode::Periodic instead".to_string(),
+            reason: "Cron job scheduling not yet supported — use SiliCrew's ScheduleMode::Periodic instead".to_string(),
         });
     }
 
@@ -2473,7 +2473,7 @@ fn report_skipped_features(root: &OpenClawRoot, source: &Path, report: &mut Migr
         report.skipped.push(SkippedItem {
             kind: ItemKind::Config,
             name: "hooks".to_string(),
-            reason: "Webhook hooks not supported — use OpenParlant's event system instead"
+            reason: "Webhook hooks not supported — use SiliCrew's event system instead"
                 .to_string(),
         });
     }
@@ -2517,7 +2517,7 @@ fn report_skipped_features(root: &OpenClawRoot, source: &Path, report: &mut Migr
         report.skipped.push(SkippedItem {
             kind: ItemKind::Memory,
             name: "memory-search/index.db".to_string(),
-            reason: "SQLite vector index not portable — OpenParlant will rebuild embeddings"
+            reason: "SQLite vector index not portable — SiliCrew will rebuild embeddings"
                 .to_string(),
         });
     }
@@ -2537,7 +2537,7 @@ fn report_skipped_features(root: &OpenClawRoot, source: &Path, report: &mut Migr
         report.skipped.push(SkippedItem {
             kind: ItemKind::Config,
             name: "session".to_string(),
-            reason: "Session scope config differs — OpenParlant uses per-agent sessions by default"
+            reason: "Session scope config differs — SiliCrew uses per-agent sessions by default"
                 .to_string(),
         });
     }
@@ -2548,7 +2548,7 @@ fn report_skipped_features(root: &OpenClawRoot, source: &Path, report: &mut Migr
             kind: ItemKind::Config,
             name: "memory".to_string(),
             reason:
-                "Memory backend config not migrated — OpenParlant uses SQLite with vector embeddings"
+                "Memory backend config not migrated — SiliCrew uses SQLite with vector embeddings"
                     .to_string(),
         });
     }
@@ -2633,7 +2633,7 @@ fn migrate_legacy_config(
     let toml_str = toml::to_string_pretty(&of_config)?;
 
     let config_content = format!(
-        "# OpenParlant Agent OS configuration\n\
+        "# SiliCrew Agent OS configuration\n\
          # Migrated from OpenClaw on {}\n\n\
          {toml_str}",
         chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"),
@@ -2901,7 +2901,7 @@ fn parse_legacy_channels(
                 report.skipped.push(SkippedItem {
                     kind: ItemKind::Channel,
                     name: "bluebubbles".to_string(),
-                    reason: "No OpenParlant adapter available — consider using the iMessage channel instead".to_string(),
+                    reason: "No SiliCrew adapter available — consider using the iMessage channel instead".to_string(),
                 });
             }
             _ => {}
@@ -2965,7 +2965,7 @@ fn migrate_legacy_agents(
 
                 for tool in &unmapped_tools {
                     report.warnings.push(format!(
-                        "Agent '{agent_name}': tool '{tool}' has no OpenParlant equivalent and was skipped"
+                        "Agent '{agent_name}': tool '{tool}' has no SiliCrew equivalent and was skipped"
                     ));
                 }
 
@@ -3026,7 +3026,7 @@ fn convert_legacy_agent(
 
     let system_prompt = oc.system_prompt.unwrap_or_else(|| {
         format!(
-            "You are {}, an AI agent running on the OpenParlant Agent OS. {}",
+            "You are {}, an AI agent running on the SiliCrew Agent OS. {}",
             oc.name,
             if oc.description.is_empty() {
                 "You are helpful, concise, and accurate.".to_string()
@@ -3047,7 +3047,7 @@ fn convert_legacy_agent(
 
     let mut toml_str = String::new();
     toml_str.push_str(&format!(
-        "# OpenParlant agent manifest\n# Migrated from OpenClaw agent '{}'\n\n",
+        "# SiliCrew agent manifest\n# Migrated from OpenClaw agent '{}'\n\n",
         oc.name
     ));
     toml_str.push_str(&format!("name = \"{}\"\n", oc.name));

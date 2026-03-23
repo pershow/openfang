@@ -1,4 +1,4 @@
-//! Slack Socket Mode adapter for the OpenParlant channel bridge.
+//! Slack Socket Mode adapter for the SiliCrew channel bridge.
 //!
 //! Uses Slack Socket Mode WebSocket (app token) for receiving events and the
 //! Web API (bot token) for sending responses. No external Slack crate.

@@ -1,7 +1,7 @@
 {
   "name": "@silicrew/sdk",
   "version": "0.1.0",
-  "description": "Official JavaScript/TypeScript client for the OpenParlant Agent OS REST API",
+  "description": "Official JavaScript/TypeScript client for the SiliCrew Agent OS REST API",
   "main": "index.js",
   "types": "index.d.ts",
   "keywords": ["silicrew", "agent", "ai", "llm", "sdk"],

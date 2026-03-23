@@ -441,7 +441,7 @@ impl ChannelAdapter for ZulipAdapter {
                 .await?;
         } else {
             // Use the thread_id (topic) if available, otherwise default topic
-            let topic = "OpenParlant";
+            let topic = "SiliCrew";
             self.api_send_message("stream", &user.platform_id, topic, &text)
                 .await?;
         }

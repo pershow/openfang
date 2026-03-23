@@ -1,6 +1,6 @@
-//! Core types and traits for the OpenParlant Agent Operating System.
+//! Core types and traits for the SiliCrew Agent Operating System.
 //!
-//! This crate defines all shared data structures used across the OpenParlant kernel,
+//! This crate defines all shared data structures used across the SiliCrew kernel,
 //! runtime, memory substrate, and wire protocol. It contains no business logic.
 
 pub mod agent;

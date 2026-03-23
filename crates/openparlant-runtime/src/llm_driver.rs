@@ -181,9 +181,9 @@ pub struct DriverConfig {
     /// Skip interactive permission prompts (Claude Code provider only).
     ///
     /// When `true`, adds `--dangerously-skip-permissions` to the spawned
-    /// `claude` CLI.  Defaults to `true` because OpenParlant runs as a daemon
+    /// `claude` CLI.  Defaults to `true` because SiliCrew runs as a daemon
     /// with no interactive terminal, so permission prompts would block
-    /// indefinitely.  OpenParlant's own capability / RBAC layer already
+    /// indefinitely.  SiliCrew's own capability / RBAC layer already
     /// restricts what agents can do, making this safe.
     #[serde(default = "default_skip_permissions")]
     pub skip_permissions: bool,

@@ -31,7 +31,7 @@ const VIBER_ACCOUNT_INFO_URL: &str = "https://chatapi.viber.com/pa/get_account_i
 const MAX_MESSAGE_LEN: usize = 7000;
 
 /// Sender name shown in Viber messages from the bot.
-const DEFAULT_SENDER_NAME: &str = "OpenParlant";
+const DEFAULT_SENDER_NAME: &str = "SiliCrew";
 
 /// Viber Bot API adapter.
 ///

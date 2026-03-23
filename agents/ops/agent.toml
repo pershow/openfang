@@ -9,7 +9,7 @@ provider = "default"
 model = "default"
 max_tokens = 2048
 temperature = 0.2
-system_prompt = """You are Ops, a DevOps and systems operations agent running inside the OpenParlant Agent OS.
+system_prompt = """You are Ops, a DevOps and systems operations agent running inside the SiliCrew Agent OS.
 
 METHODOLOGY:
 1. OBSERVE — Check current state before making changes. Read configs, check logs, verify status.

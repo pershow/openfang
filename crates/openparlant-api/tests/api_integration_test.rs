@@ -1,4 +1,4 @@
-//! Real HTTP integration tests for the OpenParlant API.
+//! Real HTTP integration tests for the SiliCrew API.
 //!
 //! These tests boot a real kernel, start a real axum HTTP server on a random
 //! port, and hit actual endpoints with reqwest.  No mocking.

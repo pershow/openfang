@@ -1,10 +1,10 @@
-# OpenParlant Desktop App
+# SiliCrew Desktop App
 
-The OpenParlant Desktop App is a native desktop wrapper built with [Tauri 2.0](https://v2.tauri.app/) that packages the entire OpenParlant Agent OS into a single, installable application. Instead of running a CLI daemon and opening a browser, users get a native window with system tray integration, OS notifications, and single-instance enforcement -- all powered by the same kernel and API server that the headless deployment uses.
+The SiliCrew Desktop App is a native desktop wrapper built with [Tauri 2.0](https://v2.tauri.app/) that packages the entire SiliCrew Agent OS into a single, installable application. Instead of running a CLI daemon and opening a browser, users get a native window with system tray integration, OS notifications, and single-instance enforcement -- all powered by the same kernel and API server that the headless deployment uses.
 
 **Crate:** `silicrew-desktop`
 **Identifier:** `ai.silicrew.desktop`
-**Product name:** OpenParlant
+**Product name:** SiliCrew
 
 ---
 
@@ -25,7 +25,7 @@ The desktop app follows a straightforward embedded-server pattern:
 |  | (main)    |    | channel bridges    |  |
 |  |           |    | background agents  |  |
 |  | System    |    |                    |  |
-|  | Tray      |    | OpenParlant Kernel    |  |
+|  | Tray      |    | SiliCrew Kernel    |  |
 |  +-----------+    +--------------------+  |
 |       |                    |              |
 |       |   http://127.0.0.1:{port}        |
@@ -94,15 +94,15 @@ The system tray (defined in `src/tray.rs`) provides quick access without bringin
 | **Launch at Login** | Checkbox — toggles OS-level auto-start via `tauri-plugin-autostart` |
 | **Check for Updates...** | Checks for updates, downloads, installs, and restarts if available. Shows notifications for progress/success/failure |
 | **Open Config Directory** | Opens `~/.silicrew/` in the OS file manager |
-| **Quit OpenParlant** | Logs the quit event and calls `app.exit(0)` |
+| **Quit SiliCrew** | Logs the quit event and calls `app.exit(0)` |
 
-The tray tooltip reads **"OpenParlant Agent OS"**.
+The tray tooltip reads **"SiliCrew Agent OS"**.
 
 **Left-click on tray icon** shows the main window (same as "Show Window" menu item). This is implemented via `on_tray_icon_event` listening for `MouseButton::Left` with `MouseButtonState::Up`.
 
 ### Single-Instance Enforcement
 
-On desktop platforms, `tauri-plugin-single-instance` prevents multiple copies of OpenParlant from running simultaneously. When a second instance attempts to launch, the existing instance's main window is shown, unminimized, and focused:
+On desktop platforms, `tauri-plugin-single-instance` prevents multiple copies of SiliCrew from running simultaneously. When a second instance attempts to launch, the existing instance's main window is shown, unminimized, and focused:
 
 ```rust
 #[cfg(desktop)]
@@ -133,7 +133,7 @@ Closing the window does not quit the application. Instead, the window is hidden 
 })
 ```
 
-To actually quit, use the **"Quit OpenParlant"** option in the system tray menu.
+To actually quit, use the **"Quit SiliCrew"** option in the system tray menu.
 
 ### Native OS Notifications
 
@@ -196,7 +196,7 @@ Opens a native file picker for skill files (`.md`, `.toml`, `.py`, `.js`, `.wasm
 
 ### `get_autostart` / `set_autostart`
 
-Check or toggle whether OpenParlant launches at OS login. Uses `tauri-plugin-autostart` (launchd on macOS, registry on Windows, systemd on Linux).
+Check or toggle whether SiliCrew launches at OS login. Uses `tauri-plugin-autostart` (launchd on macOS, registry on Windows, systemd on Linux).
 
 ### `check_for_updates`
 
@@ -227,7 +227,7 @@ The main window is created programmatically in the `setup` closure (not via `tau
 | Property | Value |
 |----------|-------|
 | Window label | `"main"` |
-| Title | `"OpenParlant"` |
+| Title | `"SiliCrew"` |
 | URL | `http://127.0.0.1:{port}` (external) |
 | Inner size | 1280 x 800 |
 | Minimum inner size | 800 x 600 |
@@ -409,4 +409,4 @@ crates/silicrew-desktop/
 |----------|--------|
 | `RUST_LOG` | Controls tracing verbosity. Defaults to `silicrew=info,tauri=info` if unset. |
 
-All other OpenParlant environment variables (API keys, configuration) apply as normal since the desktop app boots the same kernel as the headless daemon.
+All other SiliCrew environment variables (API keys, configuration) apply as normal since the desktop app boots the same kernel as the headless daemon.

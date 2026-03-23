@@ -3,7 +3,7 @@ name = "silicrew-skills"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Skill system for OpenParlant — registry, loader, marketplace, and OpenClaw compatibility"
+description = "Skill system for SiliCrew — registry, loader, marketplace, and OpenClaw compatibility"
 
 [dependencies]
 silicrew-types = { path = "../silicrew-types" }
