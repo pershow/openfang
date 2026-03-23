@@ -280,7 +280,7 @@ fn parse_revolt_message(
         sender: ChannelUser {
             platform_id: channel_id,
             display_name: author.to_string(),
-            openparlant_user: None,
+            silicrew_user: None,
         },
         content: msg_content,
         target_agent: None,

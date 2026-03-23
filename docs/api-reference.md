@@ -40,7 +40,7 @@ Authorization: Bearer <your-api-key>
 
 ### Setting the API Key
 
-Add to `~/.openparlant/config.toml`:
+Add to `~/.silicrew/config.toml`:
 
 ```toml
 api_key = "your-secret-api-key"
@@ -578,12 +578,12 @@ List available agent templates from the agents directory.
     {
       "name": "hello-world",
       "description": "A friendly greeting agent",
-      "path": "/home/user/.openparlant/agents/hello-world/agent.toml"
+      "path": "/home/user/.silicrew/agents/hello-world/agent.toml"
     },
     {
       "name": "coder",
       "description": "Expert coding assistant",
-      "path": "/home/user/.openparlant/agents/coder/agent.toml"
+      "path": "/home/user/.silicrew/agents/coder/agent.toml"
     }
   ],
   "total": 30
@@ -666,7 +666,7 @@ Detailed kernel status including all agents.
 {
   "status": "running",
   "agent_count": 2,
-  "data_dir": "/home/user/.openparlant/data",
+  "data_dir": "/home/user/.silicrew/data",
   "default_provider": "groq",
   "default_model": "llama-3.3-70b-versatile",
   "uptime_seconds": 3600,
@@ -691,7 +691,7 @@ Build and version information.
 
 ```json
 {
-  "name": "openparlant",
+  "name": "silicrew",
   "version": "0.1.0",
   "build_date": "2025-01-15",
   "git_sha": "abc1234",
@@ -767,7 +767,7 @@ Retrieve current kernel configuration (secrets are redacted).
 
 ```json
 {
-  "data_dir": "/home/user/.openparlant/data",
+  "data_dir": "/home/user/.silicrew/data",
   "default_provider": "groq",
   "default_model": "llama-3.3-70b-versatile",
   "listen_addr": "127.0.0.1:4200",
@@ -1126,7 +1126,7 @@ Create a new skill from a template.
 {
   "status": "created",
   "skill": "my-skill",
-  "path": "/home/user/.openparlant/skills/my-skill"
+  "path": "/home/user/.silicrew/skills/my-skill"
 }
 ```
 
@@ -1972,7 +1972,7 @@ Send a chat completion request using the OpenAI message format.
 
 ```json
 {
-  "model": "openparlant:coder",
+  "model": "silicrew:coder",
   "messages": [
     {"role": "system", "content": "You are a helpful assistant."},
     {"role": "user", "content": "Hello!"}
@@ -1987,7 +1987,7 @@ Send a chat completion request using the OpenAI message format.
 
 | Format | Example | Behavior |
 |--------|---------|----------|
-| `openparlant:<name>` | `openparlant:coder` | Find agent by name |
+| `silicrew:<name>` | `silicrew:coder` | Find agent by name |
 | UUID | `a1b2c3d4-...` | Find agent by ID |
 | Plain string | `coder` | Try as agent name |
 | Any other | `gpt-4o` | Falls back to first registered agent |
@@ -1996,7 +1996,7 @@ Send a chat completion request using the OpenAI message format.
 
 ```json
 {
-  "model": "openparlant:analyst",
+  "model": "silicrew:analyst",
   "messages": [
     {
       "role": "user",
@@ -2058,16 +2058,16 @@ List available models (agents) in OpenAI format.
   "object": "list",
   "data": [
     {
-      "id": "openparlant:coder",
+      "id": "silicrew:coder",
       "object": "model",
       "created": 1708617600,
-      "owned_by": "openparlant"
+      "owned_by": "silicrew"
     },
     {
-      "id": "openparlant:researcher",
+      "id": "silicrew:researcher",
       "object": "model",
       "created": 1708617600,
-      "owned_by": "openparlant"
+      "owned_by": "silicrew"
     }
   ]
 }

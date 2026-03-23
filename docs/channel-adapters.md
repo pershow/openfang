@@ -115,7 +115,7 @@ All adapters share a common foundation: graceful shutdown via `watch::channel`, 
 
 ## Channel Configuration
 
-All channel configurations live in `~/.openparlant/config.toml` under the `[channels]` section. Each channel is a subsection:
+All channel configurations live in `~/.silicrew/config.toml` under the `[channels]` section. Each channel is a subsection:
 
 ```toml
 [channels.telegram]
@@ -202,7 +202,7 @@ usage_footer = "compact"
 
 ### Output Formatter
 
-The `formatter` module (`openparlant-channels/src/formatter.rs`) converts Markdown output from the LLM into platform-native formats:
+The `formatter` module (`silicrew-channels/src/formatter.rs`) converts Markdown output from the LLM into platform-native formats:
 
 | OutputFormat | Target | Notes |
 |-------------|--------|-------|
@@ -213,7 +213,7 @@ The `formatter` module (`openparlant-channels/src/formatter.rs`) converts Markdo
 
 ### Per-User Rate Limiter
 
-The `ChannelRateLimiter` (`openparlant-channels/src/rate_limiter.rs`) uses a `DashMap` to track per-user message counts. When `rate_limit_per_user` is set on a channel's overrides, the limiter enforces a sliding-window cap of N messages per minute. Excess messages receive a polite rejection.
+The `ChannelRateLimiter` (`silicrew-channels/src/rate_limiter.rs`) uses a `DashMap` to track per-user message counts. When `rate_limit_per_user` is set on a channel's overrides, the limiter enforces a sliding-window cap of N messages per minute. Excess messages receive a polite rejection.
 
 ### DM Policy
 
@@ -275,7 +275,7 @@ default_agent = "assistant"
 6. Restart the daemon:
 
 ```bash
-openparlant start
+silicrew start
 ```
 
 ### How It Works
@@ -287,7 +287,7 @@ Messages from authorized users are converted to `ChannelMessage` events and rout
 ### Interactive Setup
 
 ```bash
-openparlant channel setup telegram
+silicrew channel setup telegram
 ```
 
 This walks you through the setup interactively.
@@ -538,7 +538,7 @@ export MATRIX_TOKEN=syt_...
 [channels.matrix]
 homeserver_url = "https://matrix.org"
 access_token_env = "MATRIX_TOKEN"
-user_id = "@openparlant-bot:matrix.org"
+user_id = "@silicrew-bot:matrix.org"
 default_agent = "assistant"
 ```
 
@@ -618,7 +618,7 @@ The `AgentRouter` determines which agent receives an incoming message. The routi
 
 ## Writing Custom Adapters
 
-To add support for a new messaging platform, implement the `ChannelAdapter` trait. The trait is defined in `crates/openparlant-channels/src/types.rs`.
+To add support for a new messaging platform, implement the `ChannelAdapter` trait. The trait is defined in `crates/silicrew-channels/src/types.rs`.
 
 ### The ChannelAdapter Trait
 
@@ -683,7 +683,7 @@ pub trait ChannelAdapter: Send + Sync {
 
 ### 1. Define Your Adapter
 
-Create `crates/openparlant-channels/src/myplatform.rs`:
+Create `crates/silicrew-channels/src/myplatform.rs`:
 
 ```rust
 use crate::types::{
@@ -760,7 +760,7 @@ impl ChannelAdapter for MyPlatformAdapter {
 
 ### 2. Register the Module
 
-In `crates/openparlant-channels/src/lib.rs`:
+In `crates/silicrew-channels/src/lib.rs`:
 
 ```rust
 pub mod myplatform;
@@ -768,11 +768,11 @@ pub mod myplatform;
 
 ### 3. Wire It Into the Bridge
 
-In `crates/openparlant-api/src/channel_bridge.rs`, add initialization logic for your adapter alongside the existing adapters.
+In `crates/silicrew-api/src/channel_bridge.rs`, add initialization logic for your adapter alongside the existing adapters.
 
 ### 4. Add Config Support
 
-In `openparlant-types`, add a config struct:
+In `silicrew-types`, add a config struct:
 
 ```rust
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -788,7 +788,7 @@ Add it to the `ChannelsConfig` struct and `config.toml` parsing. The `overrides`
 
 ### 5. Add CLI Setup Wizard
 
-In `crates/openparlant-cli/src/main.rs`, add a case to `cmd_channel_setup` with step-by-step instructions for your platform.
+In `crates/silicrew-cli/src/main.rs`, add a case to `cmd_channel_setup` with step-by-step instructions for your platform.
 
 ### 6. Test
 

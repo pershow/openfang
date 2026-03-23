@@ -4,15 +4,15 @@
 //! and graceful shutdown sequence.
 
 use axum::Router;
-use openparlant_api::middleware;
-use openparlant_api::routes::{self, AppState};
-use openparlant_api::server::{read_daemon_info, DaemonInfo};
-use openparlant_control::{ControlStore, DefaultTurnControlCoordinator};
-use openparlant_journey::{JourneyStore, StoreJourneyRuntime};
-use openparlant_kernel::SiliCrewKernel;
-use openparlant_memory::migration::run_migrations;
-use openparlant_policy::{PolicyStore, StoreObservationMatcher, StorePolicyResolver};
-use openparlant_types::config::{DefaultModelConfig, KernelConfig};
+use silicrew_api::middleware;
+use silicrew_api::routes::{self, AppState};
+use silicrew_api::server::{read_daemon_info, DaemonInfo};
+use silicrew_control::{ControlStore, DefaultTurnControlCoordinator};
+use silicrew_journey::{JourneyStore, StoreJourneyRuntime};
+use silicrew_kernel::SiliCrewKernel;
+use silicrew_memory::migration::run_migrations;
+use silicrew_policy::{PolicyStore, StoreObservationMatcher, StorePolicyResolver};
+use silicrew_types::config::{DefaultModelConfig, KernelConfig};
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -119,7 +119,7 @@ async fn test_full_daemon_lifecycle() {
         channels_config: tokio::sync::RwLock::new(Default::default()),
         shutdown_notify: Arc::new(tokio::sync::Notify::new()),
         clawhub_cache: dashmap::DashMap::new(),
-        provider_probe_cache: openparlant_runtime::provider_health::ProbeCache::new(),
+        provider_probe_cache: silicrew_runtime::provider_health::ProbeCache::new(),
         control_coordinator: {
             let c2 = Connection::open_in_memory().expect("test coordinator db");
             run_migrations(&c2).ok();
@@ -128,7 +128,7 @@ async fn test_full_daemon_lifecycle() {
                 StoreObservationMatcher::new(c2.clone()),
                 StorePolicyResolver::new(c2.clone()),
                 StoreJourneyRuntime::new(c2.clone()),
-                openparlant_context::NoopKnowledgeCompiler,
+                silicrew_context::NoopKnowledgeCompiler,
             ))
         },
         control_store: {
@@ -270,7 +270,7 @@ async fn test_server_immediate_responsiveness() {
         channels_config: tokio::sync::RwLock::new(Default::default()),
         shutdown_notify: Arc::new(tokio::sync::Notify::new()),
         clawhub_cache: dashmap::DashMap::new(),
-        provider_probe_cache: openparlant_runtime::provider_health::ProbeCache::new(),
+        provider_probe_cache: silicrew_runtime::provider_health::ProbeCache::new(),
         control_coordinator: {
             let c2 = Connection::open_in_memory().expect("test coordinator db");
             run_migrations(&c2).ok();
@@ -279,7 +279,7 @@ async fn test_server_immediate_responsiveness() {
                 StoreObservationMatcher::new(c2.clone()),
                 StorePolicyResolver::new(c2.clone()),
                 StoreJourneyRuntime::new(c2.clone()),
-                openparlant_context::NoopKnowledgeCompiler,
+                silicrew_context::NoopKnowledgeCompiler,
             ))
         },
         control_store: {

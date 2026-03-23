@@ -1,7 +1,7 @@
 name = "security-auditor"
 version = "0.1.0"
 description = "Security specialist. Reviews code for vulnerabilities, checks configurations, performs threat modeling."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 tags = ["security", "audit", "vulnerability"]
 

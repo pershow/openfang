@@ -1,7 +1,7 @@
 name = "tutor"
 version = "0.1.0"
 description = "Teaching and explanation agent for learning, tutoring, and educational content creation."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 tags = ["education", "teaching", "tutoring", "learning", "explanation", "knowledge"]
 

@@ -559,7 +559,7 @@ function wizardPage() {
     // ── Step 6: Finish ──
 
     finish() {
-      localStorage.setItem('openparlant-onboarded', 'true');
+      localStorage.setItem('silicrew-onboarded', 'true');
       Alpine.store('app').showOnboarding = false;
       // Navigate to agents with chat if an agent was created, otherwise overview
       if (this.createdAgent) {
@@ -572,7 +572,7 @@ function wizardPage() {
     },
 
     finishAndDismiss() {
-      localStorage.setItem('openparlant-onboarded', 'true');
+      localStorage.setItem('silicrew-onboarded', 'true');
       Alpine.store('app').showOnboarding = false;
       window.location.hash = 'overview';
     }

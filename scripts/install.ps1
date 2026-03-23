@@ -1,6 +1,6 @@
 # OpenParlant installer for Windows
-# Usage: iwr -useb https://openparlant.sh/install.ps1 | iex
-#   or:  powershell -c "irm https://openparlant.sh/install.ps1 | iex"
+# Usage: iwr -useb https://silicrew.sh/install.ps1 | iex
+#   or:  powershell -c "irm https://silicrew.sh/install.ps1 | iex"
 #
 # Flags (via environment variables):
 #   $env:OPENFANG_INSTALL_DIR = custom install directory
@@ -8,8 +8,8 @@
 
 $ErrorActionPreference = 'Stop'
 
-$Repo = "RightNow-AI/openparlant"
-$DefaultInstallDir = Join-Path $env:USERPROFILE ".openparlant\bin"
+$Repo = "RightNow-AI/silicrew"
+$DefaultInstallDir = Join-Path $env:USERPROFILE ".silicrew\bin"
 $InstallDir = if ($env:OPENFANG_INSTALL_DIR) { $env:OPENFANG_INSTALL_DIR } else { $DefaultInstallDir }
 
 function Write-Banner {
@@ -53,7 +53,7 @@ function Get-Architecture {
         { $_ -in "ARM64", "AARCH64", "ARM" }     { return "aarch64" }
         default {
             Write-Host "  Unsupported architecture: $arch (detection may have failed)" -ForegroundColor Red
-            Write-Host "  Try: cargo install --git https://github.com/RightNow-AI/openparlant openparlant-cli" -ForegroundColor Yellow
+            Write-Host "  Try: cargo install --git https://github.com/RightNow-AI/silicrew silicrew-cli" -ForegroundColor Yellow
             exit 1
         }
     }
@@ -72,7 +72,7 @@ function Get-LatestVersion {
     catch {
         Write-Host "  Could not determine latest version." -ForegroundColor Red
         Write-Host "  Install from source instead:" -ForegroundColor Yellow
-        Write-Host "    cargo install --git https://github.com/$Repo openparlant-cli"
+        Write-Host "    cargo install --git https://github.com/$Repo silicrew-cli"
         exit 1
     }
 }
@@ -83,7 +83,7 @@ function Install-OpenParlant {
     $arch = Get-Architecture
     $version = Get-LatestVersion
     $target = "${arch}-pc-windows-msvc"
-    $archive = "openparlant-${target}.zip"
+    $archive = "silicrew-${target}.zip"
     $url = "https://github.com/$Repo/releases/download/$version/$archive"
     $checksumUrl = "$url.sha256"
 
@@ -95,7 +95,7 @@ function Install-OpenParlant {
     }
 
     # Download to temp
-    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "openparlant-install"
+    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "silicrew-install"
     if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
     New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
@@ -108,7 +108,7 @@ function Install-OpenParlant {
     catch {
         Write-Host "  Download failed. The release may not exist for your platform." -ForegroundColor Red
         Write-Host "  Install from source instead:" -ForegroundColor Yellow
-        Write-Host "    cargo install --git https://github.com/$Repo openparlant-cli"
+        Write-Host "    cargo install --git https://github.com/$Repo silicrew-cli"
         Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
         exit 1
     }
@@ -137,22 +137,22 @@ function Install-OpenParlant {
 
     # Extract
     Expand-Archive -Path $archivePath -DestinationPath $tempDir -Force
-    $exePath = Join-Path $tempDir "openparlant.exe"
+    $exePath = Join-Path $tempDir "silicrew.exe"
     if (-not (Test-Path $exePath)) {
         # May be nested in a directory
-        $found = Get-ChildItem -Path $tempDir -Filter "openparlant.exe" -Recurse | Select-Object -First 1
+        $found = Get-ChildItem -Path $tempDir -Filter "silicrew.exe" -Recurse | Select-Object -First 1
         if ($found) {
             $exePath = $found.FullName
         }
         else {
-            Write-Host "  Could not find openparlant.exe in archive." -ForegroundColor Red
+            Write-Host "  Could not find silicrew.exe in archive." -ForegroundColor Red
             Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
             exit 1
         }
     }
 
     # Install
-    Copy-Item -Path $exePath -Destination (Join-Path $InstallDir "openparlant.exe") -Force
+    Copy-Item -Path $exePath -Destination (Join-Path $InstallDir "silicrew.exe") -Force
 
     # Clean up temp
     Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
@@ -166,7 +166,7 @@ function Install-OpenParlant {
     }
 
     # Verify
-    $installedExe = Join-Path $InstallDir "openparlant.exe"
+    $installedExe = Join-Path $InstallDir "silicrew.exe"
     if (Test-Path $installedExe) {
         try {
             $versionOutput = & $installedExe --version 2>&1
@@ -181,7 +181,7 @@ function Install-OpenParlant {
 
     Write-Host ""
     Write-Host "  Get started:" -ForegroundColor Cyan
-    Write-Host "    openparlant init"
+    Write-Host "    silicrew init"
     Write-Host ""
     Write-Host "  The setup wizard will guide you through provider selection"
     Write-Host "  and configuration."

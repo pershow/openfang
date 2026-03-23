@@ -39,74 +39,83 @@ const getCategoryLabels = (t: any): Record<string, string> => ({
 function ToolsManager({ agentId, canManage = false }: { agentId: string; canManage?: boolean }) {
     const { t } = useTranslation();
     const [tools, setTools] = useState<any[]>([]);
+    const [filters, setFilters] = useState<{ tool_allowlist: string[]; tool_blocklist: string[] }>({
+        tool_allowlist: [],
+        tool_blocklist: [],
+    });
     const [loading, setLoading] = useState(true);
-    const [configTool, setConfigTool] = useState<any | null>(null);
-    const [configData, setConfigData] = useState<Record<string, any>>({});
-    const [configJson, setConfigJson] = useState('');
-    const [configSaving, setConfigSaving] = useState(false);
-    const [toolTab, setToolTab] = useState<'platform' | 'installed'>('platform');
-    const [deletingToolId, setDeletingToolId] = useState<string | null>(null);
+    const [savingToolName, setSavingToolName] = useState<string | null>(null);
 
     const loadTools = async () => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`/api/tools/agents/${agentId}/with-config`, {
-                headers: { Authorization: `Bearer ${token}` },
+            const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+            const [catalogRes, filtersRes] = await Promise.all([
+                fetch('/api/tools', { headers }),
+                fetch(`/api/agents/${agentId}/tools`, { headers }),
+            ]);
+            const catalogData = catalogRes.ok ? await catalogRes.json() : { tools: [] };
+            const filterData = filtersRes.ok ? await filtersRes.json() : {};
+            const toolAllowlist = Array.isArray(filterData.tool_allowlist) ? filterData.tool_allowlist : [];
+            const toolBlocklist = Array.isArray(filterData.tool_blocklist) ? filterData.tool_blocklist : [];
+            const catalog = Array.isArray(catalogData?.tools) ? catalogData.tools : [];
+
+            setFilters({
+                tool_allowlist: toolAllowlist,
+                tool_blocklist: toolBlocklist,
             });
-            if (res.ok) setTools(await res.json());
-            else {
-                // Fallback to old endpoint
-                const res2 = await fetch(`/api/tools/agents/${agentId}`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res2.ok) setTools(await res2.json());
-            }
+            setTools(catalog.map((tool: any) => {
+                const name = String(tool.name || '');
+                const enabled = toolAllowlist.length > 0
+                    ? toolAllowlist.includes(name)
+                    : !toolBlocklist.includes(name);
+                return {
+                    id: name,
+                    name,
+                    display_name: name,
+                    description: tool.description || '',
+                    category: 'general',
+                    source: tool.source || 'builtin',
+                    enabled,
+                };
+            }));
         } catch (e) { console.error(e); }
         setLoading(false);
     };
 
     useEffect(() => { loadTools(); }, [agentId]);
 
-    const toggleTool = async (toolId: string, enabled: boolean) => {
-        setTools(prev => prev.map(t => t.id === toolId ? { ...t, enabled } : t));
+    const toggleTool = async (toolName: string, enabled: boolean) => {
+        setSavingToolName(toolName);
+        const nextFilters = filters.tool_allowlist.length > 0
+            ? {
+                tool_allowlist: enabled
+                    ? Array.from(new Set([...filters.tool_allowlist, toolName]))
+                    : filters.tool_allowlist.filter((name) => name !== toolName),
+                tool_blocklist: filters.tool_blocklist,
+            }
+            : {
+                tool_allowlist: filters.tool_allowlist,
+                tool_blocklist: enabled
+                    ? filters.tool_blocklist.filter((name) => name !== toolName)
+                    : Array.from(new Set([...filters.tool_blocklist, toolName])),
+            };
+        setFilters(nextFilters);
+        setTools((prev) => prev.map((tool) => (
+            tool.name === toolName ? { ...tool, enabled } : tool
+        )));
         try {
             const token = localStorage.getItem('token');
-            await fetch(`/api/tools/agents/${agentId}`, {
+            await fetch(`/api/agents/${agentId}/tools`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify([{ tool_id: toolId, enabled }]),
+                body: JSON.stringify(nextFilters),
             });
         } catch (e) { console.error(e); }
-    };
-
-    const openConfig = (tool: any) => {
-        setConfigTool(tool);
-        const merged = { ...(tool.global_config || {}), ...(tool.agent_config || {}) };
-        setConfigData(merged);
-        setConfigJson(JSON.stringify(tool.agent_config || {}, null, 2));
-    };
-
-    const saveConfig = async () => {
-        if (!configTool) return;
-        setConfigSaving(true);
-        try {
-            const token = localStorage.getItem('token');
-            const hasSchema = configTool.config_schema?.fields?.length > 0;
-            const payload = hasSchema ? configData : JSON.parse(configJson || '{}');
-            await fetch(`/api/tools/agents/${agentId}/tool-config/${configTool.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ config: payload }),
-            });
-            setConfigTool(null);
-            loadTools();
-        } catch (e) { alert('Save failed: ' + e); }
-        setConfigSaving(false);
+        setSavingToolName(null);
     };
 
     if (loading) return <div style={{ color: 'var(--text-tertiary)', padding: '20px' }}>{t('common.loading')}</div>;
-
-    // Split by source first, then group by category
-    const systemTools = tools.filter(t => t.source !== 'user_installed');
-    const agentInstalledTools = tools.filter(t => t.source === 'user_installed');
 
     const groupByCategory = (toolList: any[]) =>
         toolList.reduce((acc: Record<string, any[]>, t) => {
@@ -123,72 +132,40 @@ function ToolsManager({ agentId, canManage = false }: { agentId: string; canMana
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {(catTools as any[]).map((tool: any) => {
-                        const hasConfig = tool.config_schema?.fields?.length > 0 || tool.type === 'mcp';
-                        const hasAgentOverride = tool.agent_config && Object.keys(tool.agent_config).length > 0;
                         return (
                             <div key={tool.id} className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
-                                    <span style={{ fontSize: '18px' }}>{tool.icon}</span>
+                                    <span style={{ fontSize: '18px' }}>🧰</span>
                                     <div style={{ minWidth: 0 }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                             <span style={{ fontWeight: 500, fontSize: '13px' }}>{tool.display_name}</span>
-                                            {tool.type === 'mcp' && (
+                                            {tool.source === 'mcp' && (
                                                 <span style={{ fontSize: '10px', background: 'var(--primary)', color: '#fff', borderRadius: '4px', padding: '1px 5px' }}>MCP</span>
                                             )}
-                                            {tool.type === 'builtin' && (
+                                            {tool.source !== 'mcp' && (
                                                 <span style={{ fontSize: '10px', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', borderRadius: '4px', padding: '1px 5px' }}>Built-in</span>
-                                            )}
-                                            {hasAgentOverride && (
-                                                <span style={{ fontSize: '10px', background: 'rgba(99,102,241,0.15)', color: 'var(--accent-color)', borderRadius: '4px', padding: '1px 5px' }}>Configured</span>
                                             )}
                                         </div>
                                         <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                            {tool.description}
-                                            {tool.mcp_server_name && <span> · {tool.mcp_server_name}</span>}
+                                            {tool.description || t('agent.tools.noDescription', 'No description')}
                                         </div>
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                                    {canManage && hasConfig && (
-                                        <button
-                                            onClick={() => openConfig(tool)}
-                                            style={{ background: 'none', border: '1px solid var(--border-subtle)', borderRadius: '6px', padding: '3px 8px', fontSize: '11px', cursor: 'pointer', color: 'var(--text-secondary)' }}
-                                            title="Configure per-agent settings"
-                                        >⚙️ Config</button>
-                                    )}
-                                    {canManage && tool.source === 'user_installed' && tool.agent_tool_id && (
-                                        <button
-                                            onClick={async () => {
-                                                if (!confirm(t('agent.tools.confirmDelete', `Remove "${tool.display_name}" from this agent?`))) return;
-                                                setDeletingToolId(tool.id);
-                                                try {
-                                                    const token = localStorage.getItem('token');
-                                                    const res = await fetch(`/api/tools/agent-tool/${tool.agent_tool_id}`, {
-                                                        method: 'DELETE',
-                                                        headers: { Authorization: `Bearer ${token}` },
-                                                    });
-                                                    if (res.ok) await loadTools();
-                                                    else alert('Delete failed');
-                                                } catch (e) { alert('Delete failed: ' + e); }
-                                                setDeletingToolId(null);
-                                            }}
-                                            disabled={deletingToolId === tool.id}
-                                            style={{ background: 'none', border: '1px solid var(--border-subtle)', borderRadius: '6px', padding: '3px 8px', fontSize: '11px', cursor: 'pointer', color: 'var(--text-tertiary)', opacity: deletingToolId === tool.id ? 0.5 : 1 }}
-                                            title={t('agent.tools.removeTool', 'Remove from agent')}
-                                        >{deletingToolId === tool.id ? '...' : '✕'}</button>
-                                    )}
                                     {canManage ? (
                                         <label style={{ position: 'relative', display: 'inline-block', width: '40px', height: '22px', cursor: 'pointer', flexShrink: 0 }}>
                                             <input
                                                 type="checkbox"
                                                 checked={tool.enabled}
-                                                onChange={e => toggleTool(tool.id, e.target.checked)}
+                                                onChange={e => toggleTool(tool.name, e.target.checked)}
                                                 style={{ opacity: 0, width: 0, height: 0 }}
+                                                disabled={savingToolName === tool.name}
                                             />
                                             <span style={{
                                                 position: 'absolute', inset: 0,
                                                 background: tool.enabled ? '#22c55e' : 'var(--bg-tertiary)',
                                                 borderRadius: '11px', transition: 'background 0.2s',
+                                                opacity: savingToolName === tool.name ? 0.6 : 1,
                                             }}>
                                                 <span style={{
                                                     position: 'absolute', left: tool.enabled ? '20px' : '2px', top: '2px',
@@ -210,184 +187,20 @@ function ToolsManager({ agentId, canManage = false }: { agentId: string; canMana
             </div>
         ));
 
-    const activeTools = toolTab === 'platform' ? systemTools : agentInstalledTools;
-
     return (
         <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {/* Tab Bar */}
-                <div style={{ display: 'flex', gap: '2px', background: 'var(--bg-tertiary)', borderRadius: '8px', padding: '3px' }}>
-                    <button
-                        onClick={() => setToolTab('platform')}
-                        style={{
-                            flex: 1, padding: '7px 12px', border: 'none', borderRadius: '6px', cursor: 'pointer',
-                            fontSize: '12px', fontWeight: 600, transition: 'all 0.2s',
-                            background: toolTab === 'platform' ? 'var(--bg-primary)' : 'transparent',
-                            color: toolTab === 'platform' ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                            boxShadow: toolTab === 'platform' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                        }}
-                    >
-                        🔧 {t('agent.tools.platformTools', 'Platform Tools')} ({systemTools.length})
-                    </button>
-                    <button
-                        onClick={() => setToolTab('installed')}
-                        style={{
-                            flex: 1, padding: '7px 12px', border: 'none', borderRadius: '6px', cursor: 'pointer',
-                            fontSize: '12px', fontWeight: 600, transition: 'all 0.2s',
-                            background: toolTab === 'installed' ? 'var(--bg-primary)' : 'transparent',
-                            color: toolTab === 'installed' ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                            boxShadow: toolTab === 'installed' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                        }}
-                    >
-                        🤖 {t('agent.tools.agentInstalled', 'Agent-Installed Tools')} ({agentInstalledTools.length})
-                    </button>
-                </div>
-
-                {/* Tool List */}
-                {activeTools.length > 0 ? (
-                    renderToolGroup(groupByCategory(activeTools))
+                {tools.length > 0 ? (
+                    renderToolGroup(groupByCategory(tools))
                 ) : (
                     <div className="card" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-tertiary)' }}>
-                        {toolTab === 'installed' ? t('agent.tools.noInstalled', 'No agent-installed tools yet') : t('common.noData')}
+                        {t('common.noData')}
                     </div>
                 )}
+                <div className="card" style={{ padding: '12px 14px', color: 'var(--text-tertiary)', fontSize: '12px' }}>
+                    {t('agent.tools.notice', 'Current backend exposes tool allow/block lists only. Per-tool configuration, agent-installed tools, and email test actions are not available in this deployment.')}
+                </div>
             </div>
-            {tools.length === 0 && (
-                <div className="card" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-tertiary)' }}>
-                    {t('common.noData')}
-                </div>
-            )}
-
-            {/* Tool Config Modal */}
-            {configTool && (
-                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.55)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    onClick={() => setConfigTool(null)}>
-                    <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-primary)', borderRadius: '12px', padding: '24px', width: '480px', maxWidth: '95vw', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                            <div>
-                                <h3 style={{ margin: 0 }}>⚙️ {configTool.display_name}</h3>
-                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>Per-agent configuration (overrides global defaults)</div>
-                            </div>
-                            <button onClick={() => setConfigTool(null)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--text-secondary)' }}>✕</button>
-                        </div>
-
-                        {configTool.config_schema?.fields?.length > 0 ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                {configTool.config_schema.fields
-                                    .filter((field: any) => {
-                                        // Handle depends_on: hide fields unless dependency is met
-                                        if (!field.depends_on) return true;
-                                        return Object.entries(field.depends_on).every(([depKey, depVals]: [string, any]) =>
-                                            (depVals as string[]).includes(configData[depKey] ?? '')
-                                        );
-                                    })
-                                    .map((field: any) => (
-                                        <div key={field.key}>
-                                            <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>
-                                                {field.label}
-                                                {configTool.global_config?.[field.key] && (
-                                                    <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', marginLeft: '4px' }}>
-                                                        (global: {String(configTool.global_config[field.key]).slice(0, 20)}{String(configTool.global_config[field.key]).length > 20 ? '…' : ''})
-                                                    </span>
-                                                )}
-                                            </label>
-                                            {field.type === 'password' ? (
-                                                <>
-                                                <input type="password" className="form-input" value={configData[field.key] ?? ''} placeholder={field.placeholder || 'Leave blank to use global default'} onChange={e => setConfigData(p => ({ ...p, [field.key]: e.target.value }))} />
-                                                {/* Per-provider help text for auth_code */}
-                                                {field.key === 'auth_code' && (() => {
-                                                    const providerField = configTool.config_schema?.fields?.find((f: any) => f.key === 'email_provider');
-                                                    const selectedProvider = configData['email_provider'] || providerField?.default || '';
-                                                    const providerOption = providerField?.options?.find((o: any) => o.value === selectedProvider);
-                                                    if (!providerOption?.help_text) return null;
-                                                    return (
-                                                        <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '4px', lineHeight: '1.5' }}>
-                                                            {providerOption.help_text}
-                                                            {providerOption.help_url && (
-                                                                <> &middot; <a href={providerOption.help_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>Setup guide</a></>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })()}
-                                                </>
-                                            ) : field.type === 'select' ? (
-                                                <select className="form-input" value={configData[field.key] ?? field.default ?? ''} onChange={e => setConfigData(p => ({ ...p, [field.key]: e.target.value }))}>
-                                                    {(field.options || []).map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                </select>
-                                            ) : field.type === 'number' ? (
-                                                <input type="number" className="form-input" value={configData[field.key] ?? field.default ?? ''} placeholder={field.placeholder || ''} min={field.min} max={field.max} onChange={e => setConfigData(p => ({ ...p, [field.key]: e.target.value ? Number(e.target.value) : '' }))} />
-                                            ) : (
-                                                <input type="text" className="form-input" value={configData[field.key] ?? ''} placeholder={field.placeholder || 'Leave blank to use global default'} onChange={e => setConfigData(p => ({ ...p, [field.key]: e.target.value }))} />
-                                            )}
-                                        </div>
-                                    ))}
-                                {/* Email tool: test connection button + help text */}
-                                {configTool.category === 'email' && (
-                                    <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                        <button
-                                            className="btn btn-secondary"
-                                            style={{ alignSelf: 'flex-start' }}
-                                            onClick={async () => {
-                                                const btn = document.getElementById('email-test-btn');
-                                                const status = document.getElementById('email-test-status');
-                                                if (btn) btn.textContent = 'Testing...';
-                                                if (btn) (btn as HTMLButtonElement).disabled = true;
-                                                try {
-                                                    const token = localStorage.getItem('token');
-                                                    const res = await fetch('/api/tools/test-email', {
-                                                        method: 'POST',
-                                                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                                                        body: JSON.stringify({ config: configData }),
-                                                    });
-                                                    const data = await res.json();
-                                                    if (status) {
-                                                        status.textContent = data.ok
-                                                            ? `${data.imap}\n${data.smtp}`
-                                                            : `${data.imap || ''}\n${data.smtp || ''}\n${data.error || ''}`;
-                                                        status.style.color = data.ok ? 'var(--success)' : 'var(--error)';
-                                                    }
-                                                } catch (e: any) {
-                                                    if (status) { status.textContent = `Error: ${e.message}`; status.style.color = 'var(--error)'; }
-                                                } finally {
-                                                    if (btn) { btn.textContent = 'Test Connection'; (btn as HTMLButtonElement).disabled = false; }
-                                                }
-                                            }}
-                                            id="email-test-btn"
-                                        >Test Connection</button>
-                                        <div id="email-test-status" style={{ fontSize: '11px', whiteSpace: 'pre-line', minHeight: '16px' }}></div>
-                                    </div>
-                                )}
-                            </div>
-                        ) : (
-                            <div>
-                                <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>Config JSON (Agent Override)</label>
-                                <textarea
-                                    className="form-input"
-                                    value={configJson}
-                                    onChange={e => setConfigJson(e.target.value)}
-                                    style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', minHeight: '120px', resize: 'vertical' }}
-                                    placeholder='{}'
-                                />
-                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-                                    Global default: <code style={{ fontSize: '10px' }}>{JSON.stringify(configTool.global_config || {}).slice(0, 80)}</code>
-                                </div>
-                            </div>
-                        )}
-
-                        <div style={{ display: 'flex', gap: '8px', marginTop: '16px', justifyContent: 'flex-end' }}>
-                            {Object.keys(configTool.agent_config || {}).length > 0 && (
-                                <button className="btn btn-ghost" style={{ color: 'var(--error)', marginRight: 'auto' }} onClick={async () => {
-                                    const token = localStorage.getItem('token');
-                                    await fetch(`/api/tools/agents/${agentId}/tool-config/${configTool.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ config: {} }) });
-                                    setConfigTool(null); loadTools();
-                                }}>Reset to Global</button>
-                            )}
-                            <button className="btn btn-secondary" onClick={() => setConfigTool(null)}>Cancel</button>
-                            <button className="btn btn-primary" onClick={saveConfig} disabled={configSaving}>{configSaving ? t('common.saving', 'Saving…') : t('common.save', 'Save')}</button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </>
     );
 }
@@ -427,245 +240,28 @@ function fetchAuth<T>(url: string, options?: RequestInit): Promise<T> {
     return fetch(`/api${url}`, {
         ...options,
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    }).then(r => r.json());
+    }).then(async (r) => {
+        const data = await r.json().catch(() => undefined);
+        if (!r.ok) {
+            throw new Error((data as any)?.detail || (data as any)?.error || `HTTP ${r.status}`);
+        }
+        return data as T;
+    });
 }
 
 function RelationshipEditor({ agentId, readOnly = false }: { agentId: string; readOnly?: boolean }) {
     const { t } = useTranslation();
-    const qc = useQueryClient();
-    const [search, setSearch] = useState('');
-    const [searchResults, setSearchResults] = useState<any[]>([]);
-    const [adding, setAdding] = useState<any>(null);
-    const [relation, setRelation] = useState('collaborator');
-    const [description, setDescription] = useState('');
-    // Agent relationships state
-    const [addingAgent, setAddingAgent] = useState(false);
-    const [agentRelation, setAgentRelation] = useState('collaborator');
-    const [agentDescription, setAgentDescription] = useState('');
-    const [selectedAgentId, setSelectedAgentId] = useState('');
-    // Editing state
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [editRelation, setEditRelation] = useState('');
-    const [editDescription, setEditDescription] = useState('');
-    const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
-    const [editAgentRelation, setEditAgentRelation] = useState('');
-    const [editAgentDescription, setEditAgentDescription] = useState('');
-
-    const { data: relationships = [], refetch } = useQuery({
-        queryKey: ['relationships', agentId],
-        queryFn: () => fetchAuth<any[]>(`/agents/${agentId}/relationships/`),
-    });
-    const { data: agentRelationships = [], refetch: refetchAgentRels } = useQuery({
-        queryKey: ['agent-relationships', agentId],
-        queryFn: () => fetchAuth<any[]>(`/agents/${agentId}/relationships/agents`),
-    });
-    const { data: allAgents = [] } = useQuery({
-        queryKey: ['agents-for-rel'],
-        queryFn: () => fetchAuth<any[]>(`/agents/`),
-    });
-    const availableAgents = allAgents.filter((a: any) => a.id !== agentId);
-
-    useEffect(() => {
-        if (!search || search.length < 1) { setSearchResults([]); return; }
-        const t = setTimeout(() => {
-            fetchAuth<any[]>(`/enterprise/org/members?search=${encodeURIComponent(search)}`).then(setSearchResults);
-        }, 300);
-        return () => clearTimeout(t);
-    }, [search]);
-
-    const addRelationship = async () => {
-        if (!adding) return;
-        const existing = relationships.map((r: any) => ({ member_id: r.member_id, relation: r.relation, description: r.description }));
-        existing.push({ member_id: adding.id, relation, description });
-        await fetchAuth(`/agents/${agentId}/relationships/`, { method: 'PUT', body: JSON.stringify({ relationships: existing }) });
-        setAdding(null); setSearch(''); setRelation('collaborator'); setDescription('');
-        refetch();
-    };
-    const removeRelationship = async (relId: string) => {
-        await fetchAuth(`/agents/${agentId}/relationships/${relId}`, { method: 'DELETE' });
-        refetch();
-    };
-    const startEditRelationship = (r: any) => {
-        setEditingId(r.id);
-        setEditRelation(r.relation || 'collaborator');
-        setEditDescription(r.description || '');
-    };
-    const saveEditRelationship = async (targetId: string) => {
-        const updated = relationships.map((r: any) => ({
-            member_id: r.member_id,
-            relation: r.id === targetId ? editRelation : r.relation,
-            description: r.id === targetId ? editDescription : r.description,
-        }));
-        await fetchAuth(`/agents/${agentId}/relationships/`, { method: 'PUT', body: JSON.stringify({ relationships: updated }) });
-        setEditingId(null);
-        refetch();
-    };
-    const addAgentRelationship = async () => {
-        if (!selectedAgentId) return;
-        const existing = agentRelationships.map((r: any) => ({ target_agent_id: r.target_agent_id, relation: r.relation, description: r.description }));
-        existing.push({ target_agent_id: selectedAgentId, relation: agentRelation, description: agentDescription });
-        await fetchAuth(`/agents/${agentId}/relationships/agents`, { method: 'PUT', body: JSON.stringify({ relationships: existing }) });
-        setAddingAgent(false); setSelectedAgentId(''); setAgentRelation('collaborator'); setAgentDescription('');
-        refetchAgentRels();
-    };
-    const removeAgentRelationship = async (relId: string) => {
-        await fetchAuth(`/agents/${agentId}/relationships/agents/${relId}`, { method: 'DELETE' });
-        refetchAgentRels();
-    };
-    const startEditAgentRelationship = (r: any) => {
-        setEditingAgentId(r.id);
-        setEditAgentRelation(r.relation || 'collaborator');
-        setEditAgentDescription(r.description || '');
-    };
-    const saveEditAgentRelationship = async (targetId: string) => {
-        const updated = agentRelationships.map((r: any) => ({
-            target_agent_id: r.target_agent_id,
-            relation: r.id === targetId ? editAgentRelation : r.relation,
-            description: r.id === targetId ? editAgentDescription : r.description,
-        }));
-        await fetchAuth(`/agents/${agentId}/relationships/agents`, { method: 'PUT', body: JSON.stringify({ relationships: updated }) });
-        setEditingAgentId(null);
-        refetchAgentRels();
-    };
-
     return (
-        <div>
-            {/* ── Human Relationships ── */}
-            <div className="card" style={{ marginBottom: '12px' }}>
-                <h4 style={{ marginBottom: '12px' }}>{t('agent.detail.humanRelationships')}</h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '12px' }}>{t('agent.detail.humanRelationships')}</p>
-                {relationships.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
-                        {relationships.map((r: any) => (
-                            <div key={r.id} style={{ borderRadius: '8px', border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px' }}>
-                                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(224,238,238,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: 600, flexShrink: 0 }}>{r.member?.name?.[0] || '?'}</div>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontWeight: 600, fontSize: '13px' }}>{r.member?.name || '?'} <span className="badge" style={{ fontSize: '10px', marginLeft: '4px' }}>{r.relation_label}</span></div>
-                                        <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{r.member?.title || ''} · {r.member?.department_path || ''}</div>
-                                        {r.description && editingId !== r.id && <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>{r.description}</div>}
-                                    </div>
-                                    {!readOnly && editingId !== r.id && (
-                                        <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                                            <button className="btn btn-ghost" style={{ fontSize: '12px' }} onClick={() => startEditRelationship(r)}>{t('common.edit', 'Edit')}</button>
-                                            <button className="btn btn-ghost" style={{ color: 'var(--error)', fontSize: '12px' }} onClick={() => removeRelationship(r.id)}>{t('common.delete')}</button>
-                                        </div>
-                                    )}
-                                </div>
-                                {editingId === r.id && (
-                                    <div style={{ padding: '0 10px 10px', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-elevated)' }}>
-                                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px', marginBottom: '8px' }}>
-                                            <select className="input" value={editRelation} onChange={e => setEditRelation(e.target.value)} style={{ width: '140px', fontSize: '12px' }}>
-                                                {getRelationOptions(t).map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                            </select>
-                                        </div>
-                                        <textarea className="input" value={editDescription} onChange={e => setEditDescription(e.target.value)} rows={2} style={{ fontSize: '12px', resize: 'vertical', marginBottom: '8px', width: '100%' }} placeholder={t('agent.detail.descriptionPlaceholder', 'Description...')} />
-                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                            <button className="btn btn-primary" style={{ fontSize: '12px' }} onClick={() => saveEditRelationship(r.id)}>{t('common.save', 'Save')}</button>
-                                            <button className="btn btn-secondary" style={{ fontSize: '12px' }} onClick={() => setEditingId(null)}>{t('common.cancel')}</button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                )}
-                {!readOnly && !adding && (
-                    <div style={{ position: 'relative' }}>
-                        <input className="input" placeholder={t("agent.detail.searchMembers")} value={search} onChange={e => setSearch(e.target.value)} style={{ fontSize: '13px' }} />
-                        {searchResults.length > 0 && (
-                            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--bg-primary)', border: '1px solid var(--border-subtle)', borderRadius: '6px', marginTop: '4px', maxHeight: '200px', overflowY: 'auto', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-                                {searchResults.map((m: any) => (
-                                    <div key={m.id} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', borderBottom: '1px solid var(--border-subtle)' }}
-                                        onClick={() => { setAdding(m); setSearch(''); setSearchResults([]); }}
-                                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-elevated)')}
-                                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                                        <div style={{ fontWeight: 500 }}>{m.name}</div>
-                                        <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{m.title} · {m.department_path}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
-                {!readOnly && adding && (
-                    <div style={{ border: '1px solid var(--accent-primary)', borderRadius: '8px', padding: '12px', background: 'var(--bg-elevated)' }}>
-                        <div style={{ fontWeight: 600, fontSize: '14px', marginBottom: '8px' }}>{t('agent.detail.addRelationship')}: {adding.name} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>({adding.title} · {adding.department_path})</span></div>
-                        <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                            <select className="input" value={relation} onChange={e => setRelation(e.target.value)} style={{ width: '140px', fontSize: '12px' }}>
-                                {getRelationOptions(t).map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                            </select>
-                        </div>
-                        <textarea className="input" placeholder="" value={description} onChange={e => setDescription(e.target.value)} rows={2} style={{ fontSize: '12px', resize: 'vertical', marginBottom: '8px' }} />
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            <button className="btn btn-primary" style={{ fontSize: '12px' }} onClick={addRelationship}>{t('common.confirm')}</button>
-                            <button className="btn btn-secondary" style={{ fontSize: '12px' }} onClick={() => { setAdding(null); setDescription(''); }}>{t('common.cancel')}</button>
-                        </div>
-                    </div>
-                )}
-            </div>
-            {/* ── Agent-to-Agent Relationships ── */}
-            <div className="card" style={{ marginBottom: '12px' }}>
-                <h4 style={{ marginBottom: '12px' }}>{t('agent.detail.agentRelationships')}</h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '12px' }}>{t('agent.detail.agentRelationships')}</p>
-                {agentRelationships.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
-                        {agentRelationships.map((r: any) => (
-                            <div key={r.id} style={{ borderRadius: '8px', border: '1px solid rgba(16,185,129,0.3)', background: 'rgba(16,185,129,0.05)', overflow: 'hidden' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px' }}>
-                                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(16,185,129,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0 }}>A</div>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontWeight: 600, fontSize: '13px' }}>{r.target_agent?.name || '?'} <span className="badge" style={{ fontSize: '10px', marginLeft: '4px', background: 'rgba(16,185,129,0.15)', color: 'rgb(16,185,129)' }}>{r.relation_label}</span></div>
-                                        <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{r.target_agent?.role_description || 'Agent'}</div>
-                                        {r.description && editingAgentId !== r.id && <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>{r.description}</div>}
-                                    </div>
-                                    {!readOnly && editingAgentId !== r.id && (
-                                        <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                                            <button className="btn btn-ghost" style={{ fontSize: '12px' }} onClick={() => startEditAgentRelationship(r)}>{t('common.edit', 'Edit')}</button>
-                                            <button className="btn btn-ghost" style={{ color: 'var(--error)', fontSize: '12px' }} onClick={() => removeAgentRelationship(r.id)}>{t('common.delete')}</button>
-                                        </div>
-                                    )}
-                                </div>
-                                {editingAgentId === r.id && (
-                                    <div style={{ padding: '0 10px 10px', borderTop: '1px solid rgba(16,185,129,0.2)', background: 'var(--bg-elevated)' }}>
-                                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px', marginBottom: '8px' }}>
-                                            <select className="input" value={editAgentRelation} onChange={e => setEditAgentRelation(e.target.value)} style={{ width: '140px', fontSize: '12px' }}>
-                                                {getAgentRelationOptions(t).map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                            </select>
-                                        </div>
-                                        <textarea className="input" value={editAgentDescription} onChange={e => setEditAgentDescription(e.target.value)} rows={2} style={{ fontSize: '12px', resize: 'vertical', marginBottom: '8px', width: '100%' }} placeholder={t('agent.detail.descriptionPlaceholder', 'Description...')} />
-                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                            <button className="btn btn-primary" style={{ fontSize: '12px' }} onClick={() => saveEditAgentRelationship(r.id)}>{t('common.save', 'Save')}</button>
-                                            <button className="btn btn-secondary" style={{ fontSize: '12px' }} onClick={() => setEditingAgentId(null)}>{t('common.cancel')}</button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                )}
-                {!readOnly && !addingAgent && (
-                    <button className="btn btn-secondary" style={{ fontSize: '12px' }} onClick={() => setAddingAgent(true)}>+ {t('agent.detail.addRelationship')}</button>
-                )}
-                {!readOnly && addingAgent && (
-                    <div style={{ border: '1px solid rgba(16,185,129,0.5)', borderRadius: '8px', padding: '12px', background: 'var(--bg-elevated)' }}>
-                        <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                            <select className="input" value={selectedAgentId} onChange={e => setSelectedAgentId(e.target.value)} style={{ flex: 1, fontSize: '12px' }}>
-                                <option value="">— Select —</option>
-                                {availableAgents.map((a: any) => <option key={a.id} value={a.id}>{a.name} — {a.role_description || 'Agent'}</option>)}
-                            </select>
-                            <select className="input" value={agentRelation} onChange={e => setAgentRelation(e.target.value)} style={{ width: '140px', fontSize: '12px' }}>
-                                {getAgentRelationOptions(t).map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                            </select>
-                        </div>
-                        <textarea className="input" placeholder="" value={agentDescription} onChange={e => setAgentDescription(e.target.value)} rows={2} style={{ fontSize: '12px', resize: 'vertical', marginBottom: '8px' }} />
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            <button className="btn btn-primary" style={{ fontSize: '12px' }} onClick={addAgentRelationship} disabled={!selectedAgentId}>{t('common.confirm')}</button>
-                            <button className="btn btn-secondary" style={{ fontSize: '12px' }} onClick={() => { setAddingAgent(false); setAgentDescription(''); setSelectedAgentId(''); }}>{t('common.cancel')}</button>
-                        </div>
-                    </div>
-                )}
-            </div>
+        <div className="card" style={{ padding: '16px' }}>
+            <h4 style={{ marginBottom: '8px' }}>{t('agent.detail.relationships', 'Relationships')}</h4>
+            <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: 0 }}>
+                {t('agent.detail.relationshipsUnavailable', 'This deployment does not expose agent relationship APIs yet, so relationship management is temporarily unavailable.')}
+            </p>
+            {readOnly && (
+                <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '8px', marginBottom: 0 }}>
+                    {t('agent.detail.relationshipsReadonly', 'You currently have read-only access to this agent.')}
+                </p>
+            )}
         </div>
     );
 }
@@ -719,9 +315,10 @@ function AgentDetailInner() {
         queryKey: ['reflection-sessions', id],
         queryFn: async () => {
             const tkn = localStorage.getItem('token');
-            const res = await fetch(`/api/agents/${id}/sessions?scope=all`, { headers: { Authorization: `Bearer ${tkn}` } });
+            const res = await fetch(`/api/agents/${id}/sessions`, { headers: { Authorization: `Bearer ${tkn}` } });
             if (!res.ok) return [];
-            const all = await res.json();
+            const payload = await res.json();
+            const all = Array.isArray(payload?.sessions) ? payload.sessions : [];
             return all.filter((s: any) => s.source_channel === 'trigger');
         },
         enabled: !!id && activeTab === 'aware',
@@ -788,29 +385,61 @@ function AgentDetailInner() {
     const [historyMsgs, setHistoryMsgs] = useState<any[]>([]);
     const [sessionsLoading, setSessionsLoading] = useState(false);
     const [agentExpired, setAgentExpired] = useState(false);
+    const normalizeSession = (session: any) => {
+        const sessionId = String(session?.session_id || session?.id || '');
+        return {
+            ...session,
+            id: sessionId,
+            session_id: sessionId,
+            title: session?.title || session?.label || `${t('agent.chat.session', 'Session')} ${sessionId.slice(0, 8)}`,
+            message_count: Number(session?.message_count || 0),
+        };
+    };
+    const normalizeReplayMessages = (messages: any[] = []): ChatMsg[] => {
+        const normalized: ChatMsg[] = [];
+        messages.forEach((message) => {
+            const role = String(message?.role || '').toLowerCase();
+            const baseRole: ChatMsg['role'] = role === 'assistant' ? 'assistant' : 'user';
+            normalized.push(parseChatMsg({
+                role: baseRole,
+                content: String(message?.content || ''),
+                timestamp: message?.created_at,
+            }));
+            if (Array.isArray(message?.tools)) {
+                message.tools.forEach((tool: any) => {
+                    normalized.push({
+                        role: 'tool_call',
+                        content: '',
+                        toolName: tool?.name || 'tool',
+                        toolArgs: tool?.input || {},
+                        toolStatus: tool?.result != null ? 'done' : 'running',
+                        toolResult: tool?.result,
+                    });
+                });
+            }
+        });
+        return normalized;
+    };
 
     const fetchMySessions = async (silent = false) => {
         if (!id) return;
         if (!silent) setSessionsLoading(true);
         try {
             const tkn = localStorage.getItem('token');
-            const res = await fetch(`/api/agents/${id}/sessions?scope=mine`, { headers: { Authorization: `Bearer ${tkn}` } });
-            if (res.ok) { const data = await res.json(); setSessions(data); return data; }
+            const res = await fetch(`/api/agents/${id}/sessions`, { headers: { Authorization: `Bearer ${tkn}` } });
+            if (res.ok) {
+                const payload = await res.json();
+                const data = (Array.isArray(payload?.sessions) ? payload.sessions : []).map(normalizeSession);
+                setSessions(data);
+                return data;
+            }
         } catch { }
         if (!silent) setSessionsLoading(false);
         return [];
     };
 
     const fetchAllSessions = async () => {
-        if (!id) return;
-        try {
-            const tkn = localStorage.getItem('token');
-            const res = await fetch(`/api/agents/${id}/sessions?scope=all`, { headers: { Authorization: `Bearer ${tkn}` } });
-            if (res.ok) {
-                const all = await res.json();
-                setAllSessions(all.filter((s: any) => s.source_channel !== 'trigger'));
-            }
-        } catch { }
+        setAllSessions([]);
     };
 
     const createNewSession = async () => {
@@ -821,11 +450,9 @@ function AgentDetailInner() {
                 body: JSON.stringify({}),
             });
             if (res.ok) {
-                const newSess = await res.json();
-                setSessions(prev => [newSess, ...prev]);
-                setChatMessages([]);
-                setHistoryMsgs([]);
-                setActiveSession(newSess);
+                const created = normalizeSession(await res.json());
+                await fetchMySessions(true);
+                await selectSession(created);
             } else {
                 const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
                 console.error('Failed to create session:', err);
@@ -841,58 +468,44 @@ function AgentDetailInner() {
         if (!confirm(t('chat.deleteConfirm', 'Delete this session and all its messages? This cannot be undone.'))) return;
         const tkn = localStorage.getItem('token');
         try {
-            await fetch(`/api/agents/${id}/sessions/${sessionId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${tkn}` } });
+            await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${tkn}` } });
             // If deleted the active session, clear it
             if (activeSession?.id === sessionId) {
                 setActiveSession(null);
                 setChatMessages([]);
                 setHistoryMsgs([]);
+                setWsConnected(false);
             }
-            // Refresh session lists
-            const r1 = await fetch(`/api/agents/${id}/sessions?scope=mine`, { headers: { Authorization: `Bearer ${tkn}` } });
-            if (r1.ok) setSessions(await r1.json());
-            const r2 = await fetch(`/api/agents/${id}/sessions?scope=all`, { headers: { Authorization: `Bearer ${tkn}` } });
-            if (r2.ok) {
-                const all2 = await r2.json();
-                setAllSessions(all2.filter((s: any) => s.source_channel !== 'trigger'));
-            }
+            await fetchMySessions(true);
         } catch (e: any) {
             alert(e.message || 'Delete failed');
         }
     };
 
     const selectSession = async (sess: any) => {
-        // Close the existing WS before switching so its onmessage can no longer
-        // write stale streaming data into the new session's message list.
-        if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
-            wsRef.current.close();
-            wsRef.current = null;
-        }
+        const session = normalizeSession(sess);
         setChatMessages([]);
         setHistoryMsgs([]);
         setIsStreaming(false);
         setIsWaiting(false);
-        setActiveSession(sess);
-        // Always load stored messages for the selected session
         const tkn = localStorage.getItem('token');
-        const res = await fetch(`/api/agents/${id}/sessions/${sess.id}/messages`, { headers: { Authorization: `Bearer ${tkn}` } });
-        if (res.ok) {
-            const msgs = await res.json();
-            // Agent-to-agent sessions are always read-only
-            const isAgentSession = sess.source_channel === 'agent' || sess.participant_type === 'agent';
-            if (!isAgentSession && sess.user_id === String(currentUser?.id)) {
-                // Own session: load into chatMessages so WS can append new replies seamlessly
-                setChatMessages(msgs.map((m: any) => parseChatMsg({
-                    role: m.role, content: m.content,
-                    ...(m.toolName && { toolName: m.toolName, toolArgs: m.toolArgs, toolStatus: m.toolStatus, toolResult: m.toolResult }),
-                    ...(m.thinking && { thinking: m.thinking }),
-                    ...(m.created_at && { timestamp: m.created_at }),
-                })));
-            } else {
-                // Other user's session or agent-to-agent: read-only view
-                setHistoryMsgs(msgs);
-            }
+        const switchRes = await fetch(`/api/agents/${id}/sessions/${session.id}/switch`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${tkn}` },
+        });
+        if (!switchRes.ok) {
+            alert(t('agent.chat.failedToSwitchSession', 'Failed to switch session'));
+            return;
         }
+        const res = await fetch(`/api/sessions/${session.id}/replay`, { headers: { Authorization: `Bearer ${tkn}` } });
+        if (res.ok) {
+            const payload = await res.json();
+            const msgs = normalizeReplayMessages(Array.isArray(payload?.messages) ? payload.messages : []);
+            setChatMessages(msgs);
+            setHistoryMsgs(msgs);
+        }
+        setActiveSession(session);
+        setWsConnected(!agentExpired);
     };
 
     // Websocket chat state (for 'me' conversation)
@@ -942,7 +555,7 @@ function AgentDetailInner() {
     const [isStreaming, setIsStreaming] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(-1);
     const uploadAbortRef = useRef<(() => void) | null>(null);
-    const [attachedFiles, setAttachedFiles] = useState<{ name: string; text: string; path?: string; imageUrl?: string }[]>([]);
+    const [attachedFiles, setAttachedFiles] = useState<{ name: string; text: string; path?: string; imageUrl?: string; fileId?: string; contentType?: string }[]>([]);
     const wsRef = useRef<WebSocket | null>(null);
     const chatEndRef = useRef<HTMLDivElement>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -1064,97 +677,8 @@ function AgentDetailInner() {
     }, [id, activeTab]);
 
     useEffect(() => {
-        if (!id || !token || activeTab !== 'chat') return;
-        if (!activeSession) return;  // wait for session to be set
-        // Only connect WS for own sessions (not other users' and not agent-to-agent)
-        const isAgentSession = activeSession.source_channel === 'agent' || activeSession.participant_type === 'agent';
-        if (isAgentSession) return;
-        if (activeSession.user_id && currentUser && activeSession.user_id !== String(currentUser.id)) return;
-        let cancelled = false;
-        const sessionParam = activeSession?.id ? `&session_id=${activeSession.id}` : '';
-        const connect = () => {
-            if (cancelled) return;
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const ws = new WebSocket(`${protocol}//${window.location.host}/ws/chat/${id}?token=${token}${sessionParam}`);
-            ws.onopen = () => { if (cancelled) { ws.close(); return; } setWsConnected(true); wsRef.current = ws; };
-            ws.onclose = (e) => {
-                if (e.code === 4003 || e.code === 4002) {
-                    // 4003 = Agent expired, 4002 = Config error (no model, setup failed)
-                    if (e.code === 4003) setAgentExpired(true);
-                    setWsConnected(false);
-                    setIsWaiting(false);
-                    setIsStreaming(false);
-                    return;
-                }
-                if (!cancelled) { setWsConnected(false); setIsWaiting(false); setIsStreaming(false); setTimeout(connect, 2000); }
-            };
-            ws.onerror = () => { if (!cancelled) setWsConnected(false); };
-            ws.onmessage = (e) => {
-                const d = JSON.parse(e.data);
-                if (['thinking', 'chunk', 'tool_call', 'done', 'error', 'quota_exceeded'].includes(d.type)) {
-                    setIsWaiting(false);
-                    if (['thinking', 'chunk', 'tool_call'].includes(d.type)) setIsStreaming(true);
-                    if (['done', 'error', 'quota_exceeded'].includes(d.type)) setIsStreaming(false);
-                }
-
-                if (d.type === 'thinking') {
-                    setChatMessages(prev => {
-                        const last = prev[prev.length - 1];
-                        if (last && last.role === 'assistant' && (last as any)._streaming) {
-                            return [...prev.slice(0, -1), { ...last, thinking: (last.thinking || '') + d.content } as any];
-                        }
-                        return [...prev, { role: 'assistant', content: '', thinking: d.content, _streaming: true } as any];
-                    });
-                } else if (d.type === 'tool_call') {
-                    setChatMessages(prev => {
-                        const toolMsg: ChatMsg = { role: 'tool_call', content: '', toolName: d.name, toolArgs: d.args, toolStatus: d.status, toolResult: d.result };
-                        if (d.status === 'done') {
-                            const lastIdx = prev.length - 1;
-                            const last = prev[lastIdx];
-                            if (last && last.role === 'tool_call' && last.toolName === d.name && last.toolStatus === 'running') return [...prev.slice(0, lastIdx), toolMsg];
-                        }
-                        return [...prev, toolMsg];
-                    });
-                } else if (d.type === 'chunk') {
-                    setChatMessages(prev => {
-                        const last = prev[prev.length - 1];
-                        if (last && last.role === 'assistant' && (last as any)._streaming) return [...prev.slice(0, -1), { ...last, content: last.content + d.content } as any];
-                        return [...prev, { role: 'assistant', content: d.content, _streaming: true } as any];
-                    });
-                } else if (d.type === 'done') {
-                    setChatMessages(prev => {
-                        const last = prev[prev.length - 1];
-                        const thinking = (last && last.role === 'assistant' && (last as any)._streaming) ? last.thinking : undefined;
-                        if (last && last.role === 'assistant' && (last as any)._streaming) return [...prev.slice(0, -1), { role: 'assistant', content: d.content, thinking, timestamp: new Date().toISOString() }];
-                        return [...prev, { role: d.role, content: d.content, timestamp: new Date().toISOString() }];
-                    });
-                    // Silently refresh session list to update last_message_at (no loading spinner)
-                    fetchMySessions(true);
-                } else if (d.type === 'error' || d.type === 'quota_exceeded') {
-                    const msg = d.content || d.detail || d.message || 'Request denied';
-                    // Only add message if not a duplicate of the last one
-                    setChatMessages(prev => {
-                        const last = prev[prev.length - 1];
-                        if (last && last.role === 'assistant' && last.content === `⚠️ ${msg}`) return prev;
-                        return [...prev, { role: 'assistant', content: `⚠️ ${msg}` }];
-                    });
-                    // Permanent errors — stop reconnecting
-                    if (msg.includes('expired') || msg.includes('Setup failed') || msg.includes('no LLM model') || msg.includes('No model')) {
-                        cancelled = true;
-                        if (msg.includes('expired')) setAgentExpired(true);
-                    }
-                } else if (d.type === 'trigger_notification') {
-                    // Trigger fired — show the result as a new assistant message
-                    setChatMessages(prev => [...prev, { role: 'assistant', content: d.content }]);
-                    fetchMySessions(true);
-                } else {
-                    setChatMessages(prev => [...prev, { role: d.role, content: d.content }]);
-                }
-            };
-        };
-        connect();
-        return () => { cancelled = true; wsRef.current?.close(); wsRef.current = null; setWsConnected(false); };
-    }, [id, token, activeTab, activeSession?.id]);
+        setWsConnected(activeTab === 'chat' && !!activeSession && !agentExpired);
+    }, [activeTab, activeSession, agentExpired]);
 
     // Smart scroll: only auto-scroll if user is at the bottom
     const isNearBottom = useRef(true);
@@ -1219,12 +743,19 @@ function AgentDetailInner() {
     }, [activeSession?.id, activeTab]);
 
     const sendChatMsg = () => {
-        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+        if (!wsConnected || !activeSession) return;
         if (!chatInput.trim() && attachedFiles.length === 0) return;
         
         let userMsg = chatInput.trim();
         let contentForLLM = userMsg;
         let displayFiles = '';
+        const attachments = attachedFiles
+            .filter((file) => file.fileId)
+            .map((file) => ({
+                file_id: file.fileId,
+                filename: file.name,
+                content_type: file.contentType || '',
+            }));
 
         if (attachedFiles.length > 0) {
             let filesPrompt = '';
@@ -1233,7 +764,7 @@ function AgentDetailInner() {
             attachedFiles.forEach(file => {
                 filesDisplay += `[📎 ${file.name}] `;
                 if (file.imageUrl && supportsVision) {
-                    filesPrompt += `[image_data:${file.imageUrl}]\n`;
+                    filesPrompt += '';
                 } else if (file.imageUrl) {
                     filesPrompt += `[图片文件已上传: ${file.name}，保存在 ${file.path || ''}]\n`;
                 } else {
@@ -1263,14 +794,50 @@ function AgentDetailInner() {
             imageUrl: attachedFiles.length === 1 ? attachedFiles[0].imageUrl : undefined, 
             timestamp: new Date().toISOString() 
         }]);
-        wsRef.current.send(JSON.stringify({ 
-            content: contentForLLM, 
-            display_content: userMsg, 
-            file_name: attachedFiles.map(f => f.name).join(', ') 
-        }));
-        
-        setChatInput(''); 
+        setChatInput('');
         setAttachedFiles([]);
+        fetch(`/api/agents/${id}/message`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+                message: contentForLLM,
+                attachments,
+            }),
+        })
+            .then(async (res) => {
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    throw new Error(data?.detail || data?.error || `HTTP ${res.status}`);
+                }
+                return data;
+            })
+            .then((data) => {
+                setChatMessages((prev) => [...prev, {
+                    role: 'assistant',
+                    content: data.response || '',
+                    timestamp: new Date().toISOString(),
+                }]);
+                fetchMySessions(true);
+            })
+            .catch((error: any) => {
+                const message = error?.message || 'Request denied';
+                if (message.toLowerCase().includes('expired')) {
+                    setAgentExpired(true);
+                    setWsConnected(false);
+                }
+                setChatMessages((prev) => [...prev, {
+                    role: 'assistant',
+                    content: `⚠️ ${message}`,
+                    timestamp: new Date().toISOString(),
+                }]);
+            })
+            .finally(() => {
+                setIsWaiting(false);
+                setIsStreaming(false);
+            });
     };
 
     const handleChatFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1286,16 +853,15 @@ function AgentDetailInner() {
         try {
             const uploadPromises = allowedFiles.map(file => {
                 const { promise } = uploadFileWithProgress(
-                    `/chat/upload`,
+                    `/agents/${id}/upload?path=${encodeURIComponent('workspace/uploads')}`,
                     file,
                     () => {}, // Avoid updating progress per file to prevent flickering, could implement total progress
-                    id ? { agent_id: id } : undefined,
                 );
                 return promise;
             });
             const results = await Promise.all(uploadPromises);
             const newAttached = results.map(data => ({
-                name: data.filename, text: data.extracted_text, path: data.workspace_path, imageUrl: data.image_data_url || undefined
+                name: data.filename, text: data.extracted_text, path: data.workspace_path, imageUrl: data.image_data_url || undefined, fileId: data.file_id, contentType: data.content_type,
             }));
             setAttachedFiles(prev => [...prev, ...newAttached].slice(0, 10));
         } catch (err: any) {
@@ -1335,16 +901,15 @@ function AgentDetailInner() {
         try {
             const uploadPromises = allowedFiles.map(file => {
                 const { promise } = uploadFileWithProgress(
-                    `/chat/upload`,
+                    `/agents/${id}/upload?path=${encodeURIComponent('workspace/uploads')}`,
                     file,
                     () => {},
-                    id ? { agent_id: id } : undefined,
                 );
                 return promise;
             });
             const results = await Promise.all(uploadPromises);
             const newAttached = results.map(data => ({
-                name: data.filename, text: data.extracted_text, path: data.workspace_path, imageUrl: data.image_data_url || undefined
+                name: data.filename, text: data.extracted_text, path: data.workspace_path, imageUrl: data.image_data_url || undefined, fileId: data.file_id, contentType: data.content_type,
             }));
             setAttachedFiles(prev => [...prev, ...newAttached].slice(0, 10));
         } catch (err: any) {
@@ -1466,11 +1031,7 @@ function AgentDetailInner() {
         (m: any) => m.id === agent.primary_model_id && m.supports_vision
     );
 
-    const { data: permData } = useQuery({
-        queryKey: ['agent-permissions', id],
-        queryFn: () => fetchAuth<any>(`/agents/${id}/permissions`),
-        enabled: !!id && activeTab === 'settings',
-    });
+    const permData = null as any;
 
     // ─── Soul editor ─────────────────────────────────────
     const [soulEditing, setSoulEditing] = useState(false);
@@ -2901,12 +2462,6 @@ function AgentDetailInner() {
                                         style={{ flex: 1, padding: '5px 0', background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: chatScope === 'mine' ? 600 : 400, color: chatScope === 'mine' ? 'var(--text-primary)' : 'var(--text-tertiary)', borderBottom: chatScope === 'mine' ? '2px solid var(--accent-primary)' : '2px solid transparent', paddingBottom: '8px' }}>
                                         {t('agent.chat.mySessions')}
                                     </button>
-                                    {isAdmin && (
-                                        <button onClick={() => { setChatScope('all'); fetchAllSessions(); }}
-                                            style={{ flex: 1, padding: '5px 0', background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: chatScope === 'all' ? 600 : 400, color: chatScope === 'all' ? 'var(--text-primary)' : 'var(--text-tertiary)', borderBottom: chatScope === 'all' ? '2px solid var(--accent-primary)' : '2px solid transparent', paddingBottom: '8px' }}>
-                                            {t('agent.chat.allUsers')}
-                                        </button>
-                                    )}
                                 </div>
 
                                 {/* Actions row */}
@@ -3276,10 +2831,10 @@ function AgentDetailInner() {
                                                 <span>u23f8</span>
                                                 <span>This Agent has <strong>expired</strong> and is off duty. Contact your admin to extend its service.</span>
                                             </div>
-                                        ) : !wsConnected && (!activeSession?.user_id || !currentUser || activeSession.user_id === String(currentUser?.id)) ? (
+                                        ) : !wsConnected ? (
                                             <div style={{ padding: '3px 16px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
                                                 <span style={{ display: 'inline-block', width: '5px', height: '5px', borderRadius: '50%', background: 'var(--accent-primary)', opacity: 0.8, animation: 'pulse 1.2s ease-in-out infinite' }} />
-                                                Connecting...
+                                                {t('agent.chat.loadingSession', 'Preparing session...')}
                                             </div>
                                         ) : null}
                                         {attachedFiles.length > 0 && (
@@ -3323,15 +2878,11 @@ function AgentDetailInner() {
                                             <input ref={chatInputRef} className="chat-input" value={chatInput} onChange={e => setChatInput(e.target.value)}
                                                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendChatMsg(); } }}
                                                 onPaste={handlePaste}
-                                                placeholder={!wsConnected && (!activeSession?.user_id || !currentUser || activeSession.user_id === String(currentUser?.id)) ? 'Connecting...' : attachedFiles.length > 0 ? t('agent.chat.askAboutFile', { name: attachedFiles.length === 1 ? attachedFiles[0].name : `${attachedFiles.length} files` }) : t('chat.placeholder')}
+                                                placeholder={!wsConnected ? t('agent.chat.loadingSession', 'Preparing session...') : attachedFiles.length > 0 ? t('agent.chat.askAboutFile', { name: attachedFiles.length === 1 ? attachedFiles[0].name : `${attachedFiles.length} files` }) : t('chat.placeholder')}
                                                 disabled={!wsConnected || isWaiting || isStreaming} style={{ flex: 1 }} autoFocus />
-                                            {(isStreaming || isWaiting) ? (
-                                                <button className="btn btn-stop-generation" onClick={() => { if (wsRef.current?.readyState === WebSocket.OPEN) { wsRef.current.send(JSON.stringify({ type: 'abort' })); setIsStreaming(false); setIsWaiting(false); } }} style={{ padding: '6px 16px' }} title={t('chat.stop', 'Stop')}>
-                                                    <span className="stop-icon" />
-                                                </button>
-                                            ) : (
-                                                <button className="btn btn-primary" onClick={sendChatMsg} disabled={!wsConnected || (!chatInput.trim() && attachedFiles.length === 0)} style={{ padding: '6px 16px' }}>{t('chat.send')}</button>
-                                            )}
+                                            <button className="btn btn-primary" onClick={sendChatMsg} disabled={!wsConnected || isWaiting || isStreaming || (!chatInput.trim() && attachedFiles.length === 0)} style={{ padding: '6px 16px' }}>
+                                                {(isStreaming || isWaiting) ? t('agent.chat.sending', 'Sending...') : t('chat.send')}
+                                            </button>
                                         </div>
                                     </>
                                 )}
@@ -3929,145 +3480,18 @@ function AgentDetailInner() {
                                     </div>
                                 </div>}
 
-                                {/* Permission Management */}
-                                {(() => {
-                                    const scopeLabels: Record<string, string> = {
-                                        company: '🏢 ' + t('agent.settings.perm.companyWide', 'Company-wide'),
-                                        user: '👤 ' + t('agent.settings.perm.onlyMe', 'Only Me'),
-                                    };
-
-                                    const handleScopeChange = async (newScope: string) => {
-                                        try {
-                                            await fetchAuth(`/agents/${id}/permissions`, {
-                                                method: 'PUT',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ scope_type: newScope, scope_ids: [], access_level: permData?.access_level || 'use' }),
-                                            });
-                                            queryClient.invalidateQueries({ queryKey: ['agent-permissions', id] });
-                                            queryClient.invalidateQueries({ queryKey: ['agent', id] });
-                                        } catch (e) {
-                                            console.error('Failed to update permissions', e);
-                                        }
-                                    };
-
-                                    const handleAccessLevelChange = async (newLevel: string) => {
-                                        try {
-                                            await fetchAuth(`/agents/${id}/permissions`, {
-                                                method: 'PUT',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ scope_type: permData?.scope_type || 'company', scope_ids: permData?.scope_ids || [], access_level: newLevel }),
-                                            });
-                                            queryClient.invalidateQueries({ queryKey: ['agent-permissions', id] });
-                                            queryClient.invalidateQueries({ queryKey: ['agent', id] });
-                                        } catch (e) {
-                                            console.error('Failed to update access level', e);
-                                        }
-                                    };
-
-                                    const isOwner = permData?.is_owner ?? false;
-                                    const currentScope = permData?.scope_type || 'company';
-                                    const currentAccessLevel = permData?.access_level || 'use';
-
-                                    return (
-                                        <div className="card" style={{ marginBottom: '12px' }}>
-                                            <h4 style={{ marginBottom: '12px' }}>🔒 {t('agent.settings.perm.title', 'Access Permissions')}</h4>
-                                            <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '16px' }}>
-                                                {t('agent.settings.perm.description', 'Control who can see and interact with this agent. Only the creator or admin can change this.')}
-                                            </p>
-
-                                            {/* Scope Selection */}
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-                                                {(['company', 'user'] as const).map((scope) => (
-                                                    <label
-                                                        key={scope}
-                                                        style={{
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: '10px',
-                                                            padding: '12px 14px',
-                                                            borderRadius: '8px',
-                                                            cursor: isOwner ? 'pointer' : 'default',
-                                                            border: currentScope === scope
-                                                                ? '1px solid var(--accent-primary)'
-                                                                : '1px solid var(--border-subtle)',
-                                                            background: currentScope === scope
-                                                                ? 'rgba(99,102,241,0.06)'
-                                                                : 'transparent',
-                                                            opacity: isOwner ? 1 : 0.7,
-                                                            transition: 'all 0.15s',
-                                                        }}
-                                                    >
-                                                        <input
-                                                            type="radio"
-                                                            name="perm_scope"
-                                                            checked={currentScope === scope}
-                                                            disabled={!isOwner}
-                                                            onChange={() => handleScopeChange(scope)}
-                                                            style={{ accentColor: 'var(--accent-primary)' }}
-                                                        />
-                                                        <div>
-                                                            <div style={{ fontWeight: 500, fontSize: '13px' }}>{scopeLabels[scope]}</div>
-                                                            <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
-                                                                {scope === 'company' && t('agent.settings.perm.companyWideDesc', 'All users in the organization can use this agent')}
-                                                                {scope === 'user' && t('agent.settings.perm.onlyMeDesc', 'Only the creator can use this agent')}
-                                                            </div>
-                                                        </div>
-                                                    </label>
-                                                ))}
-                                            </div>
-
-                                            {/* Access Level for company scope */}
-                                            {currentScope === 'company' && isOwner && (
-                                                <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '12px' }}>
-                                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '8px' }}>
-                                                        {t('agent.settings.perm.defaultAccess', 'Default Access Level')}
-                                                    </label>
-                                                    <div style={{ display: 'flex', gap: '8px' }}>
-                                                        {[{ val: 'use', label: '👁️ ' + t('agent.settings.perm.useAccess', 'Use'), desc: t('agent.settings.perm.useAccessDesc', 'Task, Chat, Tools, Skills, Workspace') },
-                                                        { val: 'manage', label: '⚙️ ' + t('agent.settings.perm.manageAccess', 'Manage'), desc: t('agent.settings.perm.manageAccessDesc', 'Full access including Settings, Mind, Relationships') }].map(opt => (
-                                                            <label key={opt.val}
-                                                                style={{
-                                                                    flex: 1,
-                                                                    padding: '10px 12px',
-                                                                    borderRadius: '8px',
-                                                                    cursor: 'pointer',
-                                                                    border: currentAccessLevel === opt.val
-                                                                        ? '1px solid var(--accent-primary)'
-                                                                        : '1px solid var(--border-subtle)',
-                                                                    background: currentAccessLevel === opt.val
-                                                                        ? 'rgba(99,102,241,0.06)'
-                                                                        : 'transparent',
-                                                                    transition: 'all 0.15s',
-                                                                }}
-                                                            >
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                    <input type="radio" name="access_level" checked={currentAccessLevel === opt.val}
-                                                                        onChange={() => handleAccessLevelChange(opt.val)}
-                                                                        style={{ accentColor: 'var(--accent-primary)' }} />
-                                                                    <span style={{ fontWeight: 500, fontSize: '13px' }}>{opt.label}</span>
-                                                                </div>
-                                                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '4px', marginLeft: '20px' }}>{opt.desc}</div>
-                                                            </label>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {currentScope !== 'company' && permData?.scope_names?.length > 0 && (
-                                                <div style={{ marginTop: '12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                                                    <span style={{ fontWeight: 500 }}>{t('agent.settings.perm.currentAccess', 'Current access')}:</span>{' '}
-                                                    {permData.scope_names.map((s: any) => s.name).join(', ')}
-                                                </div>
-                                            )}
-
-                                            {!isOwner && (
-                                                <div style={{ marginTop: '12px', fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
-                                                    {t('agent.settings.perm.readOnly', 'Only the creator or admin can change permissions')}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })()}
+                                <div className="card" style={{ marginBottom: '12px' }}>
+                                    <h4 style={{ marginBottom: '12px' }}>🔒 {t('agent.settings.perm.title', 'Access Permissions')}</h4>
+                                    <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '10px' }}>
+                                        {t('agent.settings.perm.description', 'Control who can see and interact with this agent. Only the creator or admin can change this.')}
+                                    </p>
+                                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                        {t('agent.settings.perm.currentMode', 'Current access level')}: <strong>{agent?.access_level || 'use'}</strong>
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '8px' }}>
+                                        {t('agent.settings.perm.unavailable', 'This deployment does not expose the permissions management API yet, so permissions can only be viewed from the current agent snapshot.')}
+                                    </div>
+                                </div>
 
                                 {/* Timezone */}
                                 <div className="card" style={{ marginBottom: '12px' }}>

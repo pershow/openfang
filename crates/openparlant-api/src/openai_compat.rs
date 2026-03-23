@@ -1,7 +1,7 @@
 //! OpenAI-compatible `/v1/chat/completions` API endpoint.
 //!
 //! Allows any OpenAI-compatible client library to talk to OpenParlant agents.
-//! The `model` field resolves to an agent (by name, UUID, or `openparlant:<name>`),
+//! The `model` field resolves to an agent (by name, UUID, or `silicrew:<name>`),
 //! and the messages are forwarded to the agent's LLM loop.
 //!
 //! Supports both streaming (SSE) and non-streaming responses.
@@ -12,10 +12,10 @@ use axum::http::StatusCode;
 use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::IntoResponse;
 use axum::Json;
-use openparlant_runtime::kernel_handle::KernelHandle;
-use openparlant_runtime::llm_driver::StreamEvent;
-use openparlant_types::agent::AgentId;
-use openparlant_types::message::{ContentBlock, Message, MessageContent, Role, StopReason};
+use silicrew_runtime::kernel_handle::KernelHandle;
+use silicrew_runtime::llm_driver::StreamEvent;
+use silicrew_types::agent::AgentId;
+use silicrew_types::message::{ContentBlock, Message, MessageContent, Role, StopReason};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -160,8 +160,8 @@ struct ModelListResponse {
 // ── Agent resolution ────────────────────────────────────────────────────────
 
 fn resolve_agent(state: &AppState, model: &str) -> Option<(AgentId, String)> {
-    // 1. "openparlant:<name>" → find agent by name
-    if let Some(name) = model.strip_prefix("openparlant:") {
+    // 1. "silicrew:<name>" → find agent by name
+    if let Some(name) = model.strip_prefix("silicrew:") {
         if let Some(entry) = state.kernel.registry.find_by_name(name) {
             return Some((entry.id, entry.name.clone()));
         }
@@ -542,10 +542,10 @@ pub async fn list_models(State(state): State<Arc<AppState>>) -> impl IntoRespons
     let models: Vec<ModelObject> = agents
         .iter()
         .map(|e| ModelObject {
-            id: format!("openparlant:{}", e.name),
+            id: format!("silicrew:{}", e.name),
             object: "model",
             created,
-            owned_by: "openparlant".to_string(),
+            owned_by: "silicrew".to_string(),
         })
         .collect();
 

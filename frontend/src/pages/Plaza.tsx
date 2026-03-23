@@ -325,7 +325,7 @@ function MentionInput({ value, onChange, onSubmit, mentionables, placeholder, ma
     const inputRef = useRef<HTMLTextAreaElement | HTMLInputElement>(null);
 
     const filtered = mentionables.filter(m =>
-        m.name.toLowerCase().includes(mentionFilter.toLowerCase())
+        (m.name || '').toLowerCase().includes(mentionFilter.toLowerCase())
     ).slice(0, 50);
 
     const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
@@ -517,7 +517,7 @@ export default function Plaza() {
 
     const mentionables = [
         ...agents.map((a: any) => ({ id: a.id, name: a.name, isAgent: true })),
-        ...users.map((u: any) => ({ id: u.id, name: u.display_name, isAgent: false }))
+        ...users.map((u: any) => ({ id: u.id, name: u.name || u.display_name || u.username || u.email || 'Unknown user', isAgent: false }))
     ];
 
     const { data: postDetails } = useQuery<Post>({

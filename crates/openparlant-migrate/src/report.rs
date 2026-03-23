@@ -121,13 +121,13 @@ impl MigrationReport {
 
         // Next steps
         out.push_str("## Next Steps\n\n");
-        out.push_str("1. Review imported agent manifests in `~/.openparlant/agents/`\n");
+        out.push_str("1. Review imported agent manifests in `~/.silicrew/agents/`\n");
         out.push_str(
-            "2. Review `~/.openparlant/secrets.env` — verify tokens were migrated correctly\n",
+            "2. Review `~/.silicrew/secrets.env` — verify tokens were migrated correctly\n",
         );
-        out.push_str("3. Set any remaining API keys referenced in `~/.openparlant/config.toml`\n");
-        out.push_str("4. Start the daemon: `openparlant start`\n");
-        out.push_str("5. Test your agents: `openparlant agent list`\n");
+        out.push_str("3. Set any remaining API keys referenced in `~/.silicrew/config.toml`\n");
+        out.push_str("4. Start the daemon: `silicrew start`\n");
+        out.push_str("5. Test your agents: `silicrew agent list`\n");
 
         out
     }
@@ -163,8 +163,8 @@ impl MigrationReport {
 
         if !self.dry_run {
             println!("\n  Next steps:");
-            println!("    openparlant start");
-            println!("    openparlant agent list");
+            println!("    silicrew start");
+            println!("    silicrew agent list");
         }
     }
 }
@@ -192,7 +192,7 @@ mod tests {
             imported: vec![MigrateItem {
                 kind: ItemKind::Agent,
                 name: "coder".to_string(),
-                destination: "~/.openparlant/agents/coder/agent.toml".to_string(),
+                destination: "~/.silicrew/agents/coder/agent.toml".to_string(),
             }],
             skipped: vec![SkippedItem {
                 kind: ItemKind::Skill,

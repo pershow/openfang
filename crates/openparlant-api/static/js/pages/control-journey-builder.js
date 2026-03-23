@@ -39,7 +39,7 @@ function controlJourneyBuilder() {
 
     init: function() {
       var self = this;
-      this.scopeId = window.__openparlantControlScope || '';
+      this.scopeId = window.__silicrewControlScope || '';
       this.resetDraft();
 
       this._importHandler = function(evt) {

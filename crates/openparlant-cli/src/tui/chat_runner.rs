@@ -1,4 +1,4 @@
-//! Standalone chat TUI for `openparlant chat`.
+//! Standalone chat TUI for `silicrew chat`.
 //!
 //! Launches a focused ratatui chat screen — same beautiful rendering as the
 //! full TUI's Chat tab, but without the 17-tab chrome. Reuses 100% of
@@ -7,9 +7,9 @@
 use super::event::{self, AppEvent};
 use super::screens::chat::{self, ChatAction, ChatState, Role};
 use super::theme;
-use openparlant_kernel::SiliCrewKernel;
-use openparlant_runtime::llm_driver::StreamEvent;
-use openparlant_types::agent::AgentId;
+use silicrew_kernel::SiliCrewKernel;
+use silicrew_runtime::llm_driver::StreamEvent;
+use silicrew_types::agent::AgentId;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -161,7 +161,7 @@ impl StandaloneChat {
 
     fn handle_stream_done(
         &mut self,
-        result: Result<openparlant_runtime::agent_loop::AgentLoopResult, String>,
+        result: Result<silicrew_runtime::agent_loop::AgentLoopResult, String>,
     ) {
         self.chat.finalize_stream();
         match result {
@@ -612,7 +612,7 @@ impl StandaloneChat {
             }
             None => {
                 self.boot_error =
-                    Some("No agent templates found. Run `openparlant init`.".to_string());
+                    Some("No agent templates found. Run `silicrew init`.".to_string());
             }
         }
     }
@@ -649,7 +649,7 @@ impl StandaloneChat {
 
         match template {
             Some(t) => {
-                let manifest: openparlant_types::agent::AgentManifest =
+                let manifest: silicrew_types::agent::AgentManifest =
                     match toml::from_str(&t.content) {
                         Ok(m) => m,
                         Err(e) => {
@@ -670,7 +670,7 @@ impl StandaloneChat {
             }
             None => {
                 self.chat.status_msg =
-                    Some("No agent templates found. Run `openparlant init`.".to_string());
+                    Some("No agent templates found. Run `silicrew init`.".to_string());
             }
         }
     }

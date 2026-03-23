@@ -1,7 +1,7 @@
 name = "recruiter"
 version = "0.1.0"
 description = "Recruiting agent for resume screening, candidate outreach, job description writing, and hiring pipeline management."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 tags = ["recruiting", "hiring", "resume", "outreach", "talent", "hr"]
 

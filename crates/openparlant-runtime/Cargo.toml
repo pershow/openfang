@@ -1,14 +1,14 @@
 [package]
-name = "openparlant-runtime"
+name = "silicrew-runtime"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Agent runtime and execution environment for OpenParlant"
 
 [dependencies]
-openparlant-types = { path = "../openparlant-types" }
-openparlant-memory = { path = "../openparlant-memory" }
-openparlant-skills = { path = "../openparlant-skills" }
+silicrew-types = { path = "../silicrew-types" }
+silicrew-memory = { path = "../silicrew-memory" }
+silicrew-skills = { path = "../silicrew-skills" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

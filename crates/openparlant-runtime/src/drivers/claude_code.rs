@@ -11,7 +11,7 @@
 use crate::llm_driver::{CompletionRequest, CompletionResponse, LlmDriver, LlmError, StreamEvent};
 use async_trait::async_trait;
 use dashmap::DashMap;
-use openparlant_types::message::{ContentBlock, Role, StopReason, TokenUsage};
+use silicrew_types::message::{ContentBlock, Role, StopReason, TokenUsage};
 use serde::Deserialize;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
@@ -629,7 +629,7 @@ mod tests {
 
     #[test]
     fn test_build_prompt_simple() {
-        use openparlant_types::message::{Message, MessageContent};
+        use silicrew_types::message::{Message, MessageContent};
 
         let request = CompletionRequest {
             model: "claude-code/sonnet".to_string(),

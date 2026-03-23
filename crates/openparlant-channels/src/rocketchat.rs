@@ -311,7 +311,7 @@ impl ChannelAdapter for RocketChatAdapter {
                             sender: ChannelUser {
                                 platform_id: channel_id.clone(),
                                 display_name: sender_username.to_string(),
-                                openparlant_user: None,
+                                silicrew_user: None,
                             },
                             content: msg_content,
                             target_agent: None,

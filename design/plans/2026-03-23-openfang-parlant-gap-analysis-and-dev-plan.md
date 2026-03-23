@@ -24,10 +24,10 @@
 
 ### 2.2 控制层 crate 已存在
 
-- `openparlant-policy`
-- `openparlant-journey`
-- `openparlant-context`
-- `openparlant-control`
+- `silicrew-policy`
+- `silicrew-journey`
+- `silicrew-context`
+- `silicrew-control`
 
 ### 2.3 已有一部分 Parlant 风格对象
 

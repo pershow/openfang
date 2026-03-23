@@ -22,7 +22,7 @@ Common issues, diagnostics, and answers to frequently asked questions about Open
 Run the built-in diagnostic tool:
 
 ```bash
-openparlant doctor
+silicrew doctor
 ```
 
 This checks:
@@ -36,7 +36,7 @@ This checks:
 ### Check Daemon Status
 
 ```bash
-openparlant status
+silicrew status
 ```
 
 ### Check Health via API
@@ -51,9 +51,9 @@ curl http://127.0.0.1:4200/api/health/detail  # Requires auth
 OpenParlant uses `tracing` for structured logging. Set the log level via environment:
 
 ```bash
-RUST_LOG=info openparlant start          # Default
-RUST_LOG=debug openparlant start         # Verbose
-RUST_LOG=openparlant=debug openparlant start  # Only OpenParlant debug, deps at info
+RUST_LOG=info silicrew start          # Default
+RUST_LOG=debug silicrew start         # Verbose
+RUST_LOG=silicrew=debug silicrew start  # Only OpenParlant debug, deps at info
 ```
 
 ---
@@ -80,7 +80,7 @@ sudo apt install pkg-config libssl-dev libsqlite3-dev
 sudo dnf install openssl-devel sqlite-devel
 ```
 
-### `openparlant` command not found after install
+### `silicrew` command not found after install
 
 **Fix**: Ensure `~/.cargo/bin` is in your PATH:
 ```bash
@@ -91,7 +91,7 @@ export PATH="$HOME/.cargo/bin:$PATH"
 ### Docker container won't start
 
 **Common causes**:
-- No API key provided: `docker run -e GROQ_API_KEY=... ghcr.io/RightNow-AI/openparlant`
+- No API key provided: `docker run -e GROQ_API_KEY=... ghcr.io/RightNow-AI/silicrew`
 - Port already in use: change the port mapping `-p 3001:4200`
 - Permission denied on volume mount: check directory permissions
 
@@ -101,12 +101,12 @@ export PATH="$HOME/.cargo/bin:$PATH"
 
 ### "Config file not found"
 
-**Fix**: Run `openparlant init` to create the default config:
+**Fix**: Run `silicrew init` to create the default config:
 ```bash
-openparlant init
+silicrew init
 ```
 
-This creates `~/.openparlant/config.toml` with sensible defaults.
+This creates `~/.silicrew/config.toml` with sensible defaults.
 
 ### "Missing API key" warnings on start
 
@@ -127,7 +127,7 @@ Add to your shell profile to persist across sessions.
 
 Run validation manually:
 ```bash
-openparlant config show
+silicrew config show
 ```
 
 Common issues:
@@ -272,7 +272,7 @@ python -m vllm.entrypoints.openai.api_server --model ...
 
 Check logs for the specific error:
 ```bash
-RUST_LOG=openparlant_channels=debug openparlant start
+RUST_LOG=silicrew_channels=debug silicrew start
 ```
 
 ---
@@ -333,7 +333,7 @@ tools = ["file_read", "web_fetch", "shell_exec"]  # Must list each tool
 ### Agent spawning fails
 
 **Check**:
-1. TOML manifest is valid: `openparlant agent spawn --dry-run manifest.toml`
+1. TOML manifest is valid: `silicrew agent spawn --dry-run manifest.toml`
 2. LLM provider is configured and has a valid key
 3. Model specified in manifest exists in the catalog
 
@@ -383,7 +383,7 @@ cors_origins = ["http://localhost:5173", "https://your-app.com"]
 
 **Checklist**:
 1. Use `POST /v1/chat/completions` (not `/api/agents/{id}/message`)
-2. Set the model to `openparlant:agent-name` (e.g., `openparlant:coder`)
+2. Set the model to `silicrew:agent-name` (e.g., `silicrew:coder`)
 3. Streaming: set `"stream": true` for SSE responses
 4. Images: use `image_url` with `data:image/png;base64,...` format
 
@@ -396,7 +396,7 @@ cors_origins = ["http://localhost:5173", "https://your-app.com"]
 **Checklist**:
 1. Only one instance can run at a time (single-instance enforcement)
 2. Check if the daemon is already running on the same ports
-3. Try deleting `~/.openparlant/daemon.json` and restarting
+3. Try deleting `~/.silicrew/daemon.json` and restarting
 
 ### White/blank screen in app
 
@@ -428,7 +428,7 @@ cors_origins = ["http://localhost:5173", "https://your-app.com"]
 **Normal startup**: <200ms for the kernel, ~1-2s with channel adapters.
 
 If slower:
-- Check database size (`~/.openparlant/data/openparlant.db`)
+- Check database size (`~/.silicrew/data/silicrew.db`)
 - Reduce the number of enabled channels
 - Check network connectivity (MCP server connections happen at boot)
 
@@ -445,7 +445,7 @@ If slower:
 
 ### How do I switch the default LLM provider?
 
-Edit `~/.openparlant/config.toml`:
+Edit `~/.silicrew/config.toml`:
 ```toml
 [default_model]
 provider = "groq"
@@ -459,7 +459,7 @@ Yes. Each agent can use a different provider via its manifest `[model]` section.
 
 ### How do I add a new channel?
 
-1. Add the channel config to `~/.openparlant/config.toml` under `[channels]`
+1. Add the channel config to `~/.silicrew/config.toml` under `[channels]`
 2. Set the required environment variables (tokens, secrets)
 3. Restart the daemon
 
@@ -467,10 +467,10 @@ Yes. Each agent can use a different provider via its manifest `[model]` section.
 
 ```bash
 # From source
-cd openparlant && git pull && cargo install --path crates/openparlant-cli
+cd silicrew && git pull && cargo install --path crates/silicrew-cli
 
 # Docker
-docker pull ghcr.io/RightNow-AI/openparlant:latest
+docker pull ghcr.io/RightNow-AI/silicrew:latest
 ```
 
 ### Can agents talk to each other?
@@ -479,20 +479,20 @@ Yes. Agents can use the `agent_send`, `agent_spawn`, `agent_find`, and `agent_li
 
 ### Is my data sent to the cloud?
 
-Only LLM API calls go to the provider's servers. All agent data, memory, sessions, and configuration are stored locally in SQLite (`~/.openparlant/data/openparlant.db`). The OFP wire protocol uses HMAC-SHA256 mutual authentication for P2P communication.
+Only LLM API calls go to the provider's servers. All agent data, memory, sessions, and configuration are stored locally in SQLite (`~/.silicrew/data/silicrew.db`). The OFP wire protocol uses HMAC-SHA256 mutual authentication for P2P communication.
 
 ### How do I back up my data?
 
 Back up these files:
-- `~/.openparlant/config.toml` (configuration)
-- `~/.openparlant/data/openparlant.db` (all agent data, memory, sessions)
-- `~/.openparlant/skills/` (installed skills)
+- `~/.silicrew/config.toml` (configuration)
+- `~/.silicrew/data/silicrew.db` (all agent data, memory, sessions)
+- `~/.silicrew/skills/` (installed skills)
 
 ### How do I reset everything?
 
 ```bash
-rm -rf ~/.openparlant
-openparlant init  # Start fresh
+rm -rf ~/.silicrew
+silicrew init  # Start fresh
 ```
 
 ### Can I run OpenParlant without an internet connection?
@@ -521,7 +521,7 @@ model = "llama3.2"
 | Binary size | ~30 MB | ~200 MB |
 | Startup | <200 ms | ~3 s |
 
-OpenParlant can import OpenClaw configs: `openparlant migrate --from openclaw`
+OpenParlant can import OpenClaw configs: `silicrew migrate --from openclaw`
 
 ### How do I report a bug or request a feature?
 
@@ -542,7 +542,7 @@ OpenParlant can import OpenClaw configs: `openparlant migrate --from openclaw`
 ### How do I enable debug logging for a specific crate?
 
 ```bash
-RUST_LOG=openparlant_runtime=debug,openparlant_channels=info openparlant start
+RUST_LOG=silicrew_runtime=debug,silicrew_channels=info silicrew start
 ```
 
 ### Can I use OpenParlant as a library?
@@ -550,11 +550,11 @@ RUST_LOG=openparlant_runtime=debug,openparlant_channels=info openparlant start
 Yes. Each crate is independently usable:
 ```toml
 [dependencies]
-openparlant-runtime = { path = "crates/openparlant-runtime" }
-openparlant-memory = { path = "crates/openparlant-memory" }
+silicrew-runtime = { path = "crates/silicrew-runtime" }
+silicrew-memory = { path = "crates/silicrew-memory" }
 ```
 
-The `openparlant-kernel` crate assembles everything, but you can use individual crates for custom integrations.
+The `silicrew-kernel` crate assembles everything, but you can use individual crates for custom integrations.
 
 ---
 
@@ -564,21 +564,21 @@ The `openparlant-kernel` crate assembles everything, but you can use individual 
 
 Re-run the install script to get the latest release:
 ```bash
-curl -fsSL https://openparlant.sh/install | sh
+curl -fsSL https://silicrew.sh/install | sh
 ```
 Or build from source:
 ```bash
 git pull origin main
-cargo build --release -p openparlant-cli
+cargo build --release -p silicrew-cli
 ```
 
 ### How do I run OpenParlant in Docker?
 
 ```bash
-docker run -d --name openparlant \
+docker run -d --name silicrew \
   -e GROQ_API_KEY=your_key_here \
   -p 4200:4200 \
-  ghcr.io/rightnow-ai/openparlant:latest
+  ghcr.io/rightnow-ai/silicrew:latest
 ```
 
 ### How do I protect the dashboard with a password?
@@ -599,7 +599,7 @@ Generate a password hash: `caddy hash-password`
 
 ### How do I configure the embedding model for memory?
 
-In `~/.openparlant/config.toml`:
+In `~/.silicrew/config.toml`:
 ```toml
 [memory]
 embedding_provider = "openai"     # or "ollama", "gemini"
@@ -648,7 +648,7 @@ Not yet — each channel type currently supports one bot. Multi-bot routing is t
 
 ### Claude Code integration shows errors
 
-Add to `~/.openparlant/config.toml`:
+Add to `~/.silicrew/config.toml`:
 ```toml
 [claude_code]
 skip_permissions = true

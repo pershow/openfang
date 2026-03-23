@@ -5,18 +5,18 @@
 //! and exercises the shared-db control-plane stack end to end.
 
 use chrono::Utc;
-use openparlant_context::StoreKnowledgeCompiler;
-use openparlant_control::{ControlStore, DefaultTurnControlCoordinator};
-use openparlant_journey::{JourneyStore, StoreJourneyRuntime};
-use openparlant_memory::db::SharedDb;
-use openparlant_memory::migration::run_postgres_migrations;
-use openparlant_memory::usage::{UsageRecord, UsageStore};
-use openparlant_policy::{
+use silicrew_context::StoreKnowledgeCompiler;
+use silicrew_control::{ControlStore, DefaultTurnControlCoordinator};
+use silicrew_journey::{JourneyStore, StoreJourneyRuntime};
+use silicrew_memory::db::SharedDb;
+use silicrew_memory::migration::run_postgres_migrations;
+use silicrew_memory::usage::{UsageRecord, UsageStore};
+use silicrew_policy::{
     PolicyStore, StoreObservationMatcher, StorePolicyResolver, StoreToolGate,
 };
-use openparlant_runtime::audit::{AuditAction, AuditLog};
-use openparlant_types::agent::{AgentId, SessionId};
-use openparlant_types::control::{
+use silicrew_runtime::audit::{AuditAction, AuditLog};
+use silicrew_types::agent::{AgentId, SessionId};
+use silicrew_types::control::{
     ApprovalMode, CanonicalMessage, ControlExplainabilitySnapshot, ControlScope,
     GuidelineDefinition, GuidelineId, JourneyDefinition, JourneyId, ObservationDefinition,
     ObservationId, ScopeId, ToolCallRecord, ToolCandidate, ToolExposurePolicy,
@@ -54,7 +54,7 @@ impl TestPgSchema {
             .await
             .expect("connect admin postgres pool");
 
-        let schema = format!("openparlant_test_{}", Uuid::new_v4().simple());
+        let schema = format!("silicrew_test_{}", Uuid::new_v4().simple());
         let create_schema = format!("CREATE SCHEMA \"{schema}\"");
         sqlx::query(&create_schema)
             .execute(&admin_pool)

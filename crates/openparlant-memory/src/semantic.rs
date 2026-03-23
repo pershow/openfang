@@ -9,9 +9,9 @@
 
 use crate::db::{block_on, SharedDb};
 use chrono::Utc;
-use openparlant_types::agent::AgentId;
-use openparlant_types::error::{SiliCrewError, SiliCrewResult};
-use openparlant_types::memory::{MemoryFilter, MemoryFragment, MemoryId, MemorySource};
+use silicrew_types::agent::AgentId;
+use silicrew_types::error::{SiliCrewError, SiliCrewResult};
+use silicrew_types::memory::{MemoryFilter, MemoryFragment, MemoryId, MemorySource};
 #[cfg(test)]
 use rusqlite::Connection;
 use sqlx::{Postgres, QueryBuilder, Row};
@@ -390,7 +390,7 @@ fn decode_fragment(
         .map(MemoryId)
         .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
     let agent_id = uuid::Uuid::parse_str(&row.1)
-        .map(openparlant_types::agent::AgentId)
+        .map(silicrew_types::agent::AgentId)
         .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
     let source: MemorySource = serde_json::from_str(&row.3).unwrap_or(MemorySource::System);
     let metadata: HashMap<String, serde_json::Value> =

@@ -441,7 +441,7 @@ fn truncate(s: &str, max: usize) -> String {
     } else {
         format!(
             "{}\u{2026}",
-            openparlant_types::truncate_str(s, max.saturating_sub(1))
+            silicrew_types::truncate_str(s, max.saturating_sub(1))
         )
     }
 }

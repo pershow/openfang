@@ -514,7 +514,7 @@ pub struct DockerSandboxConfig {
     pub enabled: bool,
     /// Docker image for exec sandbox. Default: "python:3.12-slim".
     pub image: String,
-    /// Container name prefix. Default: "openparlant-sandbox".
+    /// Container name prefix. Default: "silicrew-sandbox".
     pub container_prefix: String,
     /// Working directory inside container. Default: "/workspace".
     pub workdir: String,
@@ -569,7 +569,7 @@ impl Default for DockerSandboxConfig {
         Self {
             enabled: false,
             image: "python:3.12-slim".to_string(),
-            container_prefix: "openparlant-sandbox".to_string(),
+            container_prefix: "silicrew-sandbox".to_string(),
             workdir: "/workspace".to_string(),
             network: "none".to_string(),
             memory_limit: "512m".to_string(),
@@ -651,7 +651,7 @@ impl Default for ExtensionsConfig {
 pub struct VaultConfig {
     /// Whether the vault is enabled (auto-detected if vault.enc exists).
     pub enabled: bool,
-    /// Custom vault file path (default: ~/.openparlant/vault.enc).
+    /// Custom vault file path (default: ~/.silicrew/vault.enc).
     pub path: Option<PathBuf>,
 }
 
@@ -963,9 +963,9 @@ impl Default for ThinkingConfig {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct KernelConfig {
-    /// OpenParlant home directory (default: ~/.openparlant).
+    /// OpenParlant home directory (default: ~/.silicrew).
     pub home_dir: PathBuf,
-    /// Data directory for databases (default: ~/.openparlant/data).
+    /// Data directory for databases (default: ~/.silicrew/data).
     pub data_dir: PathBuf,
     /// Log level (trace, debug, info, warn, error).
     pub log_level: String,
@@ -1022,7 +1022,7 @@ pub struct KernelConfig {
     /// Credential vault configuration.
     #[serde(default)]
     pub vault: VaultConfig,
-    /// Root directory for agent workspaces. Default: `~/.openparlant/workspaces`
+    /// Root directory for agent workspaces. Default: `~/.silicrew/workspaces`
     #[serde(default)]
     pub workspaces_dir: Option<PathBuf>,
     /// Media understanding configuration.
@@ -1098,7 +1098,7 @@ pub struct KernelConfig {
     #[serde(default)]
     pub auth: AuthConfig,
     /// Directory for auto-loading workflow JSON files on startup.
-    /// Defaults to `~/.openparlant/workflows`. Set to empty string to disable.
+    /// Defaults to `~/.silicrew/workflows`. Set to empty string to disable.
     #[serde(default)]
     pub workflows_dir: Option<PathBuf>,
 }
@@ -1112,7 +1112,7 @@ pub struct AuthConfig {
     /// Admin username.
     pub username: String,
     /// SHA256 hash of the password (hex-encoded).
-    /// Generate with: openparlant auth hash-password
+    /// Generate with: silicrew auth hash-password
     pub password_hash: String,
     /// Session token lifetime in hours (default: 168 = 7 days).
     pub session_ttl_hours: u64,
@@ -1263,7 +1263,7 @@ fn default_thread_ttl() -> u64 {
 
 impl Default for KernelConfig {
     fn default() -> Self {
-        let home_dir = openparlant_home_dir();
+        let home_dir = silicrew_home_dir();
         Self {
             data_dir: home_dir.join("data"),
             home_dir,
@@ -1475,14 +1475,14 @@ impl std::fmt::Debug for KernelConfig {
 
 /// Resolve the OpenParlant home directory.
 ///
-/// Priority: `OPENFANG_HOME` env var > `~/.openparlant`.
-fn openparlant_home_dir() -> PathBuf {
+/// Priority: `OPENFANG_HOME` env var > `~/.silicrew`.
+fn silicrew_home_dir() -> PathBuf {
     if let Ok(home) = std::env::var("OPENFANG_HOME") {
         return PathBuf::from(home);
     }
     dirs::home_dir()
         .unwrap_or_else(std::env::temp_dir)
-        .join(".openparlant")
+        .join(".silicrew")
 }
 
 /// Default LLM model configuration.
@@ -2078,7 +2078,7 @@ impl Default for SignalConfig {
 pub struct MatrixConfig {
     /// Matrix homeserver URL (e.g., `"https://matrix.org"`).
     pub homeserver_url: String,
-    /// Bot user ID (e.g., "@openparlant:matrix.org").
+    /// Bot user ID (e.g., "@silicrew:matrix.org").
     pub user_id: String,
     /// Env var name holding the access token.
     pub access_token_env: String,
@@ -2233,7 +2233,7 @@ pub struct IrcConfig {
     pub nick: String,
     /// Env var name holding the server password (optional).
     pub password_env: Option<String>,
-    /// Channels to join (e.g., `["#openparlant", "#general"]`).
+    /// Channels to join (e.g., `["#silicrew", "#general"]`).
     #[serde(default, deserialize_with = "deserialize_string_or_int_vec")]
     pub channels: Vec<String>,
     /// Use TLS (requires tokio-native-tls).
@@ -2250,7 +2250,7 @@ impl Default for IrcConfig {
         Self {
             server: "irc.libera.chat".to_string(),
             port: 6667,
-            nick: "openparlant".to_string(),
+            nick: "silicrew".to_string(),
             password_env: None,
             channels: vec![],
             use_tls: false,
@@ -2313,7 +2313,7 @@ impl Default for TwitchConfig {
         Self {
             oauth_token_env: "TWITCH_OAUTH_TOKEN".to_string(),
             channels: vec![],
-            nick: "openparlant".to_string(),
+            nick: "silicrew".to_string(),
             default_agent: None,
             overrides: ChannelOverrides::default(),
         }
@@ -3010,7 +3010,7 @@ impl Default for MumbleConfig {
         Self {
             host: String::new(),
             port: 64738,
-            username: "openparlant".to_string(),
+            username: "silicrew".to_string(),
             password_env: "MUMBLE_PASSWORD".to_string(),
             channel: String::new(),
             default_agent: None,
@@ -3767,13 +3767,13 @@ mod tests {
             host: Some("db.example.com".to_string()),
             port: 5432,
             user: Some("app".to_string()),
-            dbname: Some("openparlant".to_string()),
+            dbname: Some("silicrew".to_string()),
             ..Default::default()
         };
         let url = db.postgres_url("p@ss:word").expect("url");
         assert_eq!(
             url,
-            "postgresql://app:p%40ss%3Aword@db.example.com:5432/openparlant"
+            "postgresql://app:p%40ss%3Aword@db.example.com:5432/silicrew"
         );
     }
 
@@ -3839,7 +3839,7 @@ mod tests {
     #[test]
     fn test_resolved_postgres_password_from_secrets_env_file() {
         let tmp = std::env::temp_dir().join(format!(
-            "openparlant-pg-secrets-test-{}",
+            "silicrew-pg-secrets-test-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&tmp).unwrap();
@@ -4058,7 +4058,7 @@ mod tests {
         let irc = IrcConfig::default();
         assert_eq!(irc.server, "irc.libera.chat");
         assert_eq!(irc.port, 6667);
-        assert_eq!(irc.nick, "openparlant");
+        assert_eq!(irc.nick, "silicrew");
         assert!(!irc.use_tls);
     }
 
@@ -4073,7 +4073,7 @@ mod tests {
     fn test_twitch_config_defaults() {
         let tw = TwitchConfig::default();
         assert_eq!(tw.oauth_token_env, "TWITCH_OAUTH_TOKEN");
-        assert_eq!(tw.nick, "openparlant");
+        assert_eq!(tw.nick, "silicrew");
     }
 
     #[test]

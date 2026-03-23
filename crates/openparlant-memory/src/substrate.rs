@@ -13,9 +13,9 @@ use crate::structured::StructuredStore;
 use crate::usage::UsageStore;
 
 use async_trait::async_trait;
-use openparlant_types::agent::{AgentEntry, AgentId, SessionId};
-use openparlant_types::error::{SiliCrewError, SiliCrewResult};
-use openparlant_types::memory::{
+use silicrew_types::agent::{AgentEntry, AgentId, SessionId};
+use silicrew_types::error::{SiliCrewError, SiliCrewResult};
+use silicrew_types::memory::{
     ConsolidationReport, Entity, ExportFormat, GraphMatch, GraphPattern, ImportReport, Memory,
     MemoryFilter, MemoryFragment, MemoryId, MemorySource, Relation,
 };
@@ -235,7 +235,7 @@ impl MemorySubstrate {
         &self,
         agent_id: AgentId,
         window_size: Option<usize>,
-    ) -> SiliCrewResult<(Option<String>, Vec<openparlant_types::message::Message>)> {
+    ) -> SiliCrewResult<(Option<String>, Vec<silicrew_types::message::Message>)> {
         self.sessions.canonical_context(agent_id, window_size)
     }
 
@@ -247,7 +247,7 @@ impl MemorySubstrate {
         &self,
         agent_id: AgentId,
         summary: &str,
-        kept_messages: Vec<openparlant_types::message::Message>,
+        kept_messages: Vec<silicrew_types::message::Message>,
     ) -> SiliCrewResult<()> {
         self.sessions
             .store_llm_summary(agent_id, summary, kept_messages)
@@ -269,7 +269,7 @@ impl MemorySubstrate {
     pub fn append_canonical(
         &self,
         agent_id: AgentId,
-        messages: &[openparlant_types::message::Message],
+        messages: &[silicrew_types::message::Message],
         compaction_threshold: Option<usize>,
     ) -> SiliCrewResult<()> {
         self.sessions

@@ -1,9 +1,9 @@
 //! Credential resolution chain — resolves secrets from multiple sources.
 //!
 //! Resolution order:
-//! 1. Encrypted vault (`~/.openparlant/vault.enc`)
-//! 2. Dotenv file (`~/.openparlant/.env`)
-//! 3. Secrets file (`~/.openparlant/secrets.env`)
+//! 1. Encrypted vault (`~/.silicrew/vault.enc`)
+//! 2. Dotenv file (`~/.silicrew/.env`)
+//! 3. Secrets file (`~/.silicrew/secrets.env`)
 //! 4. Process environment variable
 //! 5. Interactive prompt (CLI only, when `interactive` is true)
 
@@ -18,7 +18,7 @@ use zeroize::Zeroizing;
 pub struct CredentialResolver {
     /// Reference to the credential vault.
     vault: Option<CredentialVault>,
-    /// Dotenv entries (loaded from `~/.openparlant/.env`).
+    /// Dotenv entries (loaded from `~/.silicrew/.env`).
     dotenv: HashMap<String, String>,
     /// Secret entries (loaded from sibling `secrets.env`, if present).
     secrets: HashMap<String, String>,

@@ -195,7 +195,7 @@ impl ChannelAdapter for SignalAdapter {
                         sender: ChannelUser {
                             platform_id: source.clone(),
                             display_name: source_name,
-                            openparlant_user: None,
+                            silicrew_user: None,
                         },
                         content,
                         target_agent: None,

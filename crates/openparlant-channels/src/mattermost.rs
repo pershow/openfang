@@ -215,7 +215,7 @@ fn parse_mattermost_event(
         sender: ChannelUser {
             platform_id: channel_id.to_string(),
             display_name: sender_name.to_string(),
-            openparlant_user: None,
+            silicrew_user: None,
         },
         content,
         target_agent: None,
@@ -630,7 +630,7 @@ mod tests {
             "data": {
                 "post": serde_json::to_string(&post).unwrap(),
                 "channel_type": "O",
-                "sender_name": "openparlant-bot"
+                "sender_name": "silicrew-bot"
             }
         });
 

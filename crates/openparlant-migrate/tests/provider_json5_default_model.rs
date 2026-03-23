@@ -1,4 +1,4 @@
-use openparlant_migrate::{openclaw, MigrateOptions, MigrateSource};
+use silicrew_migrate::{openclaw, MigrateOptions, MigrateSource};
 use tempfile::TempDir;
 
 fn assert_default_model_mapping(

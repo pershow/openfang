@@ -1,8 +1,8 @@
 /**
- * @openparlant/sdk — Official JavaScript client for the OpenParlant Agent OS REST API.
+ * @silicrew/sdk — Official JavaScript client for the OpenParlant Agent OS REST API.
  *
  * Usage:
- *   const { OpenParlant } = require("@openparlant/sdk");
+ *   const { OpenParlant } = require("@silicrew/sdk");
  *   const client = new OpenParlant("http://localhost:3000");
  *
  *   const agent = await client.agents.create({ template: "assistant" });

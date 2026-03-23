@@ -4,8 +4,8 @@ mod store;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use openparlant_memory::db::SharedDb;
-use openparlant_types::control::{
+use silicrew_memory::db::SharedDb;
+use silicrew_types::control::{
     CannedResponseCandidate, CanonicalMessage, ControlEmbedder, GlossaryEntry, JourneyActivation,
     KnowledgeCompileContext, ResolvedVariable, RetrievedChunk, ScopeId,
 };

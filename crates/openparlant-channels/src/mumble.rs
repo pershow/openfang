@@ -421,7 +421,7 @@ impl ChannelAdapter for MumbleAdapter {
                                         sender: ChannelUser {
                                             platform_id: format!("session-{actor}"),
                                             display_name: format!("user-{actor}"),
-                                            openparlant_user: None,
+                                            silicrew_user: None,
                                         },
                                         content,
                                         target_agent: None,

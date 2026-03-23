@@ -1,12 +1,12 @@
 [package]
-name = "openparlant-extensions"
+name = "silicrew-extensions"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Extension & integration system for OpenParlant — one-click MCP server setup, credential vault, OAuth2 PKCE"
 
 [dependencies]
-openparlant-types = { path = "../openparlant-types" }
+silicrew-types = { path = "../silicrew-types" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }

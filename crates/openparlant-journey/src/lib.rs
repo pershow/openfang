@@ -4,9 +4,9 @@ mod store;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use openparlant_memory::db::SharedDb;
-use openparlant_types::agent::SessionId;
-use openparlant_types::control::{
+use silicrew_memory::db::SharedDb;
+use silicrew_types::agent::SessionId;
+use silicrew_types::control::{
     CanonicalMessage, GuidelineActivation, GuidelineId, JourneyActivation, ScopeId, TurnOutcome,
 };
 use serde::{Deserialize, Serialize};

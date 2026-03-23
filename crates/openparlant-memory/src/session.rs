@@ -2,9 +2,9 @@
 
 use crate::db::{block_on, SharedDb};
 use chrono::Utc;
-use openparlant_types::agent::{AgentId, SessionId};
-use openparlant_types::error::{SiliCrewError, SiliCrewResult};
-use openparlant_types::message::{ContentBlock, Message, MessageContent, Role};
+use silicrew_types::agent::{AgentId, SessionId};
+use silicrew_types::error::{SiliCrewError, SiliCrewResult};
+use silicrew_types::message::{ContentBlock, Message, MessageContent, Role};
 #[cfg(test)]
 use rusqlite::Connection;
 use sqlx::Row;
@@ -745,15 +745,15 @@ impl SessionStore {
                 }
                 for msg in compacting {
                     let role = match msg.role {
-                        openparlant_types::message::Role::User => "User",
-                        openparlant_types::message::Role::Assistant => "Assistant",
-                        openparlant_types::message::Role::System => "System",
+                        silicrew_types::message::Role::User => "User",
+                        silicrew_types::message::Role::Assistant => "Assistant",
+                        silicrew_types::message::Role::System => "System",
                     };
                     let text = msg.content.text_content();
                     if !text.is_empty() {
                         // Truncate individual messages in summary to keep it compact (UTF-8 safe)
                         let truncated = if text.len() > 200 {
-                            format!("{}...", openparlant_types::truncate_str(&text, 200))
+                            format!("{}...", silicrew_types::truncate_str(&text, 200))
                         } else {
                             text
                         };
@@ -927,7 +927,7 @@ impl SessionStore {
                             ContentBlock::Thinking { thinking } => {
                                 text_parts.push(format!(
                                     "[thinking: {}]",
-                                    openparlant_types::truncate_str(thinking, 200)
+                                    silicrew_types::truncate_str(thinking, 200)
                                 ));
                             }
                             ContentBlock::Unknown => {}
@@ -1121,10 +1121,10 @@ mod tests {
         let mut session = store.create_session(agent_id).unwrap();
         session
             .messages
-            .push(openparlant_types::message::Message::user("Hello"));
+            .push(silicrew_types::message::Message::user("Hello"));
         session
             .messages
-            .push(openparlant_types::message::Message::assistant("Hi there!"));
+            .push(silicrew_types::message::Message::assistant("Hi there!"));
         store.save_session(&session).unwrap();
 
         let dir = tempfile::TempDir::new().unwrap();

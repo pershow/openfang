@@ -12,7 +12,7 @@
 use crate::registry::AgentRegistry;
 use chrono::Utc;
 use dashmap::DashMap;
-use openparlant_types::agent::{AgentId, AgentState};
+use silicrew_types::agent::{AgentId, AgentState};
 use tracing::{debug, warn};
 
 /// Default heartbeat check interval (seconds).

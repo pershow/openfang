@@ -286,52 +286,52 @@ export default function ChannelConfig({ mode, agentId, canManage = true, values,
     });
     const { data: slackConfig } = useQuery({
         queryKey: ['slack-channel', agentId],
-        queryFn: () => fetchAuth<any>(`/agents/${agentId}/slack-channel`).catch(() => null),
+        queryFn: () => Promise.resolve(null),
         enabled: enabled,
     });
     const { data: slackWebhook } = useQuery({
         queryKey: ['slack-webhook-url', agentId],
-        queryFn: () => fetchAuth<any>(`/agents/${agentId}/slack-channel/webhook-url`),
+        queryFn: () => Promise.resolve(null),
         enabled: enabled,
     });
     const { data: discordConfig } = useQuery({
         queryKey: ['discord-channel', agentId],
-        queryFn: () => fetchAuth<any>(`/agents/${agentId}/discord-channel`).catch(() => null),
+        queryFn: () => Promise.resolve(null),
         enabled: enabled,
     });
     const { data: discordWebhook } = useQuery({
         queryKey: ['discord-webhook-url', agentId],
-        queryFn: () => fetchAuth<any>(`/agents/${agentId}/discord-channel/webhook-url`),
+        queryFn: () => Promise.resolve(null),
         enabled: enabled,
     });
     const { data: teamsConfig } = useQuery({
         queryKey: ['teams-channel', agentId],
-        queryFn: () => fetchAuth<any>(`/agents/${agentId}/teams-channel`).catch(() => null),
+        queryFn: () => Promise.resolve(null),
         enabled: enabled,
     });
     const { data: teamsWebhook } = useQuery({
         queryKey: ['teams-webhook-url', agentId],
-        queryFn: () => fetchAuth<any>(`/agents/${agentId}/teams-channel/webhook-url`).catch(() => null),
+        queryFn: () => Promise.resolve(null),
         enabled: enabled,
     });
     const { data: dingtalkConfig } = useQuery({
         queryKey: ['dingtalk-channel', agentId],
-        queryFn: () => fetchAuth<any>(`/agents/${agentId}/dingtalk-channel`).catch(() => null),
+        queryFn: () => Promise.resolve(null),
         enabled: enabled,
     });
     const { data: wecomConfig } = useQuery({
         queryKey: ['wecom-channel', agentId],
-        queryFn: () => fetchAuth<any>(`/agents/${agentId}/wecom-channel`).catch(() => null),
+        queryFn: () => Promise.resolve(null),
         enabled: enabled,
     });
     const { data: wecomWebhook } = useQuery({
         queryKey: ['wecom-webhook-url', agentId],
-        queryFn: () => fetchAuth<any>(`/agents/${agentId}/wecom-channel/webhook-url`),
+        queryFn: () => Promise.resolve(null),
         enabled: enabled,
     });
     const { data: atlassianConfig } = useQuery({
         queryKey: ['atlassian-channel', agentId],
-        queryFn: () => fetchAuth<any>(`/agents/${agentId}/atlassian-channel`).catch(() => null),
+        queryFn: () => Promise.resolve(null),
         enabled: enabled,
     });
 
@@ -367,7 +367,7 @@ export default function ChannelConfig({ mode, agentId, canManage = true, values,
             if (ch.useChannelApi) {
                 return channelApi.create(agentId!, data);
             }
-            return fetchAuth(`/agents/${agentId}/${ch.apiSlug}`, { method: 'POST', body: JSON.stringify(data) });
+            return Promise.reject(new Error('Per-agent channel edit APIs are not available in this backend build.'));
         },
         onSuccess: (_d, { ch }) => {
             const keys = ch.useChannelApi
@@ -385,7 +385,7 @@ export default function ChannelConfig({ mode, agentId, canManage = true, values,
             if (ch.useChannelApi) {
                 return channelApi.delete(agentId!);
             }
-            return fetchAuth(`/agents/${agentId}/${ch.apiSlug}`, { method: 'DELETE' });
+            return Promise.reject(new Error('Per-agent channel edit APIs are not available in this backend build.'));
         },
         onSuccess: (_d, { ch }) => {
             const keys = ch.useChannelApi
@@ -400,8 +400,7 @@ export default function ChannelConfig({ mode, agentId, canManage = true, values,
         setAtlassianTesting(true);
         setAtlassianTestResult(null);
         try {
-            const res = await fetchAuth<any>(`/agents/${agentId}/atlassian-channel/test`, { method: 'POST' });
-            setAtlassianTestResult(res);
+            throw new Error('Atlassian per-agent test API is not available in this backend build.');
         } catch (e: any) {
             setAtlassianTestResult({ ok: false, error: String(e) });
         }

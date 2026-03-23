@@ -6,10 +6,10 @@
 use crate::llm_driver::{CompletionRequest, CompletionResponse, LlmDriver, LlmError, StreamEvent};
 use async_trait::async_trait;
 use futures::StreamExt;
-use openparlant_types::message::{
+use silicrew_types::message::{
     ContentBlock, Message, MessageContent, Role, StopReason, TokenUsage,
 };
-use openparlant_types::tool::ToolCall;
+use silicrew_types::tool::ToolCall;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 use zeroize::Zeroizing;

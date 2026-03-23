@@ -1,4 +1,4 @@
-use openparlant_types::error::{SiliCrewError, SiliCrewResult};
+use silicrew_types::error::{SiliCrewError, SiliCrewResult};
 use rusqlite::Connection;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;

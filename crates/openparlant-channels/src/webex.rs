@@ -406,7 +406,7 @@ impl ChannelAdapter for WebexAdapter {
                         sender: ChannelUser {
                             platform_id: full_room_id,
                             display_name: sender_email.to_string(),
-                            openparlant_user: None,
+                            silicrew_user: None,
                         },
                         content: msg_content,
                         target_agent: None,

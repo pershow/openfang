@@ -86,9 +86,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Visual workflow builder with drag-and-drop canvas
 
 #### Client SDKs
-- JavaScript SDK (`@openparlant/sdk`): full REST API client with streaming, TypeScript declarations
-- Python client SDK (`openparlant_client`): zero-dependency stdlib client with SSE streaming
-- Python agent SDK (`openparlant_sdk`): decorator-based framework for writing Python agents
+- JavaScript SDK (`@silicrew/sdk`): full REST API client with streaming, TypeScript declarations
+- Python client SDK (`silicrew_client`): zero-dependency stdlib client with SSE streaming
+- Python agent SDK (`silicrew_sdk`): decorator-based framework for writing Python agents
 - Usage examples for both languages (basic + streaming)
 
 #### CLI
@@ -163,4 +163,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prometheus metrics for monitoring
 - Config hot-reload without restart
 
-[0.1.0]: https://github.com/RightNow-AI/openparlant/releases/tag/v0.1.0
+[0.1.0]: https://github.com/RightNow-AI/silicrew/releases/tag/v0.1.0

@@ -1,12 +1,12 @@
 //! MCP (Model Context Protocol) server for OpenParlant.
 //!
 //! Exposes running agents as MCP tools over JSON-RPC 2.0 stdio.
-//! Each agent becomes a callable tool named `openparlant_agent_{name}`.
+//! Each agent becomes a callable tool named `silicrew_agent_{name}`.
 //!
 //! Protocol: Content-Length framing over stdin/stdout.
 //! Connects to running daemon via HTTP, falls back to in-process kernel.
 
-use openparlant_kernel::SiliCrewKernel;
+use silicrew_kernel::SiliCrewKernel;
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
 
@@ -80,7 +80,7 @@ impl McpBackend {
                 }
             }
             McpBackend::InProcess { kernel, rt } => {
-                let aid: openparlant_types::agent::AgentId =
+                let aid: silicrew_types::agent::AgentId =
                     agent_id.parse().map_err(|_| "Invalid agent ID")?;
                 let result = rt
                     .block_on(kernel.send_message(aid, message))
@@ -90,10 +90,10 @@ impl McpBackend {
         }
     }
 
-    /// Find agent ID by tool name (strip `openparlant_agent_` prefix, match by name).
+    /// Find agent ID by tool name (strip `silicrew_agent_` prefix, match by name).
     fn resolve_tool_agent(&self, tool_name: &str) -> Option<String> {
         let agent_name = tool_name
-            .strip_prefix("openparlant_agent_")?
+            .strip_prefix("silicrew_agent_")?
             .replace('_', "-");
         let agents = self.list_agents();
         // Try exact match first (with underscores replaced by hyphens)
@@ -103,7 +103,7 @@ impl McpBackend {
             }
         }
         // Try with underscores
-        let agent_name_underscore = tool_name.strip_prefix("openparlant_agent_")?;
+        let agent_name_underscore = tool_name.strip_prefix("silicrew_agent_")?;
         for (id, name, _) in &agents {
             if name.replace('-', "_").to_lowercase() == agent_name_underscore.to_lowercase() {
                 return Some(id.clone());
@@ -244,7 +244,7 @@ fn handle_message(backend: &McpBackend, msg: &Value) -> Option<Value> {
                     "tools": {}
                 },
                 "serverInfo": {
-                    "name": "openparlant",
+                    "name": "silicrew",
                     "version": env!("CARGO_PKG_VERSION")
                 }
             });
@@ -258,7 +258,7 @@ fn handle_message(backend: &McpBackend, msg: &Value) -> Option<Value> {
             let tools: Vec<Value> = agents
                 .iter()
                 .map(|(_, name, description)| {
-                    let tool_name = format!("openparlant_agent_{}", name.replace('-', "_"));
+                    let tool_name = format!("silicrew_agent_{}", name.replace('-', "_"));
                     let desc = if description.is_empty() {
                         format!("Send a message to OpenParlant agent '{name}'")
                     } else {
@@ -380,7 +380,7 @@ mod tests {
         let resp = handle_message(&backend, &msg).unwrap();
         assert_eq!(resp["id"], 1);
         assert_eq!(resp["result"]["protocolVersion"], "2024-11-05");
-        assert_eq!(resp["result"]["serverInfo"]["name"], "openparlant");
+        assert_eq!(resp["result"]["serverInfo"]["name"], "silicrew");
     }
 
     #[test]

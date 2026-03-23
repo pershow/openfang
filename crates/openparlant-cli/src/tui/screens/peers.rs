@@ -151,7 +151,7 @@ pub fn draw(f: &mut Frame, area: Rect, state: &mut PeersState) {
                 let id_short = if p.node_id.len() > 12 {
                     format!(
                         "{}\u{2026}",
-                        openparlant_types::truncate_str(&p.node_id, 12)
+                        silicrew_types::truncate_str(&p.node_id, 12)
                     )
                 } else {
                     p.node_id.clone()
@@ -213,7 +213,7 @@ fn truncate(s: &str, max: usize) -> String {
     } else {
         format!(
             "{}\u{2026}",
-            openparlant_types::truncate_str(s, max.saturating_sub(1))
+            silicrew_types::truncate_str(s, max.saturating_sub(1))
         )
     }
 }

@@ -1,28 +1,28 @@
 [Unit]
 Description=OpenParlant Agent OS Daemon
-Documentation=https://github.com/openparlant-ai/openparlant
+Documentation=https://github.com/silicrew-ai/silicrew
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=openparlant
-Group=openparlant
-ExecStart=/usr/local/bin/openparlant start
+User=silicrew
+Group=silicrew
+ExecStart=/usr/local/bin/silicrew start
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
 
 # Environment
-Environment=OPENFANG_HOME=/var/lib/openparlant
-EnvironmentFile=-/etc/openparlant/env
-WorkingDirectory=/var/lib/openparlant
+Environment=OPENFANG_HOME=/var/lib/silicrew
+EnvironmentFile=-/etc/silicrew/env
+WorkingDirectory=/var/lib/silicrew
 
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/openparlant
+ReadWritePaths=/var/lib/silicrew
 PrivateTmp=true
 ProtectKernelTunables=true
 ProtectKernelModules=true

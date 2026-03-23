@@ -5,8 +5,8 @@
 
 use crate::db::{block_on, SharedDb};
 use chrono::Utc;
-use openparlant_types::error::{SiliCrewError, SiliCrewResult};
-use openparlant_types::memory::ConsolidationReport;
+use silicrew_types::error::{SiliCrewError, SiliCrewResult};
+use silicrew_types::memory::ConsolidationReport;
 #[cfg(test)]
 use rusqlite::Connection;
 #[cfg(test)]

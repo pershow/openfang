@@ -4,7 +4,7 @@
 //! an agent to do, extracts structured intent, and generates a complete
 //! agent manifest (TOML config) ready to spawn.
 
-use openparlant_types::agent::{
+use silicrew_types::agent::{
     AgentManifest, ManifestCapabilities, ModelConfig, Priority, ResourceQuota, ScheduleMode,
 };
 use serde::{Deserialize, Serialize};

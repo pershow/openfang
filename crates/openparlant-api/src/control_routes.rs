@@ -9,7 +9,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use chrono::Utc;
-use openparlant_types::control::{
+use silicrew_types::control::{
     CanonicalMessage, ControlScope, GuidelineDefinition, GuidelineId, JourneyDefinition, JourneyId,
     ObservationDefinition, ObservationId, ScopeId, TurnInput,
 };
@@ -37,9 +37,9 @@ fn not_found(what: &str) -> (StatusCode, Json<serde_json::Value>) {
 /// Join `turn_traces` rows with policy / tool / journey explainability tables.
 pub fn enrich_turn_traces_json(
     conn: &rusqlite::Connection,
-    traces: Vec<openparlant_types::control::TurnTraceRecord>,
+    traces: Vec<silicrew_types::control::TurnTraceRecord>,
 ) -> Vec<serde_json::Value> {
-    use openparlant_types::control::TurnTraceRecord;
+    use silicrew_types::control::TurnTraceRecord;
 
     traces
         .into_iter()
@@ -999,7 +999,7 @@ pub async fn test_compile_turn(
     Json(req): Json<CompileTurnRequest>,
 ) -> impl IntoResponse {
     let scope_id = ScopeId::new(req.scope_id.clone());
-    let agent_id: openparlant_types::agent::AgentId = match req.agent_id.parse() {
+    let agent_id: silicrew_types::agent::AgentId = match req.agent_id.parse() {
         Ok(id) => id,
         Err(_) => {
             return (
@@ -1009,7 +1009,7 @@ pub async fn test_compile_turn(
         }
     };
     let session_id = match uuid::Uuid::parse_str(&req.session_id) {
-        Ok(u) => openparlant_types::agent::SessionId(u),
+        Ok(u) => silicrew_types::agent::SessionId(u),
         Err(_) => {
             return (
                 StatusCode::BAD_REQUEST,
@@ -1046,7 +1046,7 @@ pub async fn session_control_trace(
     Path(session_id): Path<String>,
 ) -> impl IntoResponse {
     let sid = match uuid::Uuid::parse_str(&session_id) {
-        Ok(u) => openparlant_types::agent::SessionId(u),
+        Ok(u) => silicrew_types::agent::SessionId(u),
         Err(_) => {
             return (
                 StatusCode::BAD_REQUEST,
@@ -1088,7 +1088,7 @@ pub async fn create_guideline_relationship(
     Json(req): Json<GuidelineRelationshipRequest>,
 ) -> impl IntoResponse {
     let Some(canonical_relation_type) =
-        openparlant_policy::canonical_guideline_relation_type(&req.relation_type)
+        silicrew_policy::canonical_guideline_relation_type(&req.relation_type)
     else {
         return (
             StatusCode::BAD_REQUEST,
@@ -1127,6 +1127,21 @@ pub async fn list_guideline_relationships(
     match state.control_store.list_guideline_relationships(&scope_id) {
         Ok(items) => (StatusCode::OK, Json(serde_json::json!(items))),
         Err(e) => internal(e),
+    }
+}
+
+/// DELETE /api/control/guideline-relationships/:relationship_id
+pub async fn delete_guideline_relationship(
+    State(state): State<Arc<AppState>>,
+    Path(relationship_id): Path<String>,
+) -> impl IntoResponse {
+    match state
+        .control_store
+        .delete_guideline_relationship(&relationship_id)
+    {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => not_found("guideline relationship").into_response(),
+        Err(e) => internal(e).into_response(),
     }
 }
 
@@ -1458,7 +1473,7 @@ pub async fn create_tool_policy(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateToolPolicyRequest>,
 ) -> impl IntoResponse {
-    use openparlant_types::control::{ApprovalMode, ScopeId, ToolExposurePolicy};
+    use silicrew_types::control::{ApprovalMode, ScopeId, ToolExposurePolicy};
     let policy_id = uuid::Uuid::new_v4().to_string();
     let approval_mode: ApprovalMode = req.approval_mode.parse().unwrap_or_default();
     let policy = ToolExposurePolicy {
@@ -1496,7 +1511,7 @@ pub async fn list_tool_policies(
     State(state): State<Arc<AppState>>,
     Path(scope_id): Path<String>,
 ) -> impl IntoResponse {
-    use openparlant_types::control::ScopeId;
+    use silicrew_types::control::ScopeId;
     match state
         .policy_store
         .list_tool_exposure_policies(&ScopeId::new(scope_id))
@@ -1549,6 +1564,60 @@ pub async fn get_tool_policy(
     }
 }
 
+/// PUT /api/control/tool-policies/:policy_id
+pub async fn update_tool_policy(
+    State(state): State<Arc<AppState>>,
+    Path(policy_id): Path<String>,
+    Json(req): Json<CreateToolPolicyRequest>,
+) -> impl IntoResponse {
+    use silicrew_types::control::{ApprovalMode, ScopeId, ToolExposurePolicy};
+    let approval_mode: ApprovalMode = req.approval_mode.parse().unwrap_or_default();
+    let policy = ToolExposurePolicy {
+        policy_id: policy_id.clone(),
+        scope_id: ScopeId::new(req.scope_id.clone()),
+        tool_name: req.tool_name.clone(),
+        skill_ref: req.skill_ref.clone(),
+        observation_ref: req.observation_ref.clone(),
+        journey_state_ref: req.journey_state_ref.clone(),
+        guideline_ref: req.guideline_ref.clone(),
+        approval_mode,
+        enabled: req.enabled,
+    };
+    match state.policy_store.get_tool_exposure_policy(&policy_id) {
+        Ok(Some(_)) => match state.policy_store.upsert_tool_exposure_policy(&policy) {
+            Ok(()) => (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "policy_id": policy_id,
+                    "scope_id": req.scope_id,
+                    "tool_name": req.tool_name,
+                    "skill_ref": req.skill_ref,
+                    "observation_ref": req.observation_ref,
+                    "journey_state_ref": req.journey_state_ref,
+                    "guideline_ref": req.guideline_ref,
+                    "approval_mode": req.approval_mode,
+                    "enabled": req.enabled,
+                })),
+            ),
+            Err(e) => internal(e),
+        },
+        Ok(None) => not_found("policy"),
+        Err(e) => internal(e),
+    }
+}
+
+/// DELETE /api/control/tool-policies/:policy_id
+pub async fn delete_tool_policy(
+    State(state): State<Arc<AppState>>,
+    Path(policy_id): Path<String>,
+) -> impl IntoResponse {
+    match state.policy_store.delete_tool_exposure_policy(&policy_id) {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => not_found("policy").into_response(),
+        Err(e) => internal(e).into_response(),
+    }
+}
+
 // ─── Session Binding + Manual Mode / Handoff ─────────────────────────────────
 
 #[derive(Debug, Deserialize)]
@@ -1566,7 +1635,7 @@ pub async fn create_session_binding(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateSessionBindingRequest>,
 ) -> impl IntoResponse {
-    use openparlant_types::control::{ScopeId, SessionBinding};
+    use silicrew_types::control::{ScopeId, SessionBinding};
     let binding = SessionBinding {
         binding_id: uuid::Uuid::new_v4().to_string(),
         scope_id: ScopeId::new(req.scope_id.clone()),
@@ -1673,7 +1742,7 @@ pub async fn create_handoff(
     Json(req): Json<HandoffRequest>,
 ) -> impl IntoResponse {
     use chrono::Utc;
-    use openparlant_types::control::{HandoffRecord, HandoffStatus, ScopeId};
+    use silicrew_types::control::{HandoffRecord, HandoffStatus, ScopeId};
 
     let scope_id = state
         .control_store
@@ -1741,7 +1810,7 @@ pub async fn update_handoff_status(
     Path(handoff_id): Path<String>,
     Json(req): Json<HandoffStatusUpdate>,
 ) -> impl IntoResponse {
-    use openparlant_types::control::HandoffStatus;
+    use silicrew_types::control::HandoffStatus;
     let status = match req.status.as_str() {
         "accepted" => HandoffStatus::Accepted,
         "resolved" => HandoffStatus::Resolved,
@@ -1806,12 +1875,60 @@ pub async fn create_retriever(
     }
 }
 
+/// GET /api/control/retrievers/:retriever_id
+pub async fn get_retriever(
+    State(state): State<Arc<AppState>>,
+    Path(retriever_id): Path<String>,
+) -> impl IntoResponse {
+    match state.control_store.get_retriever(&retriever_id) {
+        Ok(Some(item)) => (StatusCode::OK, Json(item)),
+        Ok(None) => not_found("retriever"),
+        Err(e) => internal(e),
+    }
+}
+
+/// PUT /api/control/retrievers/:retriever_id
+pub async fn update_retriever(
+    State(state): State<Arc<AppState>>,
+    Path(retriever_id): Path<String>,
+    Json(req): Json<CreateRetrieverRequest>,
+) -> impl IntoResponse {
+    let record = serde_json::json!({
+        "retriever_id": retriever_id,
+        "scope_id": req.scope_id,
+        "name": req.name,
+        "retriever_type": req.retriever_type,
+        "config_json": req.config_json,
+        "enabled": req.enabled,
+    });
+    match state.control_store.get_retriever(record["retriever_id"].as_str().unwrap_or_default()) {
+        Ok(Some(_)) => match state.control_store.upsert_retriever(&record) {
+            Ok(()) => (StatusCode::OK, Json(record)),
+            Err(e) => internal(e),
+        },
+        Ok(None) => not_found("retriever"),
+        Err(e) => internal(e),
+    }
+}
+
+/// DELETE /api/control/retrievers/:retriever_id
+pub async fn delete_retriever(
+    State(state): State<Arc<AppState>>,
+    Path(retriever_id): Path<String>,
+) -> impl IntoResponse {
+    match state.control_store.delete_retriever(&retriever_id) {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => not_found("retriever").into_response(),
+        Err(e) => internal(e).into_response(),
+    }
+}
+
 /// GET /api/control/scopes/:scope_id/retrievers
 pub async fn list_retrievers(
     State(state): State<Arc<AppState>>,
     Path(scope_id): Path<String>,
 ) -> impl IntoResponse {
-    use openparlant_types::control::ScopeId;
+    use silicrew_types::control::ScopeId;
     match state.control_store.list_retrievers(&ScopeId::new(scope_id)) {
         Ok(items) => (StatusCode::OK, Json(serde_json::json!(items))),
         Err(e) => internal(e),
@@ -1833,7 +1950,7 @@ pub async fn create_retriever_binding(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateRetrieverBindingRequest>,
 ) -> impl IntoResponse {
-    use openparlant_types::control::ScopeId;
+    use silicrew_types::control::ScopeId;
     match state.control_store.insert_retriever_binding(
         &ScopeId::new(req.scope_id.clone()),
         &req.retriever_id,
@@ -1859,7 +1976,7 @@ pub async fn list_retriever_bindings(
     State(state): State<Arc<AppState>>,
     Path(scope_id): Path<String>,
 ) -> impl IntoResponse {
-    use openparlant_types::control::ScopeId;
+    use silicrew_types::control::ScopeId;
     match state
         .control_store
         .list_retriever_bindings(&ScopeId::new(scope_id))
@@ -1899,7 +2016,7 @@ pub async fn publish_release(
     State(state): State<Arc<AppState>>,
     Json(req): Json<PublishReleaseRequest>,
 ) -> impl IntoResponse {
-    use openparlant_types::control::ScopeId;
+    use silicrew_types::control::ScopeId;
     let release_id = uuid::Uuid::new_v4().to_string();
     match state.control_store.publish_release(
         &release_id,
@@ -1931,7 +2048,7 @@ pub async fn rollback_release(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RollbackReleaseRequest>,
 ) -> impl IntoResponse {
-    use openparlant_types::control::ScopeId;
+    use silicrew_types::control::ScopeId;
     match state
         .control_store
         .rollback_release(&ScopeId::new(req.scope_id.clone()))
@@ -1959,7 +2076,7 @@ pub async fn list_releases(
     State(state): State<Arc<AppState>>,
     Path(scope_id): Path<String>,
 ) -> impl IntoResponse {
-    use openparlant_types::control::ScopeId;
+    use silicrew_types::control::ScopeId;
     match state.control_store.list_releases(&ScopeId::new(scope_id)) {
         Ok(items) => (StatusCode::OK, Json(serde_json::json!(items))),
         Err(e) => internal(e),

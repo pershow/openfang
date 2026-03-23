@@ -18,7 +18,7 @@
       <div>
         <h3 style="margin:0 0 0.5rem;font-size:1.1rem">API Key Required</h3>
         <p style="color:var(--text-dim,#888);font-size:0.85rem;margin:0 0 0.5rem">This instance requires an API key. Enter the key from your <code>config.toml</code>.</p>
-        <p style="color:var(--text-dim,#666);font-size:0.75rem;margin:0 0 1rem">Add <code style="color:var(--accent-light,#a78bfa);background:var(--bg,#111);padding:1px 4px;border-radius:2px">api_key = "your-key"</code> at the <strong>top</strong> of <code>~/.openparlant/config.toml</code> (not under any [section]).</p>
+        <p style="color:var(--text-dim,#666);font-size:0.75rem;margin:0 0 1rem">Add <code style="color:var(--accent-light,#a78bfa);background:var(--bg,#111);padding:1px 4px;border-radius:2px">api_key = "your-key"</code> at the <strong>top</strong> of <code>~/.silicrew/config.toml</code> (not under any [section]).</p>
         <input type="password" x-model="apiKeyInput" placeholder="Enter API key..." @keydown.enter="$store.app.submitApiKey(apiKeyInput)" style="width:100%;padding:0.6rem;border-radius:6px;border:1px solid var(--border,#333);background:var(--bg-input,#151520);color:var(--text,#e0e0e0);font-size:0.9rem;box-sizing:border-box;margin-bottom:0.75rem">
         <button @click="$store.app.submitApiKey(apiKeyInput)" style="width:100%;padding:0.6rem;border-radius:6px;border:none;background:var(--accent,#7c3aed);color:#fff;font-weight:600;cursor:pointer;font-size:0.9rem">Unlock Dashboard</button>
       </div>
@@ -1459,7 +1459,7 @@
 
     <!-- Page: Workflows -->
     <template x-if="page === 'workflows'">
-      <div x-data="{ wfTab: localStorage.getItem('openparlant-workflows-view') || 'list', setWfTab(tab) { this.wfTab = tab; localStorage.setItem('openparlant-workflows-view', tab); } }"
+      <div x-data="{ wfTab: localStorage.getItem('silicrew-workflows-view') || 'list', setWfTab(tab) { this.wfTab = tab; localStorage.setItem('silicrew-workflows-view', tab); } }"
            @wf-switch-tab.window="setWfTab($event.detail || 'builder')">
         <div class="page-header">
           <h2>Workflows</h2>
@@ -4002,7 +4002,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
               </div>
               <div class="form-group mt-2">
                 <label>OpenParlant Target Directory</label>
-                <input class="form-input" type="text" x-model="targetPath" placeholder="~/.openparlant (default)" style="font-family:monospace;font-size:12px">
+                <input class="form-input" type="text" x-model="targetPath" placeholder="~/.silicrew (default)" style="font-family:monospace;font-size:12px">
               </div>
               <div class="flex gap-2 mt-4">
                 <button class="btn btn-primary" @click="scanPath()" :disabled="!sourcePath || scanning">

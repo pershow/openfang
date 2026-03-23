@@ -163,7 +163,7 @@ fn parse_threema_webhook(
         sender: ChannelUser {
             platform_id: from.clone(),
             display_name: from.clone(),
-            openparlant_user: None,
+            silicrew_user: None,
         },
         content,
         target_agent: None,

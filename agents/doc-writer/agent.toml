@@ -1,7 +1,7 @@
 name = "doc-writer"
 version = "0.1.0"
 description = "Technical writer. Creates documentation, README files, API docs, tutorials, and architecture guides."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 
 [model]

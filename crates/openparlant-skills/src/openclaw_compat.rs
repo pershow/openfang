@@ -10,7 +10,7 @@ use crate::{
     SkillError, SkillManifest, SkillMeta, SkillRequirements, SkillRuntime, SkillRuntimeConfig,
     SkillSource, SkillToolDef, SkillTools,
 };
-use openparlant_types::tool_compat;
+use silicrew_types::tool_compat;
 use serde::Deserialize;
 use std::path::Path;
 use tracing::info;
@@ -90,7 +90,7 @@ pub struct ConvertedSkillMd {
     pub manifest: SkillManifest,
     /// Markdown body (prompt context for the LLM).
     pub prompt_context: String,
-    /// Tool name translations applied (openclaw_name → openparlant_name).
+    /// Tool name translations applied (openclaw_name → silicrew_name).
     pub tool_translations: Vec<(String, String)>,
     /// Required system binaries.
     pub required_bins: Vec<String>,
@@ -194,10 +194,10 @@ pub fn convert_skillmd(dir: &Path) -> Result<ConvertedSkillMd, SkillError> {
             }
 
             // Translate tool name if it's a known OpenClaw name
-            let openparlant_name = if let Some(mapped) = tool_compat::map_tool_name(&cmd.name) {
+            let silicrew_name = if let Some(mapped) = tool_compat::map_tool_name(&cmd.name) {
                 tool_translations.push((cmd.name.clone(), mapped.to_string()));
                 mapped.to_string()
-            } else if tool_compat::is_known_openparlant_tool(&cmd.name) {
+            } else if tool_compat::is_known_silicrew_tool(&cmd.name) {
                 cmd.name.clone()
             } else {
                 // Custom command — keep original name, normalize to snake_case
@@ -205,7 +205,7 @@ pub fn convert_skillmd(dir: &Path) -> Result<ConvertedSkillMd, SkillError> {
             };
 
             tools.push(SkillToolDef {
-                name: openparlant_name,
+                name: silicrew_name,
                 description: if cmd.description.is_empty() {
                     format!("Execute {} command", cmd.name)
                 } else {
@@ -294,17 +294,17 @@ pub fn convert_skillmd_str(name_hint: &str, content: &str) -> Result<ConvertedSk
                 continue;
             }
 
-            let openparlant_name = if let Some(mapped) = tool_compat::map_tool_name(&cmd.name) {
+            let silicrew_name = if let Some(mapped) = tool_compat::map_tool_name(&cmd.name) {
                 tool_translations.push((cmd.name.clone(), mapped.to_string()));
                 mapped.to_string()
-            } else if tool_compat::is_known_openparlant_tool(&cmd.name) {
+            } else if tool_compat::is_known_silicrew_tool(&cmd.name) {
                 cmd.name.clone()
             } else {
                 cmd.name.replace('-', "_")
             };
 
             tools.push(SkillToolDef {
-                name: openparlant_name,
+                name: silicrew_name,
                 description: if cmd.description.is_empty() {
                     format!("Execute {} command", cmd.name)
                 } else {
@@ -459,7 +459,7 @@ fn extract_tools_from_openclaw_meta(meta: &serde_json::Value) -> Vec<SkillToolDe
 }
 
 /// Write an OpenParlant skill.toml manifest for an OpenClaw skill.
-pub fn write_openparlant_manifest(dir: &Path, manifest: &SkillManifest) -> Result<(), SkillError> {
+pub fn write_silicrew_manifest(dir: &Path, manifest: &SkillManifest) -> Result<(), SkillError> {
     let toml_str = toml::to_string_pretty(manifest)
         .map_err(|e| SkillError::InvalidManifest(format!("TOML serialize: {e}")))?;
     std::fs::write(dir.join("skill.toml"), toml_str)?;

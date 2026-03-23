@@ -18,7 +18,7 @@ This guide walks you through installing OpenParlant, configuring your first LLM 
 
 ### Option 1: Desktop App (Windows / macOS / Linux)
 
-Download the installer for your platform from the [latest release](https://github.com/RightNow-AI/openparlant/releases/latest):
+Download the installer for your platform from the [latest release](https://github.com/RightNow-AI/silicrew/releases/latest):
 
 | Platform | File |
 |---|---|
@@ -31,15 +31,15 @@ The desktop app includes the full OpenParlant system with a native window, syste
 ### Option 2: Shell Installer (Linux / macOS)
 
 ```bash
-curl -sSf https://openparlant.sh | sh
+curl -sSf https://silicrew.sh | sh
 ```
 
-This downloads the latest CLI binary and installs it to `~/.openparlant/bin/`.
+This downloads the latest CLI binary and installs it to `~/.silicrew/bin/`.
 
 ### Option 3: PowerShell Installer (Windows)
 
 ```powershell
-irm https://openparlant.sh/install.ps1 | iex
+irm https://silicrew.sh/install.ps1 | iex
 ```
 
 Downloads the latest CLI binary, verifies its SHA256 checksum, and adds it to your user PATH.
@@ -49,35 +49,35 @@ Downloads the latest CLI binary, verifies its SHA256 checksum, and adds it to yo
 Requires Rust 1.75+:
 
 ```bash
-cargo install --git https://github.com/RightNow-AI/openparlant openparlant-cli
+cargo install --git https://github.com/RightNow-AI/silicrew silicrew-cli
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/RightNow-AI/openparlant.git
-cd openparlant
-cargo install --path crates/openparlant-cli
+git clone https://github.com/RightNow-AI/silicrew.git
+cd silicrew
+cargo install --path crates/silicrew-cli
 ```
 
 ### Option 5: Docker
 
 ```bash
-docker pull ghcr.io/RightNow-AI/openparlant:latest
+docker pull ghcr.io/RightNow-AI/silicrew:latest
 
 docker run -d \
-  --name openparlant \
+  --name silicrew \
   -p 4200:4200 \
   -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
-  -v openparlant-data:/data \
-  ghcr.io/RightNow-AI/openparlant:latest
+  -v silicrew-data:/data \
+  ghcr.io/RightNow-AI/silicrew:latest
 ```
 
 Or use Docker Compose:
 
 ```bash
-git clone https://github.com/RightNow-AI/openparlant.git
-cd openparlant
+git clone https://github.com/RightNow-AI/silicrew.git
+cd silicrew
 # Set your API keys in environment or .env file
 docker compose up -d
 ```
@@ -85,7 +85,7 @@ docker compose up -d
 ### Verify Installation
 
 ```bash
-openparlant --version
+silicrew --version
 ```
 
 ---
@@ -94,16 +94,16 @@ openparlant --version
 
 ### Initialize
 
-Run the init command to create the `~/.openparlant/` directory and a default config file:
+Run the init command to create the `~/.silicrew/` directory and a default config file:
 
 ```bash
-openparlant init
+silicrew init
 ```
 
 This creates:
 
 ```
-~/.openparlant/
+~/.silicrew/
   config.toml    # Main configuration
   data/          # Database and runtime data
   agents/        # Agent manifests (optional)
@@ -128,7 +128,7 @@ Add the export to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.) to persist 
 
 ### Edit the Config
 
-The default config uses Anthropic. To change the provider, edit `~/.openparlant/config.toml`:
+The default config uses Anthropic. To change the provider, edit `~/.silicrew/config.toml`:
 
 ```toml
 [default_model]
@@ -146,7 +146,7 @@ listen_addr = "127.0.0.1:4200"        # OFP listen address
 ### Verify Your Setup
 
 ```bash
-openparlant doctor
+silicrew doctor
 ```
 
 This checks that your config exists, API keys are set, and the toolchain is available.
@@ -160,7 +160,7 @@ This checks that your config exists, API keys are set, and the toolchain is avai
 OpenParlant ships with 30 agent templates. Spawn the hello-world agent:
 
 ```bash
-openparlant agent spawn agents/hello-world/agent.toml
+silicrew agent spawn agents/hello-world/agent.toml
 ```
 
 Output:
@@ -195,13 +195,13 @@ memory_write = ["self.*"]
 Then spawn it:
 
 ```bash
-openparlant agent spawn my-agent.toml
+silicrew agent spawn my-agent.toml
 ```
 
 ### List Running Agents
 
 ```bash
-openparlant agent list
+silicrew agent list
 ```
 
 Output:
@@ -219,19 +219,19 @@ a1b2c3d4-e5f6-...                     hello-world      Running    groq         l
 Start an interactive chat session using the agent ID:
 
 ```bash
-openparlant agent chat a1b2c3d4-e5f6-...
+silicrew agent chat a1b2c3d4-e5f6-...
 ```
 
 Or use the quick chat command (picks the first available agent):
 
 ```bash
-openparlant chat
+silicrew chat
 ```
 
 Or specify an agent by name:
 
 ```bash
-openparlant chat hello-world
+silicrew chat hello-world
 ```
 
 Example session:
@@ -272,7 +272,7 @@ Chat session ended.
 For persistent agents, multi-user access, and the WebChat UI, start the daemon:
 
 ```bash
-openparlant start
+silicrew start
 ```
 
 Output:
@@ -292,7 +292,7 @@ The daemon provides:
 ### Check Status
 
 ```bash
-openparlant status
+silicrew status
 ```
 
 ### Stop the Daemon
@@ -332,45 +332,45 @@ Now that you have OpenParlant running:
 - **Build custom skills**: Extend agents with Python, WASM, or prompt-only skills. See [Skill Development](skill-development).
 - **Use the API**: 76 REST/WS/SSE endpoints, including an OpenAI-compatible `/v1/chat/completions`. See [API Reference](api-reference).
 - **Switch LLM providers**: 20 providers supported (Anthropic, OpenAI, Gemini, Groq, DeepSeek, xAI, Ollama, and more). Per-agent model overrides.
-- **Set up workflows**: Chain multiple agents together. Use `openparlant workflow create` with a TOML workflow definition.
+- **Set up workflows**: Chain multiple agents together. Use `silicrew workflow create` with a TOML workflow definition.
 - **Use MCP**: Connect to external tools via Model Context Protocol. Configure in `config.toml` under `[[mcp_servers]]`.
-- **Migrate from OpenClaw**: Run `openparlant migrate --from openclaw`. See [MIGRATION.md](../MIGRATION.md).
+- **Migrate from OpenClaw**: Run `silicrew migrate --from openclaw`. See [MIGRATION.md](../MIGRATION.md).
 - **Desktop app**: Run `cargo tauri dev` for a native desktop experience with system tray.
-- **Run diagnostics**: `openparlant doctor` checks your entire setup.
+- **Run diagnostics**: `silicrew doctor` checks your entire setup.
 
 ### Useful Commands Reference
 
 ```bash
-openparlant init                          # Initialize ~/.openparlant/
-openparlant start                         # Start the daemon
-openparlant status                        # Check daemon status
-openparlant doctor                        # Run diagnostic checks
+silicrew init                          # Initialize ~/.silicrew/
+silicrew start                         # Start the daemon
+silicrew status                        # Check daemon status
+silicrew doctor                        # Run diagnostic checks
 
-openparlant agent spawn <manifest.toml>   # Spawn an agent
-openparlant agent list                    # List all agents
-openparlant agent chat <id>               # Chat with an agent
-openparlant agent kill <id>               # Kill an agent
+silicrew agent spawn <manifest.toml>   # Spawn an agent
+silicrew agent list                    # List all agents
+silicrew agent chat <id>               # Chat with an agent
+silicrew agent kill <id>               # Kill an agent
 
-openparlant workflow list                 # List workflows
-openparlant workflow create <file.json>   # Create a workflow
-openparlant workflow run <id> <input>     # Run a workflow
+silicrew workflow list                 # List workflows
+silicrew workflow create <file.json>   # Create a workflow
+silicrew workflow run <id> <input>     # Run a workflow
 
-openparlant trigger list                  # List event triggers
-openparlant trigger create <args>         # Create a trigger
-openparlant trigger delete <id>           # Delete a trigger
+silicrew trigger list                  # List event triggers
+silicrew trigger create <args>         # Create a trigger
+silicrew trigger delete <id>           # Delete a trigger
 
-openparlant skill install <source>        # Install a skill
-openparlant skill list                    # List installed skills
-openparlant skill search <query>          # Search FangHub
-openparlant skill create                  # Scaffold a new skill
+silicrew skill install <source>        # Install a skill
+silicrew skill list                    # List installed skills
+silicrew skill search <query>          # Search FangHub
+silicrew skill create                  # Scaffold a new skill
 
-openparlant channel list                  # List channel status
-openparlant channel setup <channel>       # Interactive setup wizard
+silicrew channel list                  # List channel status
+silicrew channel setup <channel>       # Interactive setup wizard
 
-openparlant config show                   # Show current config
-openparlant config edit                   # Open config in editor
+silicrew config show                   # Show current config
+silicrew config edit                   # Open config in editor
 
-openparlant chat [agent]                  # Quick chat (alias)
-openparlant migrate --from openclaw       # Migrate from OpenClaw
-openparlant mcp                           # Start MCP server (stdio)
+silicrew chat [agent]                  # Quick chat (alias)
+silicrew migrate --from openclaw       # Migrate from OpenClaw
+silicrew mcp                           # Start MCP server (stdio)
 ```

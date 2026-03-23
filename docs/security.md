@@ -41,28 +41,28 @@ overlapping layers so that a failure in any one layer is caught by others.
 
 | # | System | Crate | Protects Against |
 |---|--------|-------|------------------|
-| 1 | Capability-Based Security | `openparlant-types` | Unauthorized actions by agents |
-| 2 | WASM Dual Metering | `openparlant-runtime` | Infinite loops, CPU DoS |
-| 3 | Merkle Audit Trail | `openparlant-runtime` | Tampered audit logs |
-| 4 | Taint Tracking | `openparlant-types` | Prompt injection, data exfiltration |
-| 5 | Ed25519 Manifest Signing | `openparlant-types` | Supply chain attacks |
-| 6 | SSRF Protection | `openparlant-runtime` | Server-Side Request Forgery |
-| 7 | Secret Zeroization | `openparlant-runtime`, `openparlant-channels` | Memory forensics, key leakage |
-| 8 | OFP Mutual Auth | `openparlant-wire` | Unauthorized peer connections |
-| 9 | Security Headers | `openparlant-api` | XSS, clickjacking, MIME sniffing |
-| 10 | GCRA Rate Limiter | `openparlant-api` | API abuse, denial of service |
-| 11 | Path Traversal Prevention | `openparlant-runtime` | Directory traversal attacks |
-| 12 | Subprocess Sandbox | `openparlant-runtime` | Secret leakage via child processes |
-| 13 | Prompt Injection Scanner | `openparlant-skills` | Malicious skill prompts |
-| 14 | Loop Guard | `openparlant-runtime` | Stuck agent tool loops |
-| 15 | Session Repair | `openparlant-runtime` | Corrupted LLM conversation history |
-| 16 | Health Endpoint Redaction | `openparlant-api` | Information leakage |
+| 1 | Capability-Based Security | `silicrew-types` | Unauthorized actions by agents |
+| 2 | WASM Dual Metering | `silicrew-runtime` | Infinite loops, CPU DoS |
+| 3 | Merkle Audit Trail | `silicrew-runtime` | Tampered audit logs |
+| 4 | Taint Tracking | `silicrew-types` | Prompt injection, data exfiltration |
+| 5 | Ed25519 Manifest Signing | `silicrew-types` | Supply chain attacks |
+| 6 | SSRF Protection | `silicrew-runtime` | Server-Side Request Forgery |
+| 7 | Secret Zeroization | `silicrew-runtime`, `silicrew-channels` | Memory forensics, key leakage |
+| 8 | OFP Mutual Auth | `silicrew-wire` | Unauthorized peer connections |
+| 9 | Security Headers | `silicrew-api` | XSS, clickjacking, MIME sniffing |
+| 10 | GCRA Rate Limiter | `silicrew-api` | API abuse, denial of service |
+| 11 | Path Traversal Prevention | `silicrew-runtime` | Directory traversal attacks |
+| 12 | Subprocess Sandbox | `silicrew-runtime` | Secret leakage via child processes |
+| 13 | Prompt Injection Scanner | `silicrew-skills` | Malicious skill prompts |
+| 14 | Loop Guard | `silicrew-runtime` | Stuck agent tool loops |
+| 15 | Session Repair | `silicrew-runtime` | Corrupted LLM conversation history |
+| 16 | Health Endpoint Redaction | `silicrew-api` | Information leakage |
 
 ---
 
 ## 2. Capability-Based Security
 
-**Source:** `openparlant-types/src/capability.rs`
+**Source:** `silicrew-types/src/capability.rs`
 
 OpenParlant uses capability-based security.  An agent can only perform actions
 it has been explicitly granted permission to do.  Capabilities are immutable
@@ -185,7 +185,7 @@ which invokes this validation before the child is created.
 
 ## 3. WASM Dual Metering
 
-**Source:** `openparlant-runtime/src/sandbox.rs`
+**Source:** `silicrew-runtime/src/sandbox.rs`
 
 Untrusted WASM modules run inside a Wasmtime sandbox with **two
 independent** metering mechanisms running simultaneously.
@@ -268,7 +268,7 @@ pub enum SandboxError {
 
 ## 4. Merkle Hash Chain Audit Trail
 
-**Source:** `openparlant-runtime/src/audit.rs`
+**Source:** `silicrew-runtime/src/audit.rs`
 
 Every security-critical action is appended to a tamper-evident Merkle hash
 chain, similar to a blockchain.  Each entry contains the SHA-256 hash of its
@@ -383,7 +383,7 @@ mutexes, ensuring the audit log remains available even after a panic.
 
 ## 5. Information Flow Taint Tracking
 
-**Source:** `openparlant-types/src/taint.rs`
+**Source:** `silicrew-types/src/taint.rs`
 
 OpenParlant implements a lattice-based taint propagation model that prevents
 tainted values from flowing into sensitive sinks without explicit
@@ -474,7 +474,7 @@ combined.merge_taint(&other_value);
 
 ## 6. Ed25519 Manifest Signing
 
-**Source:** `openparlant-types/src/manifest_signing.rs`
+**Source:** `silicrew-types/src/manifest_signing.rs`
 
 Agent manifests define an agent's capabilities, tools, and configuration.
 A compromised manifest can grant elevated privileges.  This module provides
@@ -553,7 +553,7 @@ pub fn verify(&self) -> Result<(), String> {
 
 ## 7. SSRF Protection
 
-**Source:** `openparlant-runtime/src/host_functions.rs`
+**Source:** `silicrew-runtime/src/host_functions.rs`
 
 The `host_net_fetch` function (WASM host call for network requests) includes
 comprehensive Server-Side Request Forgery protection.
@@ -668,7 +668,7 @@ client.post(url).header("authorization", format!("Bearer {}", &*key));
 
 ### 8.2 Fields Using Zeroization
 
-**LLM Drivers** (`openparlant-runtime/src/drivers/`):
+**LLM Drivers** (`silicrew-runtime/src/drivers/`):
 
 | Driver | Field |
 |--------|-------|
@@ -676,7 +676,7 @@ client.post(url).header("authorization", format!("Bearer {}", &*key));
 | `GeminiDriver` | `api_key: Zeroizing<String>` |
 | `OpenAiCompatDriver` | `api_key: Zeroizing<String>` |
 
-**Channel Adapters** (`openparlant-channels/src/`):
+**Channel Adapters** (`silicrew-channels/src/`):
 
 | Adapter | Field(s) |
 |---------|----------|
@@ -689,7 +689,7 @@ client.post(url).header("authorization", format!("Bearer {}", &*key));
 | `GitterAdapter` | `token: Zeroizing<String>` |
 | `GotifyAdapter` | `app_token: Zeroizing<String>`, `client_token: Zeroizing<String>` |
 
-**Web Search** (`openparlant-runtime/src/web_search.rs`):
+**Web Search** (`silicrew-runtime/src/web_search.rs`):
 
 ```rust
 fn resolve_api_key(env_var: &str) -> Option<Zeroizing<String>> {
@@ -697,7 +697,7 @@ fn resolve_api_key(env_var: &str) -> Option<Zeroizing<String>> {
 }
 ```
 
-**Embedding** (`openparlant-runtime/src/embedding.rs`):
+**Embedding** (`silicrew-runtime/src/embedding.rs`):
 
 | Struct | Field |
 |--------|-------|
@@ -714,7 +714,7 @@ the secret is overwritten as soon as it is no longer needed.
 
 ## 9. OFP Mutual Authentication
 
-**Source:** `openparlant-wire/src/peer.rs`
+**Source:** `silicrew-wire/src/peer.rs`
 
 The OpenParlant Wire Protocol (OFP) uses HMAC-SHA256 with nonce-based mutual
 authentication over TCP connections.
@@ -792,7 +792,7 @@ timing side-channel attacks.
 
 ## 10. Security Headers
 
-**Source:** `openparlant-api/src/middleware.rs`
+**Source:** `silicrew-api/src/middleware.rs`
 
 The `security_headers` middleware is applied to **all** API responses:
 
@@ -837,7 +837,7 @@ pub async fn security_headers(request: Request<Body>, next: Next) -> Response<Bo
 
 ## 11. GCRA Rate Limiter
 
-**Source:** `openparlant-api/src/rate_limiter.rs`
+**Source:** `silicrew-api/src/rate_limiter.rs`
 
 OpenParlant uses the Generic Cell Rate Algorithm (GCRA) for cost-aware API
 rate limiting via the `governor` crate.
@@ -926,7 +926,7 @@ entry cleanup.
 
 ## 12. Path Traversal Prevention
 
-**Source:** `openparlant-runtime/src/host_functions.rs`
+**Source:** `silicrew-runtime/src/host_functions.rs`
 
 Two functions provide defense-in-depth against directory traversal.
 
@@ -995,7 +995,7 @@ pattern like `"*"`, path traversal is still blocked.
 
 ## 13. Subprocess Sandbox
 
-**Source:** `openparlant-runtime/src/subprocess_sandbox.rs`
+**Source:** `silicrew-runtime/src/subprocess_sandbox.rs`
 
 When the runtime spawns child processes (e.g., for the shell tool or skill
 execution), the inherited environment must be stripped to prevent accidental
@@ -1076,7 +1076,7 @@ process, preventing shell injection via metacharacters like `;`, `|`, `&&`.
 
 ## 14. Prompt Injection Scanner
 
-**Source:** `openparlant-skills/src/verify.rs`
+**Source:** `silicrew-skills/src/verify.rs`
 
 The `SkillVerifier` provides two scanning functions: `security_scan()` for
 skill manifests and `scan_prompt_content()` for skill prompt text (SKILL.md
@@ -1154,7 +1154,7 @@ pub struct SkillWarning {
 
 ## 15. Loop Guard
 
-**Source:** `openparlant-runtime/src/loop_guard.rs`
+**Source:** `silicrew-runtime/src/loop_guard.rs`
 
 The `LoopGuard` tracks tool calls within a single agent loop execution to
 detect when the agent is stuck calling the same tool repeatedly.
@@ -1234,7 +1234,7 @@ an agent that calls `web_search({"query": "test"})` 5 times will be blocked.
 
 ## 16. Session Repair
 
-**Source:** `openparlant-runtime/src/session_repair.rs`
+**Source:** `silicrew-runtime/src/session_repair.rs`
 
 Before sending message history to the LLM, this module validates and repairs
 common structural issues that would cause API errors.
@@ -1290,7 +1290,7 @@ fn merge_content(dst: &mut MessageContent, src: MessageContent) {
 
 ## 17. Health Endpoint Redaction
 
-**Source:** `openparlant-api/src/routes.rs`
+**Source:** `silicrew-api/src/routes.rs`
 
 OpenParlant provides two health endpoints with different information levels.
 

@@ -276,8 +276,8 @@ impl ChannelAdapter for DiscordAdapter {
                                         "intents": intents,
                                         "properties": {
                                             "os": "linux",
-                                            "browser": "openparlant",
-                                            "device": "openparlant"
+                                            "browser": "silicrew",
+                                            "device": "silicrew"
                                         }
                                     }
                                 })
@@ -544,7 +544,7 @@ async fn parse_discord_message(
         sender: ChannelUser {
             platform_id: channel_id.to_string(),
             display_name,
-            openparlant_user: None,
+            silicrew_user: None,
         },
         content,
         target_agent: None,
@@ -593,7 +593,7 @@ mod tests {
             "content": "My own message",
             "author": {
                 "id": "bot123",
-                "username": "openparlant",
+                "username": "silicrew",
                 "discriminator": "0"
             },
             "timestamp": "2024-01-01T00:00:00+00:00"
@@ -656,7 +656,7 @@ mod tests {
             "content": "My own message",
             "author": {
                 "id": "bot123",
-                "username": "openparlant",
+                "username": "silicrew",
                 "discriminator": "0",
                 "bot": true
             },
@@ -833,7 +833,7 @@ mod tests {
             "channel_id": "ch1",
             "guild_id": "guild1",
             "content": "Hey <@bot123> help me",
-            "mentions": [{"id": "bot123", "username": "openparlant"}],
+            "mentions": [{"id": "bot123", "username": "silicrew"}],
             "author": {
                 "id": "user1",
                 "username": "alice",

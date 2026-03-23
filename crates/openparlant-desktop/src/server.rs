@@ -3,8 +3,8 @@
 //! Boots the OpenParlant kernel, binds to a random localhost port, and runs the
 //! API server on a background thread with its own tokio runtime.
 
-use openparlant_api::server::build_router;
-use openparlant_kernel::SiliCrewKernel;
+use silicrew_api::server::build_router;
+use silicrew_kernel::SiliCrewKernel;
 use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -65,7 +65,7 @@ impl Drop for ServerHandle {
 /// thread with its own tokio runtime.
 pub fn start_server() -> Result<ServerHandle, Box<dyn std::error::Error>> {
     // Load .env and secrets.env into process environment (same as CLI).
-    // Without this, API keys stored in ~/.openparlant/.env are invisible to
+    // Without this, API keys stored in ~/.silicrew/.env are invisible to
     // the kernel's provider detection and credential resolver.
     load_dotenv_files();
 
@@ -86,7 +86,7 @@ pub fn start_server() -> Result<ServerHandle, Box<dyn std::error::Error>> {
     let shutdown_initiated = Arc::new(AtomicBool::new(false));
 
     let server_thread = std::thread::Builder::new()
-        .name("openparlant-server".into())
+        .name("silicrew-server".into())
         .spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
@@ -151,7 +151,7 @@ async fn run_embedded_server(
     }
 }
 
-/// Load ~/.openparlant/.env and ~/.openparlant/secrets.env into the process environment.
+/// Load ~/.silicrew/.env and ~/.silicrew/secrets.env into the process environment.
 /// System env vars take priority — existing vars are NOT overridden.
 fn load_dotenv_files() {
     let home = if let Ok(h) = std::env::var("OPENFANG_HOME") {
@@ -163,7 +163,7 @@ fn load_dotenv_files() {
         if user_home.is_empty() {
             return;
         }
-        std::path::PathBuf::from(user_home).join(".openparlant")
+        std::path::PathBuf::from(user_home).join(".silicrew")
     };
 
     for filename in &[".env", "secrets.env"] {

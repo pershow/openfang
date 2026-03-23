@@ -117,7 +117,7 @@ var SiliCrewToast = (function() {
 
 // ── Friendly Error Messages ──
 function friendlyError(status, serverMsg) {
-  if (status === 0 || !status) return 'Cannot reach daemon — is openparlant running?';
+  if (status === 0 || !status) return 'Cannot reach daemon — is silicrew running?';
   if (status === 401) return 'Not authorized — check your API key';
   if (status === 403) return 'Permission denied';
   if (status === 404) return serverMsg || 'Resource not found';
@@ -167,7 +167,7 @@ var SiliCrewAPI = (function() {
             var store = Alpine.store('app');
             if (store && !store.showAuthPrompt) {
               _authToken = '';
-              localStorage.removeItem('openparlant-api-key');
+              localStorage.removeItem('silicrew-api-key');
               store.showAuthPrompt = true;
             }
           } catch(e2) { /* ignore Alpine errors */ }
@@ -191,7 +191,7 @@ var SiliCrewAPI = (function() {
     }).catch(function(e) {
       if (e.name === 'TypeError' && e.message.includes('Failed to fetch')) {
         setConnectionState('disconnected');
-        throw new Error('Cannot connect to daemon — is openparlant running?');
+        throw new Error('Cannot connect to daemon — is silicrew running?');
       }
       throw e;
     });

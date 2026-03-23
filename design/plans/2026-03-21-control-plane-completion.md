@@ -4,7 +4,7 @@
 
 **Goal:** 补齐 Parlant 风格控制逻辑的五个关键缺口：LLM 语义 guideline matching、preparation iteration loop、journey 投影为 guideline、向量检索 retriever、Feishu channel bridge 接入控制面。
 
-**Architecture:** 在现有 `openparlant-policy` / `openparlant-journey` / `openparlant-context` / `openparlant-control` 骨架上增量补强，不改变接口签名。所有新增能力均通过可选配置开关激活，默认退化为现有 deterministic 行为，保持零破坏。
+**Architecture:** 在现有 `silicrew-policy` / `silicrew-journey` / `silicrew-context` / `silicrew-control` 骨架上增量补强，不改变接口签名。所有新增能力均通过可选配置开关激活，默认退化为现有 deterministic 行为，保持零破坏。
 
 **Tech Stack:** Rust, rusqlite / sqlx, async-trait, serde_json, reqwest（LLM 调用复用现有 `LlmDriver`）
 
@@ -15,15 +15,15 @@
 **目标：** 当 observation matcher_type = `"semantic"` 时，把当前消息 + 所有 guideline condition 发给 LLM 判断哪些规则生效，返回 score + rationale，替换现在的 `None`（永远不命中）。
 
 **Files:**
-- Modify: `crates/openparlant-policy/src/lib.rs`
-- Modify: `crates/openparlant-types/src/control.rs`
-- Modify: `crates/openparlant-control/src/lib.rs`
+- Modify: `crates/silicrew-policy/src/lib.rs`
+- Modify: `crates/silicrew-types/src/control.rs`
+- Modify: `crates/silicrew-control/src/lib.rs`
 
 **Step 1: 在 `TurnInput` 中携带 LLM driver 引用**
 
 `TurnInput` 需要能传递 LLM 调用能力。当前做法：给 `DefaultTurnControlCoordinator` 增加一个可选的 `llm_caller` 字段，类型为 `Option<Arc<dyn LlmCaller>>`。
 
-在 `crates/openparlant-types/src/control.rs` 新增 trait：
+在 `crates/silicrew-types/src/control.rs` 新增 trait：
 
 ```rust
 /// Minimal LLM call abstraction for control-plane semantic matching.
@@ -35,12 +35,12 @@ pub trait ControlLlmCaller: Send + Sync {
 }
 ```
 
-**Step 2: 在 `openparlant-policy/src/lib.rs` 新增 `LlmObservationMatcher`**
+**Step 2: 在 `silicrew-policy/src/lib.rs` 新增 `LlmObservationMatcher`**
 
 ```rust
 pub struct LlmObservationMatcher {
     store: PolicyStore,
-    llm: Arc<dyn openparlant_types::control::ControlLlmCaller>,
+    llm: Arc<dyn silicrew_types::control::ControlLlmCaller>,
 }
 ```
 
@@ -61,7 +61,7 @@ Reply with a JSON object:
 
 3. 解析 JSON，`triggered: true` 则 push `ObservationHit { confidence: score, matched_by: "llm_semantic" }`
 
-**Step 3: 在 `openparlant-policy/src/lib.rs` 新增 `LlmPolicyResolver`**
+**Step 3: 在 `silicrew-policy/src/lib.rs` 新增 `LlmPolicyResolver`**
 
 与 `SqlitePolicyResolver` 逻辑相同，但把 guideline `condition_ref` 为空的情况扩展到也调用 LLM 对 `action_text` 里的 condition 做语义匹配：
 
@@ -79,7 +79,7 @@ For each guideline reply with:
 
 解析结果，`applies: true` 的追加到 `active_guidelines`。
 
-**Step 4: 在 `crates/openparlant-control/src/lib.rs` 中给 `DefaultTurnControlCoordinator` 增加 `llm_caller` 字段**
+**Step 4: 在 `crates/silicrew-control/src/lib.rs` 中给 `DefaultTurnControlCoordinator` 增加 `llm_caller` 字段**
 
 ```rust
 pub struct DefaultTurnControlCoordinator<OM, PR, JR, KC, TG = NoopToolGate> {
@@ -96,7 +96,7 @@ pub fn with_llm_caller(mut self, caller: Arc<dyn ControlLlmCaller>) -> Self {
 }
 ```
 
-**Step 5: 在 `crates/openparlant-kernel/src/kernel.rs` 实现 `ControlLlmCaller` bridge**
+**Step 5: 在 `crates/silicrew-kernel/src/kernel.rs` 实现 `ControlLlmCaller` bridge**
 
 ```rust
 struct KernelLlmCaller {
@@ -122,7 +122,7 @@ impl ControlLlmCaller for KernelLlmCaller {
 
 **Step 6: 测试**
 
-在 `crates/openparlant-policy/src/lib.rs` 加集成测试（mock LLM）：
+在 `crates/silicrew-policy/src/lib.rs` 加集成测试（mock LLM）：
 
 ```rust
 #[tokio::test]
@@ -135,11 +135,11 @@ async fn llm_matcher_calls_llm_for_semantic_obs() {
 **Step 7: Commit**
 
 ```bash
-git add crates/openparlant-types/src/control.rs \
-        crates/openparlant-policy/src/lib.rs \
-        crates/openparlant-control/src/lib.rs \
-        crates/openparlant-kernel/src/kernel.rs \
-        crates/openparlant-api/src/server.rs
+git add crates/silicrew-types/src/control.rs \
+        crates/silicrew-policy/src/lib.rs \
+        crates/silicrew-control/src/lib.rs \
+        crates/silicrew-kernel/src/kernel.rs \
+        crates/silicrew-api/src/server.rs
 git commit -m "feat(policy): add LLM-based semantic guideline/observation matcher"
 ```
 
@@ -150,8 +150,8 @@ git commit -m "feat(policy): add LLM-based semantic guideline/observation matche
 **目标：** 在 `compile_turn` 阶段引入迭代：工具调用结果可触发新一轮 observation matching + policy resolve，最多 3 轮，直至稳定。
 
 **Files:**
-- Modify: `crates/openparlant-control/src/lib.rs`
-- Modify: `crates/openparlant-types/src/control.rs`
+- Modify: `crates/silicrew-control/src/lib.rs`
+- Modify: `crates/silicrew-types/src/control.rs`
 
 **Step 1: 在 `TurnInput` 增加 `prior_tool_calls` 字段**
 
@@ -232,10 +232,10 @@ git commit -m "feat(control): add preparation iteration loop for tool-triggered 
 **目标：** Journey 的每个 state 可以携带一组 guideline action_text，这些 guideline 在该 journey state 激活时自动加入 `active_guidelines`，与普通 guideline 统一走 policy resolution。
 
 **Files:**
-- Modify: `crates/openparlant-journey/src/lib.rs`
-- Modify: `crates/openparlant-journey/src/store.rs`
-- Modify: `crates/openparlant-control/src/lib.rs`
-- Modify: `crates/openparlant-types/src/control.rs`
+- Modify: `crates/silicrew-journey/src/lib.rs`
+- Modify: `crates/silicrew-journey/src/store.rs`
+- Modify: `crates/silicrew-control/src/lib.rs`
+- Modify: `crates/silicrew-types/src/control.rs`
 
 **Step 1: 在 `journey_states` 表增加 `guideline_actions_json` 字段**
 
@@ -299,13 +299,13 @@ git commit -m "feat(journey): project journey state nodes as guidelines into pol
 **目标：** 新增 `retriever_type = "embedding"` 支持，将 query 通过 LLM embedding API 转为向量，与预存的 chunk 向量做余弦相似度检索。MVP 采用 SQLite 内联存储向量（JSON 数组）。
 
 **Files:**
-- Modify: `crates/openparlant-context/src/store.rs`
-- Modify: `crates/openparlant-context/src/lib.rs`
-- Modify: `crates/openparlant-types/src/control.rs`
+- Modify: `crates/silicrew-context/src/store.rs`
+- Modify: `crates/silicrew-context/src/lib.rs`
+- Modify: `crates/silicrew-types/src/control.rs`
 
 **Step 1: 新增 `ControlEmbedder` trait**
 
-在 `crates/openparlant-types/src/control.rs`：
+在 `crates/silicrew-types/src/control.rs`：
 
 ```rust
 /// Thin embedding abstraction for the control-plane retriever.
@@ -400,8 +400,8 @@ git commit -m "feat(context): add embedding-based vector retriever with cosine s
 实际上 **Feishu bridge 已间接接入控制面**（通过 `send_message` → kernel → `execute_llm_agent`）。缺失的是：bridge 层不感知 `manual_mode`，以及 `touch_control_session_binding` 只在 bridge 侧调用但不同步 scope_id。
 
 **Files:**
-- Modify: `crates/openparlant-channels/src/bridge.rs`
-- Modify: `crates/openparlant-kernel/src/kernel.rs`（`touch_control_session_binding` 实现）
+- Modify: `crates/silicrew-channels/src/bridge.rs`
+- Modify: `crates/silicrew-kernel/src/kernel.rs`（`touch_control_session_binding` 实现）
 
 **Step 1: 在 `ChannelBridgeHandle` trait 增加 `is_manual_mode` 方法**
 
@@ -420,7 +420,7 @@ async fn is_manual_mode(
 
 **Step 2: 在 `dispatch_message` 中加 manual_mode 检查**
 
-在 `crates/openparlant-channels/src/bridge.rs` 的 `dispatch_message` 函数，调用 `handle.send_message` 前加：
+在 `crates/silicrew-channels/src/bridge.rs` 的 `dispatch_message` 函数，调用 `handle.send_message` 前加：
 
 ```rust
 // ── Manual mode check ──────────────────────────────────────────────────

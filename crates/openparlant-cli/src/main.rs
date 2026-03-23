@@ -1,6 +1,6 @@
 //! OpenParlant CLI — command-line interface for the OpenParlant Agent OS.
 //!
-//! When a daemon is running (`openparlant start`), the CLI talks to it over HTTP.
+//! When a daemon is running (`silicrew start`), the CLI talks to it over HTTP.
 //! Otherwise, commands boot an in-process kernel (single-shot mode).
 
 mod bundled_agents;
@@ -15,9 +15,9 @@ mod ui;
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use openparlant_api::server::read_daemon_info;
-use openparlant_kernel::SiliCrewKernel;
-use openparlant_types::agent::{AgentId, AgentManifest};
+use silicrew_api::server::read_daemon_info;
+use silicrew_kernel::SiliCrewKernel;
+use silicrew_types::agent::{AgentId, AgentManifest};
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -63,31 +63,31 @@ const AFTER_HELP: &str = "\
 \x1b[1mHint:\x1b[0m Commands suffixed with [*] have subcommands. Run `<command> --help` for details.
 
 \x1b[1;36mExamples:\x1b[0m
-  openparlant init                 Initialize config and data directories
-  openparlant start                Start the kernel daemon
-  openparlant tui                  Launch the interactive terminal dashboard
-  openparlant chat                 Quick chat with the default agent
-  openparlant agent new coder      Spawn a new agent from a template
-  openparlant models list          Browse available LLM models
-  openparlant add github           Install the GitHub integration
-  openparlant doctor               Run diagnostic health checks
-  openparlant channel setup        Interactive channel setup wizard
-  openparlant cron list            List scheduled jobs
-  openparlant uninstall            Completely remove OpenParlant from your system
+  silicrew init                 Initialize config and data directories
+  silicrew start                Start the kernel daemon
+  silicrew tui                  Launch the interactive terminal dashboard
+  silicrew chat                 Quick chat with the default agent
+  silicrew agent new coder      Spawn a new agent from a template
+  silicrew models list          Browse available LLM models
+  silicrew add github           Install the GitHub integration
+  silicrew doctor               Run diagnostic health checks
+  silicrew channel setup        Interactive channel setup wizard
+  silicrew cron list            List scheduled jobs
+  silicrew uninstall            Completely remove OpenParlant from your system
 
 \x1b[1;36mQuick Start:\x1b[0m
-  1. openparlant init              Set up config + API key
-  2. openparlant start             Launch the daemon
-  3. openparlant chat              Start chatting!
+  1. silicrew init              Set up config + API key
+  2. silicrew start             Launch the daemon
+  3. silicrew chat              Start chatting!
 
 \x1b[1;36mMore:\x1b[0m
-  Docs:       https://github.com/RightNow-AI/openparlant
+  Docs:       https://github.com/RightNow-AI/silicrew
   Dashboard:  http://127.0.0.1:4200/ (when daemon is running)";
 
 /// OpenParlant — the open-source Agent Operating System.
 #[derive(Parser)]
 #[command(
-    name = "openparlant",
+    name = "silicrew",
     version,
     about = "\u{1F40D} OpenParlant \u{2014} Open-source Agent Operating System",
     long_about = "\u{1F40D} OpenParlant \u{2014} Open-source Agent Operating System\n\n\
@@ -106,7 +106,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize OpenParlant (create ~/.openparlant/ and default config).
+    /// Initialize OpenParlant (create ~/.silicrew/ and default config).
     Init {
         /// Quick mode: no prompts, just write config + .env (for CI/scripts).
         #[arg(long)]
@@ -462,12 +462,12 @@ enum ConfigCommands {
         /// Dotted key path to remove (e.g. "api.cors_origin").
         key: String,
     },
-    /// Save an API key to ~/.openparlant/.env (prompts interactively).
+    /// Save an API key to ~/.silicrew/.env (prompts interactively).
     SetKey {
         /// Provider name (groq, anthropic, openai, gemini, deepseek, etc.).
         provider: String,
     },
-    /// Remove an API key from ~/.openparlant/.env.
+    /// Remove an API key from ~/.silicrew/.env.
     DeleteKey {
         /// Provider name.
         provider: String,
@@ -826,7 +826,7 @@ fn config_log_level() -> String {
     } else {
         dirs::home_dir()
             .unwrap_or_else(std::env::temp_dir)
-            .join(".openparlant")
+            .join(".silicrew")
             .join("config.toml")
     };
     if let Ok(content) = std::fs::read_to_string(config_path) {
@@ -855,18 +855,18 @@ fn init_tracing_stderr() {
 }
 
 /// Get the OpenParlant home directory, respecting OPENFANG_HOME env var.
-fn cli_openparlant_home() -> std::path::PathBuf {
+fn cli_silicrew_home() -> std::path::PathBuf {
     if let Ok(home) = std::env::var("OPENFANG_HOME") {
         return std::path::PathBuf::from(home);
     }
     dirs::home_dir()
         .unwrap_or_else(std::env::temp_dir)
-        .join(".openparlant")
+        .join(".silicrew")
 }
 
 /// Redirect tracing to a log file so it doesn't corrupt the ratatui TUI.
 fn init_tracing_file() {
-    let log_dir = cli_openparlant_home();
+    let log_dir = cli_silicrew_home();
     let _ = std::fs::create_dir_all(&log_dir);
     let log_path = log_dir.join("tui.log");
 
@@ -892,7 +892,7 @@ fn init_tracing_file() {
 }
 
 fn main() {
-    // Load ~/.openparlant/.env into process environment (system env takes priority).
+    // Load ~/.silicrew/.env into process environment (system env takes priority).
     dotenv::load_dotenv();
 
     let cli = Cli::parse();
@@ -1133,7 +1133,7 @@ pub(crate) fn restrict_dir_permissions(path: &std::path::Path) {
 pub(crate) fn restrict_dir_permissions(_path: &std::path::Path) {}
 
 pub(crate) fn find_daemon() -> Option<String> {
-    let home_dir = cli_openparlant_home();
+    let home_dir = cli_silicrew_home();
     let info = read_daemon_info(&home_dir)?;
 
     // Normalize listen address: replace 0.0.0.0 with 127.0.0.1 to avoid
@@ -1186,7 +1186,7 @@ pub(crate) fn daemon_json(
             if status.is_server_error() {
                 ui::error_with_fix(
                     &format!("Daemon returned error ({})", status),
-                    "Check daemon logs: ~/.openparlant/tui.log",
+                    "Check daemon logs: ~/.silicrew/tui.log",
                 );
             }
             body
@@ -1196,17 +1196,17 @@ pub(crate) fn daemon_json(
             if msg.contains("timed out") || msg.contains("Timeout") {
                 ui::error_with_fix(
                     "Request timed out",
-                    "The agent may be processing a complex request. Try again, or check `openparlant status`",
+                    "The agent may be processing a complex request. Try again, or check `silicrew status`",
                 );
             } else if msg.contains("Connection refused") || msg.contains("connect") {
                 ui::error_with_fix(
                     "Cannot connect to daemon",
-                    "Is the daemon running? Start it with: openparlant start",
+                    "Is the daemon running? Start it with: silicrew start",
                 );
             } else {
                 ui::error_with_fix(
                     &format!("Daemon communication error: {msg}"),
-                    "Check `openparlant status` or restart: openparlant start",
+                    "Check `silicrew status` or restart: silicrew start",
                 );
             }
             std::process::exit(1);
@@ -1227,23 +1227,23 @@ fn cmd_init(quick: bool) {
         }
     };
 
-    let openparlant_dir = cli_openparlant_home();
+    let silicrew_dir = cli_silicrew_home();
 
     // --- Ensure directories exist ---
-    if !openparlant_dir.exists() {
-        std::fs::create_dir_all(&openparlant_dir).unwrap_or_else(|e| {
+    if !silicrew_dir.exists() {
+        std::fs::create_dir_all(&silicrew_dir).unwrap_or_else(|e| {
             ui::error_with_fix(
-                &format!("Failed to create {}", openparlant_dir.display()),
+                &format!("Failed to create {}", silicrew_dir.display()),
                 &format!("Check permissions on {}", home.display()),
             );
             eprintln!("  {e}");
             std::process::exit(1);
         });
-        restrict_dir_permissions(&openparlant_dir);
+        restrict_dir_permissions(&silicrew_dir);
     }
 
     for sub in ["data", "agents"] {
-        let dir = openparlant_dir.join(sub);
+        let dir = silicrew_dir.join(sub);
         if !dir.exists() {
             std::fs::create_dir_all(&dir).unwrap_or_else(|e| {
                 eprintln!("Error creating {sub} dir: {e}");
@@ -1253,29 +1253,29 @@ fn cmd_init(quick: bool) {
     }
 
     // Install bundled agent templates (skips existing ones to preserve user edits)
-    bundled_agents::install_bundled_agents(&openparlant_dir.join("agents"));
+    bundled_agents::install_bundled_agents(&silicrew_dir.join("agents"));
 
     if quick {
-        cmd_init_quick(&openparlant_dir);
+        cmd_init_quick(&silicrew_dir);
     } else if !std::io::IsTerminal::is_terminal(&std::io::stdin())
         || !std::io::IsTerminal::is_terminal(&std::io::stdout())
     {
         ui::hint("Non-interactive terminal detected — running in quick mode");
-        ui::hint("For the interactive wizard, run: openparlant init (in a terminal)");
-        cmd_init_quick(&openparlant_dir);
+        ui::hint("For the interactive wizard, run: silicrew init (in a terminal)");
+        cmd_init_quick(&silicrew_dir);
     } else {
-        cmd_init_interactive(&openparlant_dir);
+        cmd_init_interactive(&silicrew_dir);
     }
 }
 
 /// Quick init: no prompts, auto-detect, write config + .env, print next steps.
-fn cmd_init_quick(openparlant_dir: &std::path::Path) {
+fn cmd_init_quick(silicrew_dir: &std::path::Path) {
     ui::banner();
     ui::blank();
 
     let (provider, api_key_env, model) = detect_best_provider();
 
-    write_config_if_missing(openparlant_dir, provider, model, api_key_env);
+    write_config_if_missing(silicrew_dir, provider, model, api_key_env);
 
     ui::blank();
     ui::success("OpenParlant initialized (quick mode)");
@@ -1283,13 +1283,13 @@ fn cmd_init_quick(openparlant_dir: &std::path::Path) {
     ui::kv("Model", model);
     ui::blank();
     ui::next_steps(&[
-        "Start the daemon:  openparlant start",
-        "Chat:              openparlant chat",
+        "Start the daemon:  silicrew start",
+        "Chat:              silicrew chat",
     ]);
 }
 
 /// Interactive 5-step onboarding wizard (ratatui TUI).
-fn cmd_init_interactive(openparlant_dir: &std::path::Path) {
+fn cmd_init_interactive(silicrew_dir: &std::path::Path) {
     use tui::screens::init_wizard::{self, InitResult, LaunchChoice};
 
     match init_wizard::run() {
@@ -1313,7 +1313,7 @@ fn cmd_init_interactive(openparlant_dir: &std::path::Path) {
             // Execute the user's chosen launch action.
             match launch {
                 LaunchChoice::Desktop => {
-                    launch_desktop_app(openparlant_dir);
+                    launch_desktop_app(silicrew_dir);
                 }
                 LaunchChoice::Dashboard => {
                     if let Some(base) = find_daemon() {
@@ -1323,7 +1323,7 @@ fn cmd_init_interactive(openparlant_dir: &std::path::Path) {
                             ui::hint(&format!("Could not open browser. Visit: {url}"));
                         }
                     } else {
-                        ui::error("Daemon is not running. Start it with: openparlant start");
+                        ui::error("Daemon is not running. Start it with: silicrew start");
                     }
                 }
                 LaunchChoice::Chat => {
@@ -1343,17 +1343,17 @@ fn cmd_init_interactive(openparlant_dir: &std::path::Path) {
     }
 }
 
-/// Launch the openparlant-desktop Tauri app, connecting to the running daemon.
-fn launch_desktop_app(_openparlant_dir: &std::path::Path) {
+/// Launch the silicrew-desktop Tauri app, connecting to the running daemon.
+fn launch_desktop_app(_silicrew_dir: &std::path::Path) {
     // Look for the desktop binary next to our own executable.
     let desktop_bin = {
         let exe = std::env::current_exe().ok();
         let dir = exe.as_ref().and_then(|e| e.parent());
 
         #[cfg(windows)]
-        let name = "openparlant-desktop.exe";
+        let name = "silicrew-desktop.exe";
         #[cfg(not(windows))]
-        let name = "openparlant-desktop";
+        let name = "silicrew-desktop";
 
         dir.map(|d| d.join(name))
     };
@@ -1372,13 +1372,13 @@ fn launch_desktop_app(_openparlant_dir: &std::path::Path) {
                 }
                 Err(e) => {
                     ui::error(&format!("Failed to launch desktop app: {e}"));
-                    ui::hint("Try: openparlant dashboard");
+                    ui::hint("Try: silicrew dashboard");
                 }
             }
         }
         _ => {
             ui::error("Desktop app not found.");
-            ui::hint("Install it with: cargo install openparlant-desktop");
+            ui::hint("Install it with: cargo install silicrew-desktop");
             ui::hint("Falling back to web dashboard...");
             ui::blank();
             if let Some(base) = find_daemon() {
@@ -1393,7 +1393,7 @@ fn launch_desktop_app(_openparlant_dir: &std::path::Path) {
                 // opener may still fail asynchronously.
                 ui::hint(&format!("Dashboard: {url}"));
             } else {
-                ui::hint("Daemon is not running. Start it with: openparlant start");
+                ui::hint("Daemon is not running. Start it with: silicrew start");
                 ui::hint("Then open: http://127.0.0.1:4200");
             }
         }
@@ -1459,18 +1459,18 @@ fn check_ollama_available() -> bool {
 
 /// Write config.toml if it doesn't already exist.
 fn write_config_if_missing(
-    openparlant_dir: &std::path::Path,
+    silicrew_dir: &std::path::Path,
     provider: &str,
     model: &str,
     api_key_env: &str,
 ) {
-    let config_path = openparlant_dir.join("config.toml");
+    let config_path = silicrew_dir.join("config.toml");
     if config_path.exists() {
         ui::check_ok(&format!("Config already exists: {}", config_path.display()));
     } else {
         let default_config = format!(
             r#"# OpenParlant Agent OS configuration
-# See https://github.com/RightNow-AI/openparlant for documentation
+# See https://github.com/RightNow-AI/silicrew for documentation
 
 # For Docker, change to "0.0.0.0:4200" or set OPENFANG_LISTEN env var.
 api_listen = "127.0.0.1:4200"
@@ -1509,7 +1509,7 @@ fn cmd_auth_hash_password(password: Option<String>) {
             t
         }
     };
-    println!("{}", openparlant_api::session_auth::hash_password(&pw));
+    println!("{}", silicrew_api::session_auth::hash_password(&pw));
 }
 
 fn cmd_auth_bootstrap_admin(
@@ -1517,12 +1517,12 @@ fn cmd_auth_bootstrap_admin(
     username: String,
     password: Option<String>,
 ) {
-    let config_path = config_override.unwrap_or_else(|| cli_openparlant_home().join("config.toml"));
+    let config_path = config_override.unwrap_or_else(|| cli_silicrew_home().join("config.toml"));
 
     if !config_path.exists() {
         ui::error_with_fix(
             &format!("Config not found: {}", config_path.display()),
-            "Run `openparlant init` first",
+            "Run `silicrew init` first",
         );
         std::process::exit(1);
     }
@@ -1542,7 +1542,7 @@ fn cmd_auth_bootstrap_admin(
         std::process::exit(1);
     }
 
-    let hash = openparlant_api::session_auth::hash_password(&pw);
+    let hash = silicrew_api::session_auth::hash_password(&pw);
 
     let content = std::fs::read_to_string(&config_path).unwrap_or_else(|e| {
         ui::error(&format!("Failed to read config: {e}"));
@@ -1592,7 +1592,7 @@ fn cmd_auth_bootstrap_admin(
     ui::kv("Config", &config_path.display().to_string());
     ui::kv("Username", &username);
     ui::blank();
-    ui::hint("Restart the daemon (`openparlant start`) so the platform admin is written to the database.");
+    ui::hint("Restart the daemon (`silicrew start`) so the platform admin is written to the database.");
     ui::hint("Then sign in at the web UI with this username and password.");
 }
 
@@ -1600,7 +1600,7 @@ fn cmd_start(config: Option<PathBuf>, yolo: bool) {
     if let Some(base) = find_daemon() {
         ui::error_with_fix(
             &format!("Daemon already running at {base}"),
-            "Use `openparlant status` to check it, or stop it first",
+            "Use `silicrew status` to check it, or stop it first",
         );
         std::process::exit(1);
     }
@@ -1612,7 +1612,7 @@ fn cmd_start(config: Option<PathBuf>, yolo: bool) {
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
-        let mut kernel_config = openparlant_kernel::config::load_config(config.as_deref());
+        let mut kernel_config = silicrew_kernel::config::load_config(config.as_deref());
         if yolo {
             kernel_config.approval.auto_approve = true;
             kernel_config.approval.apply_shorthands();
@@ -1649,12 +1649,12 @@ fn cmd_start(config: Option<PathBuf>, yolo: bool) {
         ui::kv("Provider", &provider);
         ui::kv("Model", &model);
         ui::blank();
-        ui::hint("Open the dashboard in your browser, or run `openparlant chat`");
+        ui::hint("Open the dashboard in your browser, or run `silicrew chat`");
         ui::hint("Press Ctrl+C to stop the daemon");
         ui::blank();
 
         if let Err(e) =
-            openparlant_api::server::run_daemon(kernel, &listen_addr, Some(&daemon_info_path)).await
+            silicrew_api::server::run_daemon(kernel, &listen_addr, Some(&daemon_info_path)).await
         {
             ui::error(&format!("Daemon error: {e}"));
             std::process::exit(1);
@@ -1665,13 +1665,13 @@ fn cmd_start(config: Option<PathBuf>, yolo: bool) {
     });
 }
 
-/// Read the api_key from ~/.openparlant/config.toml (if any).
+/// Read the api_key from ~/.silicrew/config.toml (if any).
 ///
 /// Returns `None` when the key is missing, empty, or whitespace-only —
 /// meaning the daemon is running in public (unauthenticated) mode.
 fn read_api_key() -> Option<String> {
     // 1. Config file takes precedence
-    let config_path = cli_openparlant_home().join("config.toml");
+    let config_path = cli_silicrew_home().join("config.toml");
     if let Ok(text) = std::fs::read_to_string(config_path) {
         if let Ok(table) = text.parse::<toml::Value>() {
             if let Some(key) = table.get("api_key").and_then(|v| v.as_str()) {
@@ -1708,7 +1708,7 @@ fn cmd_stop() {
                     }
                     // Still alive — force kill via PID
                     {
-                        let of_dir = cli_openparlant_home();
+                        let of_dir = cli_silicrew_home();
                         if let Some(info) = read_daemon_info(&of_dir) {
                             force_kill_pid(info.pid);
                             let _ = std::fs::remove_file(of_dir.join("daemon.json"));
@@ -1727,7 +1727,7 @@ fn cmd_stop() {
         None => {
             ui::warn_with_fix(
                 "No running daemon found",
-                "Is it running? Check with: openparlant status",
+                "Is it running? Check with: silicrew status",
             );
         }
     }
@@ -1749,27 +1749,27 @@ fn force_kill_pid(pid: u32) {
 }
 
 /// Show context-aware error for kernel boot failures.
-fn boot_kernel_error(e: &openparlant_kernel::error::KernelError) {
+fn boot_kernel_error(e: &silicrew_kernel::error::KernelError) {
     let msg = e.to_string();
     if msg.contains("parse") || msg.contains("toml") || msg.contains("config") {
         ui::error_with_fix(
             "Failed to parse configuration",
-            "Check your config.toml syntax: openparlant config show",
+            "Check your config.toml syntax: silicrew config show",
         );
     } else if msg.contains("database") || msg.contains("locked") || msg.contains("sqlite") {
         ui::error_with_fix(
             "Database error (file may be locked)",
-            "Check if another OpenParlant process is running: openparlant status",
+            "Check if another OpenParlant process is running: silicrew status",
         );
     } else if msg.contains("key") || msg.contains("API") || msg.contains("auth") {
         ui::error_with_fix(
             "LLM provider authentication failed",
-            "Run `openparlant doctor` to check your API key configuration",
+            "Run `silicrew doctor` to check your API key configuration",
         );
     } else {
         ui::error_with_fix(
             &format!("Failed to boot kernel: {msg}"),
-            "Run `openparlant doctor` to diagnose the issue",
+            "Run `silicrew doctor` to diagnose the issue",
         );
     }
 }
@@ -1778,7 +1778,7 @@ fn cmd_agent_spawn(config: Option<PathBuf>, manifest_path: PathBuf) {
     if !manifest_path.exists() {
         ui::error_with_fix(
             &format!("Manifest file not found: {}", manifest_path.display()),
-            "Use `openparlant agent new` to spawn from a template instead",
+            "Use `silicrew agent new` to spawn from a template instead",
         );
         std::process::exit(1);
     }
@@ -1818,7 +1818,7 @@ fn cmd_agent_spawn(config: Option<PathBuf>, manifest_path: PathBuf) {
                 println!("Agent spawned (in-process mode).");
                 println!("  ID: {id}");
                 println!("\n  Note: Agent will be lost when this process exits.");
-                println!("  For persistent agents, use `openparlant start` first.");
+                println!("  For persistent agents, use `silicrew start` first.");
             }
             Err(e) => {
                 eprintln!("Failed to spawn agent: {e}");
@@ -1964,7 +1964,7 @@ fn cmd_agent_set(agent_id_str: &str, field: &str, value: &str) {
                     std::process::exit(1);
                 }
             } else {
-                eprintln!("No running daemon found. Start one with: openparlant start");
+                eprintln!("No running daemon found. Start one with: silicrew start");
                 std::process::exit(1);
             }
         }
@@ -1980,7 +1980,7 @@ fn cmd_agent_new(config: Option<PathBuf>, template_name: Option<String>) {
     if all_templates.is_empty() {
         ui::error_with_fix(
             "No agent templates found",
-            "Run `openparlant init` to set up the agents directory",
+            "Run `silicrew init` to set up the agents directory",
         );
         std::process::exit(1);
     }
@@ -1992,7 +1992,7 @@ fn cmd_agent_new(config: Option<PathBuf>, template_name: Option<String>) {
             None => {
                 ui::error_with_fix(
                     &format!("Template '{name}' not found"),
-                    "Run `openparlant agent new` to see available templates",
+                    "Run `silicrew agent new` to see available templates",
                 );
                 std::process::exit(1);
             }
@@ -2051,7 +2051,7 @@ fn spawn_template_agent(config: Option<PathBuf>, template: &templates::AgentTemp
                 ui::kv("Model", &format!("{provider}/{model}"));
             }
             ui::blank();
-            ui::hint(&format!("Chat: openparlant chat {}", template.name));
+            ui::hint(&format!("Chat: silicrew chat {}", template.name));
         } else {
             ui::error(&format!(
                 "Failed to spawn: {}",
@@ -2074,9 +2074,9 @@ fn spawn_template_agent(config: Option<PathBuf>, template: &templates::AgentTemp
                 ui::success(&format!("Agent '{}' spawned (in-process)", template.name));
                 ui::kv("ID", &id.to_string());
                 ui::blank();
-                ui::hint(&format!("Chat: openparlant chat {}", template.name));
+                ui::hint(&format!("Chat: silicrew chat {}", template.name));
                 ui::hint("Note: Agent will be lost when this process exits");
-                ui::hint("For persistent agents, use `openparlant start` first");
+                ui::hint("For persistent agents, use `silicrew start` first");
             }
             Err(e) => {
                 ui::error(&format!("Failed to spawn agent: {e}"));
@@ -2160,7 +2160,7 @@ fn cmd_status(config: Option<PathBuf>, json: bool) {
         ui::kv("Data dir", &kernel.config.data_dir.display().to_string());
         ui::kv_warn("Daemon", "NOT RUNNING");
         ui::blank();
-        ui::hint("Run `openparlant start` to launch the daemon");
+        ui::hint("Run `silicrew start` to launch the daemon");
 
         if agent_count > 0 {
             ui::blank();
@@ -2184,27 +2184,27 @@ fn cmd_doctor(json: bool, repair: bool) {
 
     let home = dirs::home_dir();
     if let Some(_h) = &home {
-        let openparlant_dir = cli_openparlant_home();
+        let silicrew_dir = cli_silicrew_home();
 
         // --- Check 1: OpenParlant directory ---
-        if openparlant_dir.exists() {
+        if silicrew_dir.exists() {
             if !json {
                 ui::check_ok(&format!(
                     "OpenParlant directory: {}",
-                    openparlant_dir.display()
+                    silicrew_dir.display()
                 ));
             }
-            checks.push(serde_json::json!({"check": "openparlant_dir", "status": "ok", "path": openparlant_dir.display().to_string()}));
+            checks.push(serde_json::json!({"check": "silicrew_dir", "status": "ok", "path": silicrew_dir.display().to_string()}));
         } else if repair {
             if !json {
                 ui::check_fail("OpenParlant directory not found.");
             }
             let answer = prompt_input("    Create it now? [Y/n] ");
             if answer.is_empty() || answer.starts_with('y') || answer.starts_with('Y') {
-                if std::fs::create_dir_all(&openparlant_dir).is_ok() {
-                    restrict_dir_permissions(&openparlant_dir);
+                if std::fs::create_dir_all(&silicrew_dir).is_ok() {
+                    restrict_dir_permissions(&silicrew_dir);
                     for sub in ["data", "agents"] {
-                        let _ = std::fs::create_dir_all(openparlant_dir.join(sub));
+                        let _ = std::fs::create_dir_all(silicrew_dir.join(sub));
                     }
                     if !json {
                         ui::check_ok("Created OpenParlant directory");
@@ -2219,17 +2219,17 @@ fn cmd_doctor(json: bool, repair: bool) {
             } else {
                 all_ok = false;
             }
-            checks.push(serde_json::json!({"check": "openparlant_dir", "status": if repaired { "repaired" } else { "fail" }}));
+            checks.push(serde_json::json!({"check": "silicrew_dir", "status": if repaired { "repaired" } else { "fail" }}));
         } else {
             if !json {
-                ui::check_fail("OpenParlant directory not found. Run `openparlant init` first.");
+                ui::check_fail("OpenParlant directory not found. Run `silicrew init` first.");
             }
-            checks.push(serde_json::json!({"check": "openparlant_dir", "status": "fail"}));
+            checks.push(serde_json::json!({"check": "silicrew_dir", "status": "fail"}));
             all_ok = false;
         }
 
         // --- Check 2: .env file exists + permissions ---
-        let env_path = openparlant_dir.join(".env");
+        let env_path = silicrew_dir.join(".env");
         if env_path.exists() {
             #[cfg(unix)]
             {
@@ -2273,14 +2273,14 @@ fn cmd_doctor(json: bool, repair: bool) {
         } else {
             if !json {
                 ui::check_warn(
-                    ".env file not found (create with: openparlant config set-key <provider>)",
+                    ".env file not found (create with: silicrew config set-key <provider>)",
                 );
             }
             checks.push(serde_json::json!({"check": "env_file", "status": "warn"}));
         }
 
         // --- Check 3: Config TOML syntax validation ---
-        let config_path = openparlant_dir.join("config.toml");
+        let config_path = silicrew_dir.join("config.toml");
         if config_path.exists() {
             let config_content = std::fs::read_to_string(&config_path).unwrap_or_default();
             match toml::from_str::<toml::Value>(&config_content) {
@@ -2293,7 +2293,7 @@ fn cmd_doctor(json: bool, repair: bool) {
                 Err(e) => {
                     if !json {
                         ui::check_fail(&format!("Config file has syntax errors: {e}"));
-                        ui::hint("Fix with: openparlant config edit");
+                        ui::hint("Fix with: silicrew config edit");
                     }
                     checks.push(serde_json::json!({"check": "config_syntax", "status": "fail", "error": e.to_string()}));
                     all_ok = false;
@@ -2308,7 +2308,7 @@ fn cmd_doctor(json: bool, repair: bool) {
                 let (provider, api_key_env, model) = detect_best_provider();
                 let default_config = format!(
                     r#"# OpenParlant Agent OS configuration
-# See https://github.com/RightNow-AI/openparlant for documentation
+# See https://github.com/RightNow-AI/silicrew for documentation
 
 # For Docker, change to "0.0.0.0:4200" or set OPENFANG_LISTEN env var.
 api_listen = "127.0.0.1:4200"
@@ -2322,7 +2322,7 @@ api_key_env = "{api_key_env}"
 decay_rate = 0.05
 "#
                 );
-                let _ = std::fs::create_dir_all(&openparlant_dir);
+                let _ = std::fs::create_dir_all(&silicrew_dir);
                 if std::fs::write(&config_path, default_config).is_ok() {
                     restrict_file_permissions(&config_path);
                     if !json {
@@ -2350,12 +2350,12 @@ decay_rate = 0.05
         // --- Check 4: Port availability ---
         // Read api_listen from config (default: 127.0.0.1:4200)
         let api_listen = {
-            let cfg_path = openparlant_dir.join("config.toml");
+            let cfg_path = silicrew_dir.join("config.toml");
             if cfg_path.exists() {
                 std::fs::read_to_string(&cfg_path)
                     .ok()
                     .and_then(|s| {
-                        toml::from_str::<openparlant_types::config::KernelConfig>(&s).ok()
+                        toml::from_str::<silicrew_types::config::KernelConfig>(&s).ok()
                     })
                     .map(|c| c.api_listen)
                     .unwrap_or_else(|| "127.0.0.1:4200".to_string())
@@ -2374,7 +2374,7 @@ decay_rate = 0.05
             checks.push(serde_json::json!({"check": "daemon", "status": "ok", "url": base}));
         } else {
             if !json {
-                ui::check_warn("Daemon not running (start with `openparlant start`)");
+                ui::check_warn("Daemon not running (start with `silicrew start`)");
             }
             checks.push(serde_json::json!({"check": "daemon", "status": "warn"}));
 
@@ -2403,7 +2403,7 @@ decay_rate = 0.05
         }
 
         // --- Check 5: Stale daemon.json ---
-        let daemon_json_path = openparlant_dir.join("daemon.json");
+        let daemon_json_path = silicrew_dir.join("daemon.json");
         if daemon_json_path.exists() && daemon_running.is_none() {
             if repair {
                 let _ = std::fs::remove_file(&daemon_json_path);
@@ -2424,7 +2424,7 @@ decay_rate = 0.05
             .exists()
             .then(|| std::fs::read_to_string(&config_path).ok())
             .flatten()
-            .and_then(|s| toml::from_str::<openparlant_types::config::KernelConfig>(&s).ok())
+            .and_then(|s| toml::from_str::<silicrew_types::config::KernelConfig>(&s).ok())
             .and_then(|cfg| cfg.resolved_postgres_url())
             .is_some();
         if postgres_configured {
@@ -2435,7 +2435,7 @@ decay_rate = 0.05
                 serde_json::json!({"check": "database", "status": "ok", "backend": "postgres"}),
             );
         } else {
-            let db_path = openparlant_dir.join("data").join("openparlant.db");
+            let db_path = silicrew_dir.join("data").join("silicrew.db");
             if db_path.exists() {
                 // Quick SQLite magic bytes check
                 if let Ok(bytes) = std::fs::read(&db_path) {
@@ -2470,7 +2470,7 @@ decay_rate = 0.05
         #[cfg(unix)]
         {
             if let Ok(output) = std::process::Command::new("df")
-                .args(["-m", &openparlant_dir.display().to_string()])
+                .args(["-m", &silicrew_dir.display().to_string()])
                 .output()
             {
                 let stdout = String::from_utf8_lossy(&output.stdout);
@@ -2501,7 +2501,7 @@ decay_rate = 0.05
         }
 
         // --- Check 8: Agent manifests parse correctly ---
-        let agents_dir = openparlant_dir.join("agents");
+        let agents_dir = silicrew_dir.join("agents");
         if agents_dir.exists() {
             let mut agent_errors = Vec::new();
             if let Ok(entries) = std::fs::read_dir(&agents_dir) {
@@ -2595,7 +2595,7 @@ decay_rate = 0.05
             ui::suggest_cmd("Gemini:", "https://aistudio.google.com    (free tier)");
             ui::suggest_cmd("DeepSeek:", "https://platform.deepseek.com  (low cost)");
             ui::blank();
-            ui::hint("Or run: openparlant config set-key groq");
+            ui::hint("Or run: silicrew config set-key groq");
         }
         all_ok = false;
     }
@@ -2640,8 +2640,8 @@ decay_rate = 0.05
 
     // --- Check 11: .env keys vs config api_key_env consistency ---
     {
-        let openparlant_dir = cli_openparlant_home();
-        let config_path = openparlant_dir.join("config.toml");
+        let silicrew_dir = cli_silicrew_home();
+        let config_path = silicrew_dir.join("config.toml");
         if config_path.exists() {
             let config_str = std::fs::read_to_string(&config_path).unwrap_or_default();
             // Look for api_key_env references in config
@@ -2666,14 +2666,14 @@ decay_rate = 0.05
 
     // --- Check 12: Config deserialization into KernelConfig ---
     {
-        let openparlant_dir = cli_openparlant_home();
-        let config_path = openparlant_dir.join("config.toml");
+        let silicrew_dir = cli_silicrew_home();
+        let config_path = silicrew_dir.join("config.toml");
         if config_path.exists() {
             if !json {
                 println!("\n  Config Validation:");
             }
             let config_content = std::fs::read_to_string(&config_path).unwrap_or_default();
-            match toml::from_str::<openparlant_types::config::KernelConfig>(&config_content) {
+            match toml::from_str::<silicrew_types::config::KernelConfig>(&config_content) {
                 Ok(cfg) => {
                     if !json {
                         ui::check_ok("Config deserializes into KernelConfig");
@@ -2694,7 +2694,7 @@ decay_rate = 0.05
                     if !cfg.include.is_empty() {
                         let mut include_ok = true;
                         for inc in &cfg.include {
-                            let inc_path = openparlant_dir.join(inc);
+                            let inc_path = silicrew_dir.join(inc);
                             if inc_path.exists() {
                                 if !json {
                                     ui::check_ok(&format!("Include file: {inc}"));
@@ -2724,7 +2724,7 @@ decay_rate = 0.05
                         for server in &cfg.mcp_servers {
                             // Validate transport config
                             match &server.transport {
-                                openparlant_types::config::McpTransportEntry::Stdio {
+                                silicrew_types::config::McpTransportEntry::Stdio {
                                     command,
                                     ..
                                 } => {
@@ -2738,7 +2738,7 @@ decay_rate = 0.05
                                         checks.push(serde_json::json!({"check": "mcp_server_config", "status": "warn", "name": server.name}));
                                     }
                                 }
-                                openparlant_types::config::McpTransportEntry::Sse { url } => {
+                                silicrew_types::config::McpTransportEntry::Sse { url } => {
                                     if url.is_empty() {
                                         if !json {
                                             ui::check_warn(&format!(
@@ -2770,8 +2770,8 @@ decay_rate = 0.05
         if !json {
             println!("\n  Skills:");
         }
-        let skills_dir = cli_openparlant_home().join("skills");
-        let mut skill_reg = openparlant_skills::registry::SkillRegistry::new(skills_dir.clone());
+        let skills_dir = cli_silicrew_home().join("skills");
+        let mut skill_reg = silicrew_skills::registry::SkillRegistry::new(skills_dir.clone());
         skill_reg.load_bundled();
         let bundled_count = skill_reg.count();
         if !json {
@@ -2811,11 +2811,11 @@ decay_rate = 0.05
         for skill in &skills {
             if let Some(ref prompt) = skill.manifest.prompt_context {
                 let warnings =
-                    openparlant_skills::verify::SkillVerifier::scan_prompt_content(prompt);
+                    silicrew_skills::verify::SkillVerifier::scan_prompt_content(prompt);
                 let has_critical = warnings.iter().any(|w| {
                     matches!(
                         w.severity,
-                        openparlant_skills::verify::WarningSeverity::Critical
+                        silicrew_skills::verify::WarningSeverity::Critical
                     )
                 });
                 if has_critical {
@@ -2844,9 +2844,9 @@ decay_rate = 0.05
         if !json {
             println!("\n  Extensions:");
         }
-        let openparlant_dir = cli_openparlant_home();
+        let silicrew_dir = cli_silicrew_home();
         let mut ext_registry =
-            openparlant_extensions::registry::IntegrationRegistry::new(&openparlant_dir);
+            silicrew_extensions::registry::IntegrationRegistry::new(&silicrew_dir);
         ext_registry.load_bundled();
         let _ = ext_registry.load_installed();
         let template_count = ext_registry.template_count();
@@ -3080,13 +3080,13 @@ decay_rate = 0.05
         println!();
         if all_ok {
             ui::success("All checks passed! OpenParlant is ready.");
-            ui::hint("Start the daemon: openparlant start");
+            ui::hint("Start the daemon: silicrew start");
         } else if repaired {
-            ui::success("Repairs applied. Re-run `openparlant doctor` to verify.");
+            ui::success("Repairs applied. Re-run `silicrew doctor` to verify.");
         } else {
             ui::error("Some checks failed.");
             if !repair {
-                ui::hint("Run `openparlant doctor --repair` to attempt auto-fix");
+                ui::hint("Run `silicrew doctor --repair` to attempt auto-fix");
             }
         }
     }
@@ -3110,7 +3110,7 @@ fn cmd_dashboard(config: Option<PathBuf>) {
             Err(e) => {
                 ui::error_with_fix(
                     &format!("Could not start daemon: {e}"),
-                    "Start it manually: openparlant start",
+                    "Start it manually: silicrew start",
                 );
                 std::process::exit(1);
             }
@@ -3253,7 +3253,7 @@ pub(crate) fn open_in_browser(url: &str) -> bool {
 fn cmd_completion(shell: clap_complete::Shell) {
     use clap::CommandFactory;
     let mut cmd = Cli::command();
-    clap_complete::generate(shell, &mut cmd, "openparlant", &mut std::io::stdout());
+    clap_complete::generate(shell, &mut cmd, "silicrew", &mut std::io::stdout());
 }
 
 // ---------------------------------------------------------------------------
@@ -3539,10 +3539,10 @@ fn cmd_trigger_delete(trigger_id: &str) {
 fn require_daemon(command: &str) -> String {
     find_daemon().unwrap_or_else(|| {
         ui::error_with_fix(
-            &format!("`openparlant {command}` requires a running daemon"),
-            "Start the daemon: openparlant start",
+            &format!("`silicrew {command}` requires a running daemon"),
+            "Start the daemon: silicrew start",
         );
-        ui::hint("Or try `openparlant chat` which works without a daemon");
+        ui::hint("Or try `silicrew chat` which works without a daemon");
         std::process::exit(1);
     })
 }
@@ -3563,9 +3563,9 @@ fn boot_kernel(config: Option<PathBuf>) -> SiliCrewKernel {
 
 fn cmd_migrate(args: MigrateArgs) {
     let source = match args.from {
-        MigrateSourceArg::Openclaw => openparlant_migrate::MigrateSource::OpenClaw,
-        MigrateSourceArg::Langchain => openparlant_migrate::MigrateSource::LangChain,
-        MigrateSourceArg::Autogpt => openparlant_migrate::MigrateSource::AutoGpt,
+        MigrateSourceArg::Openclaw => silicrew_migrate::MigrateSource::OpenClaw,
+        MigrateSourceArg::Langchain => silicrew_migrate::MigrateSource::LangChain,
+        MigrateSourceArg::Autogpt => silicrew_migrate::MigrateSource::AutoGpt,
     };
 
     let source_dir = args.source_dir.unwrap_or_else(|| {
@@ -3574,27 +3574,27 @@ fn cmd_migrate(args: MigrateArgs) {
             std::process::exit(1);
         });
         match source {
-            openparlant_migrate::MigrateSource::OpenClaw => home.join(".openclaw"),
-            openparlant_migrate::MigrateSource::LangChain => home.join(".langchain"),
-            openparlant_migrate::MigrateSource::AutoGpt => home.join("Auto-GPT"),
+            silicrew_migrate::MigrateSource::OpenClaw => home.join(".openclaw"),
+            silicrew_migrate::MigrateSource::LangChain => home.join(".langchain"),
+            silicrew_migrate::MigrateSource::AutoGpt => home.join("Auto-GPT"),
         }
     });
 
-    let target_dir = cli_openparlant_home();
+    let target_dir = cli_silicrew_home();
 
     println!("Migrating from {} ({})...", source, source_dir.display());
     if args.dry_run {
         println!("  (dry run — no changes will be made)\n");
     }
 
-    let options = openparlant_migrate::MigrateOptions {
+    let options = silicrew_migrate::MigrateOptions {
         source,
         source_dir,
         target_dir,
         dry_run: args.dry_run,
     };
 
-    match openparlant_migrate::run_migration(&options) {
+    match silicrew_migrate::run_migration(&options) {
         Ok(report) => {
             report.print_summary();
 
@@ -3620,7 +3620,7 @@ fn cmd_migrate(args: MigrateArgs) {
 // ---------------------------------------------------------------------------
 
 fn cmd_skill_install(source: &str) {
-    let home = openparlant_home();
+    let home = silicrew_home();
     let skills_dir = home.join("skills");
     std::fs::create_dir_all(&skills_dir).unwrap_or_else(|e| {
         eprintln!("Error creating skills directory: {e}");
@@ -3633,15 +3633,15 @@ fn cmd_skill_install(source: &str) {
         let manifest_path = source_path.join("skill.toml");
         if !manifest_path.exists() {
             // Check if it's an OpenClaw skill
-            if openparlant_skills::openclaw_compat::detect_openclaw_skill(&source_path) {
+            if silicrew_skills::openclaw_compat::detect_openclaw_skill(&source_path) {
                 println!("Detected OpenClaw skill format. Converting...");
-                match openparlant_skills::openclaw_compat::convert_openclaw_skill(&source_path) {
+                match silicrew_skills::openclaw_compat::convert_openclaw_skill(&source_path) {
                     Ok(manifest) => {
                         let dest = skills_dir.join(&manifest.skill.name);
                         // Copy skill directory
                         copy_dir_recursive(&source_path, &dest);
                         if let Err(e) =
-                            openparlant_skills::openclaw_compat::write_openparlant_manifest(
+                            silicrew_skills::openclaw_compat::write_silicrew_manifest(
                                 &dest, &manifest,
                             )
                         {
@@ -3666,7 +3666,7 @@ fn cmd_skill_install(source: &str) {
             eprintln!("Error reading skill.toml: {e}");
             std::process::exit(1);
         });
-        let manifest: openparlant_skills::SkillManifest =
+        let manifest: silicrew_skills::SkillManifest =
             toml::from_str(&toml_str).unwrap_or_else(|e| {
                 eprintln!("Error parsing skill.toml: {e}");
                 std::process::exit(1);
@@ -3682,8 +3682,8 @@ fn cmd_skill_install(source: &str) {
         // Remote install from FangHub
         println!("Installing {source} from FangHub...");
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let client = openparlant_skills::marketplace::MarketplaceClient::new(
-            openparlant_skills::marketplace::MarketplaceConfig::default(),
+        let client = silicrew_skills::marketplace::MarketplaceClient::new(
+            silicrew_skills::marketplace::MarketplaceConfig::default(),
         );
         match rt.block_on(client.install(source, &skills_dir)) {
             Ok(version) => println!("Installed {source} {version}"),
@@ -3696,10 +3696,10 @@ fn cmd_skill_install(source: &str) {
 }
 
 fn cmd_skill_list() {
-    let home = openparlant_home();
+    let home = silicrew_home();
     let skills_dir = home.join("skills");
 
-    let mut registry = openparlant_skills::registry::SkillRegistry::new(skills_dir);
+    let mut registry = silicrew_skills::registry::SkillRegistry::new(skills_dir);
     match registry.load_all() {
         Ok(0) => println!("No skills installed."),
         Ok(count) => {
@@ -3727,10 +3727,10 @@ fn cmd_skill_list() {
 }
 
 fn cmd_skill_remove(name: &str) {
-    let home = openparlant_home();
+    let home = silicrew_home();
     let skills_dir = home.join("skills");
 
-    let mut registry = openparlant_skills::registry::SkillRegistry::new(skills_dir);
+    let mut registry = silicrew_skills::registry::SkillRegistry::new(skills_dir);
     let _ = registry.load_all();
     match registry.remove(name) {
         Ok(()) => println!("Removed skill: {name}"),
@@ -3743,8 +3743,8 @@ fn cmd_skill_remove(name: &str) {
 
 fn cmd_skill_search(query: &str) {
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let client = openparlant_skills::marketplace::MarketplaceClient::new(
-        openparlant_skills::marketplace::MarketplaceConfig::default(),
+    let client = silicrew_skills::marketplace::MarketplaceClient::new(
+        silicrew_skills::marketplace::MarketplaceConfig::default(),
     );
     match rt.block_on(client.search(query)) {
         Ok(results) if results.is_empty() => println!("No skills found for \"{query}\"."),
@@ -3776,7 +3776,7 @@ fn cmd_skill_create() {
         runtime
     };
 
-    let home = openparlant_home();
+    let home = silicrew_home();
     let skill_dir = home.join("skills").join(&name);
     std::fs::create_dir_all(skill_dir.join("src")).unwrap_or_else(|e| {
         eprintln!("Error creating skill directory: {e}");
@@ -3848,9 +3848,9 @@ if __name__ == "__main__":
     println!("  {entry_path}");
     println!("\nNext steps:");
     println!("  1. Edit the entry point to implement your skill logic");
-    println!("  2. Test locally: openparlant skill test");
+    println!("  2. Test locally: silicrew skill test");
     println!(
-        "  3. Install: openparlant skill install {}",
+        "  3. Install: silicrew skill install {}",
         skill_dir.display()
     );
 }
@@ -3860,11 +3860,11 @@ if __name__ == "__main__":
 // ---------------------------------------------------------------------------
 
 fn cmd_channel_list() {
-    let home = openparlant_home();
+    let home = silicrew_home();
     let config_path = home.join("config.toml");
 
     if !config_path.exists() {
-        println!("No configuration found. Run `openparlant init` first.");
+        println!("No configuration found. Run `silicrew init` first.");
         return;
     }
 
@@ -3907,7 +3907,7 @@ fn cmd_channel_list() {
         );
     }
 
-    println!("\nUse `openparlant channel setup <channel>` to configure a channel.");
+    println!("\nUse `silicrew channel setup <channel>` to configure a channel.");
 }
 
 fn cmd_channel_setup(channel: Option<&str>) {
@@ -3966,7 +3966,7 @@ fn cmd_channel_setup(channel: Option<&str>) {
 
             // Save token to .env
             match dotenv::save_env_key("TELEGRAM_BOT_TOKEN", &token) {
-                Ok(()) => ui::success("Token saved to ~/.openparlant/.env"),
+                Ok(()) => ui::success("Token saved to ~/.silicrew/.env"),
                 Err(_) => println!("    export TELEGRAM_BOT_TOKEN={token}"),
             }
 
@@ -3996,7 +3996,7 @@ fn cmd_channel_setup(channel: Option<&str>) {
             maybe_write_channel_config("discord", config_block);
 
             match dotenv::save_env_key("DISCORD_BOT_TOKEN", &token) {
-                Ok(()) => ui::success("Token saved to ~/.openparlant/.env"),
+                Ok(()) => ui::success("Token saved to ~/.silicrew/.env"),
                 Err(_) => println!("    export DISCORD_BOT_TOKEN={token}"),
             }
 
@@ -4024,13 +4024,13 @@ fn cmd_channel_setup(channel: Option<&str>) {
 
             if !app_token.is_empty() {
                 match dotenv::save_env_key("SLACK_APP_TOKEN", &app_token) {
-                    Ok(()) => ui::success("App token saved to ~/.openparlant/.env"),
+                    Ok(()) => ui::success("App token saved to ~/.silicrew/.env"),
                     Err(_) => println!("    export SLACK_APP_TOKEN={app_token}"),
                 }
             }
             if !bot_token.is_empty() {
                 match dotenv::save_env_key("SLACK_BOT_TOKEN", &bot_token) {
-                    Ok(()) => ui::success("Bot token saved to ~/.openparlant/.env"),
+                    Ok(()) => ui::success("Bot token saved to ~/.silicrew/.env"),
                     Err(_) => println!("    export SLACK_BOT_TOKEN={bot_token}"),
                 }
             }
@@ -4064,7 +4064,7 @@ fn cmd_channel_setup(channel: Option<&str>) {
             ] {
                 if !val.is_empty() {
                     match dotenv::save_env_key(key, val) {
-                        Ok(()) => ui::success(&format!("{key} saved to ~/.openparlant/.env")),
+                        Ok(()) => ui::success(&format!("{key} saved to ~/.silicrew/.env")),
                         Err(_) => println!("    export {key}={val}"),
                     }
                 }
@@ -4096,12 +4096,12 @@ fn cmd_channel_setup(channel: Option<&str>) {
 
             if !password.is_empty() {
                 match dotenv::save_env_key("EMAIL_PASSWORD", &password) {
-                    Ok(()) => ui::success("Password saved to ~/.openparlant/.env"),
+                    Ok(()) => ui::success("Password saved to ~/.silicrew/.env"),
                     Err(_) => println!("    export EMAIL_PASSWORD=your_app_password"),
                 }
             } else {
                 ui::hint(
-                    "Set later: openparlant config set-key email (or export EMAIL_PASSWORD=...)",
+                    "Set later: silicrew config set-key email (or export EMAIL_PASSWORD=...)",
                 );
             }
 
@@ -4132,7 +4132,7 @@ fn cmd_channel_setup(channel: Option<&str>) {
 
             if !phone.is_empty() {
                 match dotenv::save_env_key("SIGNAL_PHONE", &phone) {
-                    Ok(()) => ui::success("Phone saved to ~/.openparlant/.env"),
+                    Ok(()) => ui::success("Phone saved to ~/.silicrew/.env"),
                     Err(_) => println!("    export SIGNAL_PHONE={phone}"),
                 }
             }
@@ -4145,10 +4145,10 @@ fn cmd_channel_setup(channel: Option<&str>) {
             ui::section("Setting up Matrix");
             ui::blank();
             println!("  1. Create a bot account on your Matrix homeserver");
-            println!("     (e.g., register @openparlant-bot:matrix.org)");
+            println!("     (e.g., register @silicrew-bot:matrix.org)");
             println!("  2. Obtain an access token:");
             println!("     curl -X POST https://matrix.org/_matrix/client/r0/login \\");
-            println!("       -d '{{\"type\":\"m.login.password\",\"user\":\"openparlant-bot\",\"password\":\"...\"}}'");
+            println!("       -d '{{\"type\":\"m.login.password\",\"user\":\"silicrew-bot\",\"password\":\"...\"}}'");
             println!("     Copy the access_token from the response.");
             println!("  3. Invite the bot to rooms you want it to monitor.");
             ui::blank();
@@ -4167,7 +4167,7 @@ fn cmd_channel_setup(channel: Option<&str>) {
             let _ = dotenv::save_env_key("MATRIX_HOMESERVER", &homeserver);
             if !token.is_empty() {
                 match dotenv::save_env_key("MATRIX_ACCESS_TOKEN", &token) {
-                    Ok(()) => ui::success("Token saved to ~/.openparlant/.env"),
+                    Ok(()) => ui::success("Token saved to ~/.silicrew/.env"),
                     Err(_) => println!("    export MATRIX_ACCESS_TOKEN={token}"),
                 }
             }
@@ -4188,11 +4188,11 @@ fn cmd_channel_setup(channel: Option<&str>) {
 
 /// Offer to append a channel config block to config.toml if it doesn't already exist.
 fn maybe_write_channel_config(channel: &str, config_block: &str) {
-    let home = openparlant_home();
+    let home = silicrew_home();
     let config_path = home.join("config.toml");
 
     if !config_path.exists() {
-        ui::hint("No config.toml found. Run `openparlant init` first.");
+        ui::hint("No config.toml found. Run `silicrew init` first.");
         return;
     }
 
@@ -4221,7 +4221,7 @@ fn notify_daemon_restart() {
     if find_daemon().is_some() {
         ui::check_warn("Restart the daemon to activate this channel");
     } else {
-        ui::hint("Start the daemon: openparlant start");
+        ui::hint("Start the daemon: silicrew start");
     }
 }
 
@@ -4242,7 +4242,7 @@ fn cmd_channel_test(channel: &str) {
             );
         }
     } else {
-        eprintln!("Channel test requires a running daemon. Start with: openparlant start");
+        eprintln!("Channel test requires a running daemon. Start with: silicrew start");
         std::process::exit(1);
     }
 }
@@ -4267,7 +4267,7 @@ fn cmd_channel_toggle(channel: &str, enable: bool) {
         }
     } else {
         println!("Note: Channel {channel} will be {action} when the daemon starts.");
-        println!("Edit ~/.openparlant/config.toml to persist this change.");
+        println!("Edit ~/.silicrew/config.toml to persist this change.");
     }
 }
 
@@ -4319,7 +4319,7 @@ fn cmd_hand_install(path: &str) {
         body["id"].as_str().unwrap_or("?"),
     );
     println!(
-        "Use `openparlant hand activate {}` to start it.",
+        "Use `silicrew hand activate {}` to start it.",
         body["id"].as_str().unwrap_or("?")
     );
 }
@@ -4362,7 +4362,7 @@ fn cmd_hand_list() {
                     .collect::<String>(),
             );
         }
-        println!("\nUse `openparlant hand activate <id>` to activate a hand.");
+        println!("\nUse `silicrew hand activate <id>` to activate a hand.");
     }
 }
 
@@ -4646,7 +4646,7 @@ pub(crate) fn test_api_key(provider: &str, env_var: &str) -> bool {
 // Background daemon start
 // ---------------------------------------------------------------------------
 
-/// Spawn `openparlant start` as a detached background process.
+/// Spawn `silicrew start` as a detached background process.
 ///
 /// Polls for daemon health for up to 10 seconds. Returns the daemon URL on success.
 pub(crate) fn start_daemon_background(config: Option<&std::path::Path>) -> Result<String, String> {
@@ -4700,12 +4700,12 @@ pub(crate) fn start_daemon_background(config: Option<&std::path::Path>) -> Resul
 // ---------------------------------------------------------------------------
 
 fn cmd_config_show() {
-    let home = openparlant_home();
+    let home = silicrew_home();
     let config_path = home.join("config.toml");
 
     if !config_path.exists() {
         println!("No configuration found at: {}", config_path.display());
-        println!("Run `openparlant init` to create one.");
+        println!("Run `silicrew init` to create one.");
         return;
     }
 
@@ -4719,7 +4719,7 @@ fn cmd_config_show() {
 }
 
 fn cmd_config_edit() {
-    let home = openparlant_home();
+    let home = silicrew_home();
     let config_path = home.join("config.toml");
 
     let editor = std::env::var("EDITOR")
@@ -4749,11 +4749,11 @@ fn cmd_config_edit() {
 }
 
 fn cmd_config_get(key: &str) {
-    let home = openparlant_home();
+    let home = silicrew_home();
     let config_path = home.join("config.toml");
 
     if !config_path.exists() {
-        ui::error_with_fix("No config file found", "Run `openparlant init` first");
+        ui::error_with_fix("No config file found", "Run `silicrew init` first");
         std::process::exit(1);
     }
 
@@ -4765,7 +4765,7 @@ fn cmd_config_get(key: &str) {
     let table: toml::Value = toml::from_str(&content).unwrap_or_else(|e| {
         ui::error_with_fix(
             &format!("Config parse error: {e}"),
-            "Fix your config.toml syntax, or run `openparlant config edit`",
+            "Fix your config.toml syntax, or run `silicrew config edit`",
         );
         std::process::exit(1);
     });
@@ -4793,11 +4793,11 @@ fn cmd_config_get(key: &str) {
 }
 
 fn cmd_config_set(key: &str, value: &str) {
-    let home = openparlant_home();
+    let home = silicrew_home();
     let config_path = home.join("config.toml");
 
     if !config_path.exists() {
-        ui::error_with_fix("No config file found", "Run `openparlant init` first");
+        ui::error_with_fix("No config file found", "Run `silicrew init` first");
         std::process::exit(1);
     }
 
@@ -4916,11 +4916,11 @@ fn cmd_config_set(key: &str, value: &str) {
 }
 
 fn cmd_config_unset(key: &str) {
-    let home = openparlant_home();
+    let home = silicrew_home();
     let config_path = home.join("config.toml");
 
     if !config_path.exists() {
-        ui::error_with_fix("No config file found", "Run `openparlant init` first");
+        ui::error_with_fix("No config file found", "Run `silicrew init` first");
         std::process::exit(1);
     }
 
@@ -4998,7 +4998,7 @@ fn cmd_config_set_key(provider: &str) {
     // Always save to dotenv as fallback
     match dotenv::save_env_key(&env_var, &key) {
         Ok(()) => {
-            ui::success(&format!("Saved {env_var} to ~/.openparlant/.env"));
+            ui::success(&format!("Saved {env_var} to ~/.silicrew/.env"));
             // Test the key
             print!("  Testing key... ");
             io::stdout().flush().unwrap();
@@ -5020,10 +5020,10 @@ fn cmd_config_delete_key(provider: &str) {
 
     // Remove from vault (best-effort)
     {
-        let home = openparlant_home();
+        let home = silicrew_home();
         let vault_path = home.join("vault.enc");
         if vault_path.exists() {
-            let mut vault = openparlant_extensions::vault::CredentialVault::new(vault_path);
+            let mut vault = silicrew_extensions::vault::CredentialVault::new(vault_path);
             if vault.unlock().is_ok() {
                 let _ = vault.remove(&env_var);
             }
@@ -5031,7 +5031,7 @@ fn cmd_config_delete_key(provider: &str) {
     }
 
     match dotenv::remove_env_key(&env_var) {
-        Ok(()) => ui::success(&format!("Removed {env_var} from ~/.openparlant/.env")),
+        Ok(()) => ui::success(&format!("Removed {env_var} from ~/.silicrew/.env")),
         Err(e) => {
             ui::error(&format!("Failed to remove key: {e}"));
             std::process::exit(1);
@@ -5044,7 +5044,7 @@ fn cmd_config_test_key(provider: &str) {
 
     if std::env::var(&env_var).is_err() {
         ui::error(&format!("{env_var} not set"));
-        ui::hint(&format!("Set it: openparlant config set-key {provider}"));
+        ui::hint(&format!("Set it: silicrew config set-key {provider}"));
         std::process::exit(1);
     }
 
@@ -5055,7 +5055,7 @@ fn cmd_config_test_key(provider: &str) {
     } else {
         println!("{}", "FAILED (401/403)".bright_red());
         ui::hint(&format!(
-            "Update key: openparlant config set-key {provider}"
+            "Update key: silicrew config set-key {provider}"
         ));
         std::process::exit(1);
     }
@@ -5067,12 +5067,12 @@ fn cmd_config_test_key(provider: &str) {
 fn save_credential_prefer_vault(env_var: &str, value: &str) {
     use zeroize::Zeroizing;
 
-    let home = openparlant_home();
+    let home = silicrew_home();
     let vault_path = home.join("vault.enc");
     if !vault_path.exists() {
         return;
     }
-    let mut vault = openparlant_extensions::vault::CredentialVault::new(vault_path);
+    let mut vault = silicrew_extensions::vault::CredentialVault::new(vault_path);
     if vault.unlock().is_err() {
         return;
     }
@@ -5093,7 +5093,7 @@ fn cmd_quick_chat(config: Option<PathBuf>, agent: Option<String>) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-pub(crate) fn openparlant_home() -> PathBuf {
+pub(crate) fn silicrew_home() -> PathBuf {
     if let Ok(home) = std::env::var("OPENFANG_HOME") {
         return PathBuf::from(home);
     }
@@ -5102,7 +5102,7 @@ pub(crate) fn openparlant_home() -> PathBuf {
             eprintln!("Error: Could not determine home directory");
             std::process::exit(1);
         })
-        .join(".openparlant")
+        .join(".silicrew")
 }
 
 fn prompt_input(prompt: &str) -> String {
@@ -5129,12 +5129,12 @@ pub(crate) fn copy_dir_recursive(src: &PathBuf, dst: &PathBuf) {
 }
 
 // ---------------------------------------------------------------------------
-// Integration commands (openparlant add/remove/integrations)
+// Integration commands (silicrew add/remove/integrations)
 // ---------------------------------------------------------------------------
 
 fn cmd_integration_add(name: &str, key: Option<&str>) {
-    let home = openparlant_home();
-    let mut registry = openparlant_extensions::registry::IntegrationRegistry::new(&home);
+    let home = silicrew_home();
+    let mut registry = silicrew_extensions::registry::IntegrationRegistry::new(&home);
     registry.load_bundled();
     let _ = registry.load_installed();
 
@@ -5155,7 +5155,7 @@ fn cmd_integration_add(name: &str, key: Option<&str>) {
     let dotenv_path = home.join(".env");
     let vault_path = home.join("vault.enc");
     let vault = if vault_path.exists() {
-        let mut v = openparlant_extensions::vault::CredentialVault::new(vault_path);
+        let mut v = silicrew_extensions::vault::CredentialVault::new(vault_path);
         if v.unlock().is_ok() {
             Some(v)
         } else {
@@ -5165,7 +5165,7 @@ fn cmd_integration_add(name: &str, key: Option<&str>) {
         None
     };
     let mut resolver =
-        openparlant_extensions::credentials::CredentialResolver::new(vault, Some(&dotenv_path))
+        silicrew_extensions::credentials::CredentialResolver::new(vault, Some(&dotenv_path))
             .with_interactive(true);
 
     // Build provided keys map
@@ -5177,7 +5177,7 @@ fn cmd_integration_add(name: &str, key: Option<&str>) {
         }
     }
 
-    match openparlant_extensions::installer::install_integration(
+    match silicrew_extensions::installer::install_integration(
         &mut registry,
         &mut resolver,
         name,
@@ -5185,15 +5185,15 @@ fn cmd_integration_add(name: &str, key: Option<&str>) {
     ) {
         Ok(result) => {
             match &result.status {
-                openparlant_extensions::IntegrationStatus::Ready => {
+                silicrew_extensions::IntegrationStatus::Ready => {
                     ui::success(&result.message);
                 }
-                openparlant_extensions::IntegrationStatus::Setup => {
+                silicrew_extensions::IntegrationStatus::Setup => {
                     println!("{}", result.message.yellow());
                     println!("\nTo add credentials:");
                     for env in &template.required_env {
                         if env.is_secret {
-                            println!("  openparlant vault set {}  # {}", env.name, env.help);
+                            println!("  silicrew vault set {}  # {}", env.name, env.help);
                             if let Some(ref url) = env.get_url {
                                 println!("  Get it here: {url}");
                             }
@@ -5219,12 +5219,12 @@ fn cmd_integration_add(name: &str, key: Option<&str>) {
 }
 
 fn cmd_integration_remove(name: &str) {
-    let home = openparlant_home();
-    let mut registry = openparlant_extensions::registry::IntegrationRegistry::new(&home);
+    let home = silicrew_home();
+    let mut registry = silicrew_extensions::registry::IntegrationRegistry::new(&home);
     registry.load_bundled();
     let _ = registry.load_installed();
 
-    match openparlant_extensions::installer::remove_integration(&mut registry, name) {
+    match silicrew_extensions::installer::remove_integration(&mut registry, name) {
         Ok(msg) => {
             ui::success(&msg);
             // Hot-reload daemon
@@ -5243,19 +5243,19 @@ fn cmd_integration_remove(name: &str) {
 }
 
 fn cmd_integrations_list(query: Option<&str>) {
-    let home = openparlant_home();
-    let mut registry = openparlant_extensions::registry::IntegrationRegistry::new(&home);
+    let home = silicrew_home();
+    let mut registry = silicrew_extensions::registry::IntegrationRegistry::new(&home);
     registry.load_bundled();
     let _ = registry.load_installed();
 
     let dotenv_path = home.join(".env");
     let resolver =
-        openparlant_extensions::credentials::CredentialResolver::new(None, Some(&dotenv_path));
+        silicrew_extensions::credentials::CredentialResolver::new(None, Some(&dotenv_path));
 
     let entries = if let Some(q) = query {
-        openparlant_extensions::installer::search_integrations(&registry, q)
+        silicrew_extensions::installer::search_integrations(&registry, q)
     } else {
-        openparlant_extensions::installer::list_integrations(&registry, &resolver)
+        silicrew_extensions::installer::list_integrations(&registry, &resolver)
     };
 
     if entries.is_empty() {
@@ -5270,7 +5270,7 @@ fn cmd_integrations_list(query: Option<&str>) {
     // Group by category
     let mut by_category: std::collections::BTreeMap<
         String,
-        Vec<&openparlant_extensions::installer::IntegrationListEntry>,
+        Vec<&silicrew_extensions::installer::IntegrationListEntry>,
     > = std::collections::BTreeMap::new();
     for entry in &entries {
         by_category
@@ -5283,15 +5283,15 @@ fn cmd_integrations_list(query: Option<&str>) {
         println!("\n{}", format!("  {category}").bold());
         for item in items {
             let status_badge = match &item.status {
-                openparlant_extensions::IntegrationStatus::Ready => "[Ready]".green().to_string(),
-                openparlant_extensions::IntegrationStatus::Setup => "[Setup]".yellow().to_string(),
-                openparlant_extensions::IntegrationStatus::Available => {
+                silicrew_extensions::IntegrationStatus::Ready => "[Ready]".green().to_string(),
+                silicrew_extensions::IntegrationStatus::Setup => "[Setup]".yellow().to_string(),
+                silicrew_extensions::IntegrationStatus::Available => {
                     "[Available]".dimmed().to_string()
                 }
-                openparlant_extensions::IntegrationStatus::Error(msg) => {
+                silicrew_extensions::IntegrationStatus::Error(msg) => {
                     format!("[Error: {msg}]").red().to_string()
                 }
-                openparlant_extensions::IntegrationStatus::Disabled => {
+                silicrew_extensions::IntegrationStatus::Disabled => {
                     "[Disabled]".dimmed().to_string()
                 }
             };
@@ -5309,22 +5309,22 @@ fn cmd_integrations_list(query: Option<&str>) {
             .iter()
             .filter(|e| matches!(
                 e.status,
-                openparlant_extensions::IntegrationStatus::Ready
-                    | openparlant_extensions::IntegrationStatus::Setup
+                silicrew_extensions::IntegrationStatus::Ready
+                    | silicrew_extensions::IntegrationStatus::Setup
             ))
             .count()
     );
-    println!("  Use `openparlant add <name>` to install an integration.");
+    println!("  Use `silicrew add <name>` to install an integration.");
 }
 
 // ---------------------------------------------------------------------------
-// Vault commands (openparlant vault init/set/list/remove)
+// Vault commands (silicrew vault init/set/list/remove)
 // ---------------------------------------------------------------------------
 
 fn cmd_vault_init() {
-    let home = openparlant_home();
+    let home = silicrew_home();
     let vault_path = home.join("vault.enc");
-    let mut vault = openparlant_extensions::vault::CredentialVault::new(vault_path);
+    let mut vault = silicrew_extensions::vault::CredentialVault::new(vault_path);
 
     match vault.init() {
         Ok(()) => ui::success("Credential vault initialized."),
@@ -5338,12 +5338,12 @@ fn cmd_vault_init() {
 fn cmd_vault_set(key: &str) {
     use zeroize::Zeroizing;
 
-    let home = openparlant_home();
+    let home = silicrew_home();
     let vault_path = home.join("vault.enc");
-    let mut vault = openparlant_extensions::vault::CredentialVault::new(vault_path);
+    let mut vault = silicrew_extensions::vault::CredentialVault::new(vault_path);
 
     if !vault.exists() {
-        ui::error("Vault not initialized. Run: openparlant vault init");
+        ui::error("Vault not initialized. Run: silicrew vault init");
         std::process::exit(1);
     }
 
@@ -5368,12 +5368,12 @@ fn cmd_vault_set(key: &str) {
 }
 
 fn cmd_vault_list() {
-    let home = openparlant_home();
+    let home = silicrew_home();
     let vault_path = home.join("vault.enc");
-    let mut vault = openparlant_extensions::vault::CredentialVault::new(vault_path);
+    let mut vault = silicrew_extensions::vault::CredentialVault::new(vault_path);
 
     if !vault.exists() {
-        println!("Vault not initialized. Run: openparlant vault init");
+        println!("Vault not initialized. Run: silicrew vault init");
         return;
     }
 
@@ -5394,9 +5394,9 @@ fn cmd_vault_list() {
 }
 
 fn cmd_vault_remove(key: &str) {
-    let home = openparlant_home();
+    let home = silicrew_home();
     let vault_path = home.join("vault.enc");
-    let mut vault = openparlant_extensions::vault::CredentialVault::new(vault_path);
+    let mut vault = silicrew_extensions::vault::CredentialVault::new(vault_path);
 
     if !vault.exists() {
         ui::error("Vault not initialized.");
@@ -5418,17 +5418,17 @@ fn cmd_vault_remove(key: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// Scaffold commands (openparlant new skill/integration)
+// Scaffold commands (silicrew new skill/integration)
 // ---------------------------------------------------------------------------
 
 fn cmd_scaffold(kind: ScaffoldKind) {
     let cwd = std::env::current_dir().unwrap_or_default();
     let result = match kind {
         ScaffoldKind::Skill => {
-            openparlant_extensions::installer::scaffold_skill(&cwd.join("my-skill"))
+            silicrew_extensions::installer::scaffold_skill(&cwd.join("my-skill"))
         }
         ScaffoldKind::Integration => {
-            openparlant_extensions::installer::scaffold_integration(&cwd.join("my-integration"))
+            silicrew_extensions::installer::scaffold_integration(&cwd.join("my-integration"))
         }
     };
     match result {
@@ -5483,7 +5483,7 @@ fn cmd_models_list(provider_filter: Option<&str>, json: bool) {
         }
     } else {
         // Standalone: use ModelCatalog directly
-        let catalog = openparlant_runtime::model_catalog::ModelCatalog::new();
+        let catalog = silicrew_runtime::model_catalog::ModelCatalog::new();
         let models = catalog.list_models();
         if json {
             let arr: Vec<serde_json::Value> = models
@@ -5548,7 +5548,7 @@ fn cmd_models_aliases(json: bool) {
             );
         }
     } else {
-        let catalog = openparlant_runtime::model_catalog::ModelCatalog::new();
+        let catalog = silicrew_runtime::model_catalog::ModelCatalog::new();
         let aliases = catalog.list_aliases();
         if json {
             let obj: serde_json::Map<String, serde_json::Value> = aliases
@@ -5599,7 +5599,7 @@ fn cmd_models_providers(json: bool) {
             );
         }
     } else {
-        let catalog = openparlant_runtime::model_catalog::ModelCatalog::new();
+        let catalog = silicrew_runtime::model_catalog::ModelCatalog::new();
         let providers = catalog.list_providers();
         if json {
             let arr: Vec<serde_json::Value> = providers
@@ -5659,7 +5659,7 @@ fn cmd_models_set(model: Option<String>) {
 
 /// Interactive model picker — shows numbered list, accepts number or model ID.
 fn pick_model() -> String {
-    let catalog = openparlant_runtime::model_catalog::ModelCatalog::new();
+    let catalog = silicrew_runtime::model_catalog::ModelCatalog::new();
     let models = catalog.list_models();
 
     if models.is_empty() {
@@ -5670,7 +5670,7 @@ fn pick_model() -> String {
     // Group by provider for display
     let mut by_provider: std::collections::BTreeMap<
         String,
-        Vec<&openparlant_types::model_catalog::ModelCatalogEntry>,
+        Vec<&silicrew_types::model_catalog::ModelCatalogEntry>,
     > = std::collections::BTreeMap::new();
     for m in models {
         by_provider.entry(m.provider.clone()).or_default().push(m);
@@ -5947,7 +5947,7 @@ fn cmd_sessions(agent: Option<&str>, json: bool) {
 }
 
 fn cmd_logs(lines: usize, follow: bool) {
-    let log_path = cli_openparlant_home().join("tui.log");
+    let log_path = cli_silicrew_home().join("tui.log");
 
     if !log_path.exists() {
         ui::error_with_fix(
@@ -6025,7 +6025,7 @@ fn cmd_health(json: bool) {
                 std::process::exit(1);
             }
             ui::error("Daemon is not running.");
-            ui::hint("Start it with: openparlant start");
+            ui::hint("Start it with: silicrew start");
             std::process::exit(1);
         }
     }
@@ -6461,7 +6461,7 @@ fn cmd_system_info(json: bool) {
         ui::blank();
         ui::kv("Version", env!("CARGO_PKG_VERSION"));
         ui::kv_warn("Daemon", "NOT RUNNING");
-        ui::hint("Start with: openparlant start");
+        ui::hint("Start with: silicrew start");
     }
 }
 
@@ -6473,16 +6473,16 @@ fn cmd_system_version(json: bool) {
         );
         return;
     }
-    println!("openparlant {}", env!("CARGO_PKG_VERSION"));
+    println!("silicrew {}", env!("CARGO_PKG_VERSION"));
 }
 
 fn cmd_reset(confirm: bool) {
-    let openparlant_dir = cli_openparlant_home();
+    let silicrew_dir = cli_silicrew_home();
 
-    if !openparlant_dir.exists() {
+    if !silicrew_dir.exists() {
         println!(
             "Nothing to reset — {} does not exist.",
-            openparlant_dir.display()
+            silicrew_dir.display()
         );
         return;
     }
@@ -6490,7 +6490,7 @@ fn cmd_reset(confirm: bool) {
     if !confirm {
         println!(
             "  This will delete all data in {}",
-            openparlant_dir.display()
+            silicrew_dir.display()
         );
         println!("  Including: config, database, agent manifests, credentials.");
         println!();
@@ -6501,12 +6501,12 @@ fn cmd_reset(confirm: bool) {
         }
     }
 
-    match std::fs::remove_dir_all(&openparlant_dir) {
-        Ok(()) => ui::success(&format!("Removed {}", openparlant_dir.display())),
+    match std::fs::remove_dir_all(&silicrew_dir) {
+        Ok(()) => ui::success(&format!("Removed {}", silicrew_dir.display())),
         Err(e) => {
             ui::error(&format!(
                 "Failed to remove {}: {e}",
-                openparlant_dir.display()
+                silicrew_dir.display()
             ));
             std::process::exit(1);
         }
@@ -6518,7 +6518,7 @@ fn cmd_reset(confirm: bool) {
 // ---------------------------------------------------------------------------
 
 fn cmd_uninstall(confirm: bool, keep_config: bool) {
-    let openparlant_dir = cli_openparlant_home();
+    let silicrew_dir = cli_silicrew_home();
     let exe_path = std::env::current_exe().ok();
 
     // Step 1: Show what will be removed
@@ -6530,14 +6530,14 @@ fn cmd_uninstall(confirm: bool, keep_config: bool) {
             .red()
     );
     println!();
-    if openparlant_dir.exists() {
+    if silicrew_dir.exists() {
         if keep_config {
             println!(
                 "  • Remove data in {} (keeping config files)",
-                openparlant_dir.display()
+                silicrew_dir.display()
             );
         } else {
-            println!("  • Remove {}", openparlant_dir.display());
+            println!("  • Remove {}", silicrew_dir.display());
         }
     }
     if let Some(ref exe) = exe_path {
@@ -6549,9 +6549,9 @@ fn cmd_uninstall(confirm: bool, keep_config: bool) {
         .join(".cargo")
         .join("bin")
         .join(if cfg!(windows) {
-            "openparlant.exe"
+            "silicrew.exe"
         } else {
-            "openparlant"
+            "silicrew"
         });
     if cargo_bin.exists() && exe_path.as_ref().is_none_or(|e| *e != cargo_bin) {
         println!("  • Remove cargo binary: {}", cargo_bin.display());
@@ -6578,9 +6578,9 @@ fn cmd_uninstall(confirm: bool, keep_config: bool) {
         std::thread::sleep(std::time::Duration::from_secs(1));
         // Force kill if still alive
         if find_daemon().is_some() {
-            if let Some(info) = read_daemon_info(&openparlant_dir) {
+            if let Some(info) = read_daemon_info(&silicrew_dir) {
                 force_kill_pid(info.pid);
-                let _ = std::fs::remove_file(openparlant_dir.join("daemon.json"));
+                let _ = std::fs::remove_file(silicrew_dir.join("daemon.json"));
             }
         }
     }
@@ -6596,17 +6596,17 @@ fn cmd_uninstall(confirm: bool, keep_config: bool) {
         }
     }
 
-    // Step 6: Remove ~/.openparlant/ data
-    if openparlant_dir.exists() {
+    // Step 6: Remove ~/.silicrew/ data
+    if silicrew_dir.exists() {
         if keep_config {
-            remove_dir_except_config(&openparlant_dir);
+            remove_dir_except_config(&silicrew_dir);
             ui::success("Removed data (kept config files)");
         } else {
-            match std::fs::remove_dir_all(&openparlant_dir) {
-                Ok(()) => ui::success(&format!("Removed {}", openparlant_dir.display())),
+            match std::fs::remove_dir_all(&silicrew_dir) {
+                Ok(()) => ui::success(&format!("Removed {}", silicrew_dir.display())),
                 Err(e) => ui::error(&format!(
                     "Failed to remove {}: {e}",
-                    openparlant_dir.display()
+                    silicrew_dir.display()
                 )),
             }
         }
@@ -6654,7 +6654,7 @@ fn remove_autostart_entries(home: &std::path::Path) {
 
     #[cfg(target_os = "macos")]
     {
-        let plist = home.join("Library/LaunchAgents/ai.openparlant.desktop.plist");
+        let plist = home.join("Library/LaunchAgents/ai.silicrew.desktop.plist");
         if plist.exists() {
             // Unload first
             let _ = std::process::Command::new("launchctl")
@@ -6678,10 +6678,10 @@ fn remove_autostart_entries(home: &std::path::Path) {
         }
 
         // Also check for systemd user service
-        let service_file = home.join(".config/systemd/user/openparlant.service");
+        let service_file = home.join(".config/systemd/user/silicrew.service");
         if service_file.exists() {
             let _ = std::process::Command::new("systemctl")
-                .args(["--user", "disable", "--now", "openparlant.service"])
+                .args(["--user", "disable", "--now", "silicrew.service"])
                 .output();
             match std::fs::remove_file(&service_file) {
                 Ok(()) => {
@@ -6696,9 +6696,9 @@ fn remove_autostart_entries(home: &std::path::Path) {
     }
 }
 
-/// Remove lines from shell config files that add openparlant to PATH.
+/// Remove lines from shell config files that add silicrew to PATH.
 #[allow(unused_variables)]
-fn clean_path_entries(home: &std::path::Path, openparlant_dir: &str) {
+fn clean_path_entries(home: &std::path::Path, silicrew_dir: &str) {
     #[cfg(not(windows))]
     {
         let shell_files = [
@@ -6718,7 +6718,7 @@ fn clean_path_entries(home: &std::path::Path, openparlant_dir: &str) {
             };
             let filtered: Vec<&str> = content
                 .lines()
-                .filter(|line| !is_openparlant_path_line(line, openparlant_dir))
+                .filter(|line| !is_silicrew_path_line(line, silicrew_dir))
                 .collect();
             if filtered.len() < content.lines().count() {
                 let new_content = filtered.join("\n");
@@ -6737,7 +6737,7 @@ fn clean_path_entries(home: &std::path::Path, openparlant_dir: &str) {
 
     #[cfg(windows)]
     {
-        // Read User PATH via PowerShell, filter out openparlant entries, write back
+        // Read User PATH via PowerShell, filter out silicrew entries, write back
         let output = std::process::Command::new("powershell")
             .args([
                 "-NoProfile",
@@ -6750,12 +6750,12 @@ fn clean_path_entries(home: &std::path::Path, openparlant_dir: &str) {
                 let current = String::from_utf8_lossy(&out.stdout);
                 let current = current.trim();
                 if !current.is_empty() {
-                    let dir_lower = openparlant_dir.to_lowercase();
+                    let dir_lower = silicrew_dir.to_lowercase();
                     let filtered: Vec<&str> = current
                         .split(';')
                         .filter(|entry| {
                             let e = entry.trim().to_lowercase();
-                            !e.is_empty() && !e.contains("openparlant") && !e.contains(&dir_lower)
+                            !e.is_empty() && !e.contains("silicrew") && !e.contains(&dir_lower)
                         })
                         .collect();
                     if filtered.len() < current.split(';').count() {
@@ -6777,14 +6777,14 @@ fn clean_path_entries(home: &std::path::Path, openparlant_dir: &str) {
     }
 }
 
-/// Returns true if a shell config line is an openparlant PATH export.
-/// Must match BOTH an openparlant reference AND a PATH-setting pattern.
+/// Returns true if a shell config line is an silicrew PATH export.
+/// Must match BOTH an silicrew reference AND a PATH-setting pattern.
 #[cfg(any(not(windows), test))]
-fn is_openparlant_path_line(line: &str, openparlant_dir: &str) -> bool {
+fn is_silicrew_path_line(line: &str, silicrew_dir: &str) -> bool {
     let lower = line.to_lowercase();
-    let has_openparlant =
-        lower.contains("openparlant") || lower.contains(&openparlant_dir.to_lowercase());
-    if !has_openparlant {
+    let has_silicrew =
+        lower.contains("silicrew") || lower.contains(&silicrew_dir.to_lowercase());
+    if !has_silicrew {
         return false;
     }
     // Match common PATH-setting patterns
@@ -6795,10 +6795,10 @@ fn is_openparlant_path_line(line: &str, openparlant_dir: &str) -> bool {
         || lower.contains("fish_add_path")
 }
 
-/// Remove everything in ~/.openparlant/ except config files.
-fn remove_dir_except_config(openparlant_dir: &std::path::Path) {
+/// Remove everything in ~/.silicrew/ except config files.
+fn remove_dir_except_config(silicrew_dir: &std::path::Path) {
     let keep = ["config.toml", ".env", "secrets.env"];
-    let Ok(entries) = std::fs::read_dir(openparlant_dir) else {
+    let Ok(entries) = std::fs::read_dir(silicrew_dir) else {
         return;
     };
     for entry in entries.flatten() {
@@ -6871,8 +6871,8 @@ mod tests {
 
     #[test]
     fn test_doctor_skill_registry_loads_bundled() {
-        let skills_dir = std::env::temp_dir().join("openparlant-doctor-test-skills");
-        let mut skill_reg = openparlant_skills::registry::SkillRegistry::new(skills_dir);
+        let skills_dir = std::env::temp_dir().join("silicrew-doctor-test-skills");
+        let mut skill_reg = silicrew_skills::registry::SkillRegistry::new(skills_dir);
         let count = skill_reg.load_bundled();
         assert!(count > 0, "Should load bundled skills");
         assert_eq!(skill_reg.count(), count);
@@ -6880,9 +6880,9 @@ mod tests {
 
     #[test]
     fn test_doctor_extension_registry_loads_bundled() {
-        let tmp = std::env::temp_dir().join("openparlant-doctor-test-ext");
+        let tmp = std::env::temp_dir().join("silicrew-doctor-test-ext");
         let _ = std::fs::create_dir_all(&tmp);
-        let mut ext_reg = openparlant_extensions::registry::IntegrationRegistry::new(&tmp);
+        let mut ext_reg = silicrew_extensions::registry::IntegrationRegistry::new(&tmp);
         let count = ext_reg.load_bundled();
         assert!(count > 0, "Should load bundled integration templates");
         assert_eq!(ext_reg.template_count(), count);
@@ -6891,9 +6891,9 @@ mod tests {
     #[test]
     fn test_doctor_config_deser_default() {
         // Default KernelConfig should serialize/deserialize round-trip
-        let config = openparlant_types::config::KernelConfig::default();
+        let config = silicrew_types::config::KernelConfig::default();
         let toml_str = toml::to_string_pretty(&config).unwrap();
-        let parsed: openparlant_types::config::KernelConfig = toml::from_str(&toml_str).unwrap();
+        let parsed: silicrew_types::config::KernelConfig = toml::from_str(&toml_str).unwrap();
         assert_eq!(parsed.api_listen, config.api_listen);
     }
 
@@ -6908,7 +6908,7 @@ provider = "groq"
 model = "llama-3.3-70b-versatile"
 api_key_env = "GROQ_API_KEY"
 "#;
-        let config: openparlant_types::config::KernelConfig = toml::from_str(config_toml).unwrap();
+        let config: silicrew_types::config::KernelConfig = toml::from_str(config_toml).unwrap();
         assert_eq!(config.include.len(), 2);
         assert_eq!(config.include[0], "providers.toml");
         assert_eq!(config.include[1], "agents.toml");
@@ -6929,10 +6929,10 @@ provider = "groq"
 model = "llama-3.3-70b-versatile"
 api_key_env = "GROQ_API_KEY"
 "#;
-        let config: openparlant_types::config::KernelConfig = toml::from_str(config_toml).unwrap();
+        let config: silicrew_types::config::KernelConfig = toml::from_str(config_toml).unwrap();
         assert_eq!(
             config.exec_policy.mode,
-            openparlant_types::config::ExecSecurityMode::Allowlist
+            silicrew_types::config::ExecSecurityMode::Allowlist
         );
         assert_eq!(config.exec_policy.safe_bins.len(), 3);
         assert_eq!(config.exec_policy.timeout_secs, 30);
@@ -6957,11 +6957,11 @@ type = "stdio"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-github"]
 "#;
-        let config: openparlant_types::config::KernelConfig = toml::from_str(config_toml).unwrap();
+        let config: silicrew_types::config::KernelConfig = toml::from_str(config_toml).unwrap();
         assert_eq!(config.mcp_servers.len(), 1);
         assert_eq!(config.mcp_servers[0].name, "github");
         match &config.mcp_servers[0].transport {
-            openparlant_types::config::McpTransportEntry::Stdio { command, args } => {
+            silicrew_types::config::McpTransportEntry::Stdio { command, args } => {
                 assert_eq!(command, "npx");
                 assert_eq!(args.len(), 2);
             }
@@ -6973,14 +6973,14 @@ args = ["-y", "@modelcontextprotocol/server-github"]
     fn test_doctor_skill_injection_scan_clean() {
         let clean_content = "This is a normal skill prompt with helpful instructions.";
         let warnings =
-            openparlant_skills::verify::SkillVerifier::scan_prompt_content(clean_content);
+            silicrew_skills::verify::SkillVerifier::scan_prompt_content(clean_content);
         assert!(warnings.is_empty(), "Clean content should have no warnings");
     }
 
     #[test]
     fn test_doctor_hook_event_variants() {
         // Verify all 4 hook event types are constructable
-        use openparlant_types::agent::HookEvent;
+        use silicrew_types::agent::HookEvent;
         let events = [
             HookEvent::BeforeToolCall,
             HookEvent::AfterToolCall,
@@ -6994,39 +6994,39 @@ args = ["-y", "@modelcontextprotocol/server-github"]
 
     #[test]
     fn test_uninstall_path_line_filter() {
-        use super::is_openparlant_path_line;
-        let dir = "/home/user/.openparlant/bin";
+        use super::is_silicrew_path_line;
+        let dir = "/home/user/.silicrew/bin";
 
-        // Should match: openparlant PATH exports
-        assert!(is_openparlant_path_line(
-            r#"export PATH="$HOME/.openparlant/bin:$PATH""#,
+        // Should match: silicrew PATH exports
+        assert!(is_silicrew_path_line(
+            r#"export PATH="$HOME/.silicrew/bin:$PATH""#,
             dir
         ));
-        assert!(is_openparlant_path_line(
-            r#"export PATH="/home/user/.openparlant/bin:$PATH""#,
+        assert!(is_silicrew_path_line(
+            r#"export PATH="/home/user/.silicrew/bin:$PATH""#,
             dir
         ));
-        assert!(is_openparlant_path_line(
-            "set -gx PATH $HOME/.openparlant/bin $PATH",
+        assert!(is_silicrew_path_line(
+            "set -gx PATH $HOME/.silicrew/bin $PATH",
             dir
         ));
-        assert!(is_openparlant_path_line(
-            "fish_add_path $HOME/.openparlant/bin",
+        assert!(is_silicrew_path_line(
+            "fish_add_path $HOME/.silicrew/bin",
             dir
         ));
 
         // Should NOT match: unrelated PATH exports
-        assert!(!is_openparlant_path_line(
+        assert!(!is_silicrew_path_line(
             r#"export PATH="$HOME/.cargo/bin:$PATH""#,
             dir
         ));
-        assert!(!is_openparlant_path_line(
+        assert!(!is_silicrew_path_line(
             r#"export PATH="/usr/local/bin:$PATH""#,
             dir
         ));
 
-        // Should NOT match: openparlant lines that aren't PATH-related
-        assert!(!is_openparlant_path_line("# openparlant config", dir));
-        assert!(!is_openparlant_path_line("alias of=openparlant", dir));
+        // Should NOT match: silicrew lines that aren't PATH-related
+        assert!(!is_silicrew_path_line("# silicrew config", dir));
+        assert!(!is_silicrew_path_line("alias of=silicrew", dir));
     }
 }

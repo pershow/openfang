@@ -9,9 +9,9 @@
 
 use chrono::{Duration, Utc};
 use dashmap::DashMap;
-use openparlant_types::agent::AgentId;
-use openparlant_types::error::{SiliCrewError, SiliCrewResult};
-use openparlant_types::scheduler::{CronJob, CronJobId, CronSchedule};
+use silicrew_types::agent::AgentId;
+use silicrew_types::error::{SiliCrewError, SiliCrewResult};
+use silicrew_types::scheduler::{CronJob, CronJobId, CronSchedule};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -26,7 +26,7 @@ const MAX_CONSECUTIVE_ERRORS: u32 = 5;
 
 /// Runtime metadata for a cron job that extends the base `CronJob` type.
 ///
-/// The `CronJob` struct in `openparlant-types` is intentionally lean (no
+/// The `CronJob` struct in `silicrew-types` is intentionally lean (no
 /// `one_shot`, `last_status`, or error tracking). The scheduler tracks
 /// these operational details separately.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -340,7 +340,7 @@ impl CronScheduler {
             meta.job.last_run = Some(Utc::now());
             meta.last_status = Some(format!(
                 "error: {}",
-                openparlant_types::truncate_str(error_msg, 256)
+                silicrew_types::truncate_str(error_msg, 256)
             ));
             meta.consecutive_errors += 1;
             if meta.consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
@@ -448,7 +448,7 @@ pub fn compute_next_run_after(
 mod tests {
     use super::*;
     use chrono::{Duration, Timelike};
-    use openparlant_types::scheduler::{CronAction, CronDelivery};
+    use silicrew_types::scheduler::{CronAction, CronDelivery};
 
     /// Build a minimal valid `CronJob` with an `Every` schedule.
     fn make_job(agent_id: AgentId) -> CronJob {
@@ -548,7 +548,7 @@ mod tests {
 
     #[test]
     fn test_add_job_per_agent_limit() {
-        // MAX_JOBS_PER_AGENT = 50 in openparlant-types
+        // MAX_JOBS_PER_AGENT = 50 in silicrew-types
         let (sched, _tmp) = make_scheduler(1000);
         let agent = AgentId::new();
 

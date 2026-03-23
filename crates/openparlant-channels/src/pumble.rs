@@ -195,7 +195,7 @@ fn parse_pumble_event(event: &serde_json::Value, own_bot_id: &str) -> Option<Cha
         sender: ChannelUser {
             platform_id: channel_id,
             display_name: user_name.to_string(),
-            openparlant_user: None,
+            silicrew_user: None,
         },
         content,
         target_agent: None,

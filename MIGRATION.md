@@ -19,32 +19,32 @@ This guide covers migrating from OpenClaw (and other frameworks) to OpenParlant.
 Run a single command to migrate your entire OpenClaw workspace:
 
 ```bash
-openparlant migrate --from openclaw
+silicrew migrate --from openclaw
 ```
 
-This auto-detects your OpenClaw workspace at `~/.openclaw/` and imports everything into `~/.openparlant/`.
+This auto-detects your OpenClaw workspace at `~/.openclaw/` and imports everything into `~/.silicrew/`.
 
 ### Options
 
 ```bash
 # Specify a custom source directory
-openparlant migrate --from openclaw --source-dir /path/to/openclaw/workspace
+silicrew migrate --from openclaw --source-dir /path/to/openclaw/workspace
 
 # Dry run -- see what would be imported without making changes
-openparlant migrate --from openclaw --dry-run
+silicrew migrate --from openclaw --dry-run
 ```
 
 ### Migration Report
 
-After a successful migration, a `migration_report.md` file is saved to `~/.openparlant/` with a summary of everything that was imported, skipped, or needs manual attention.
+After a successful migration, a `migration_report.md` file is saved to `~/.silicrew/` with a summary of everything that was imported, skipped, or needs manual attention.
 
 ### Other Frameworks
 
 LangChain and AutoGPT migration support is planned:
 
 ```bash
-openparlant migrate --from langchain   # Coming soon
-openparlant migrate --from autogpt     # Coming soon
+silicrew migrate --from langchain   # Coming soon
+silicrew migrate --from autogpt     # Coming soon
 ```
 
 ---
@@ -53,24 +53,24 @@ openparlant migrate --from autogpt     # Coming soon
 
 | Item | Source (OpenClaw) | Destination (OpenParlant) | Status |
 |------|-------------------|------------------------|--------|
-| **Config** | `~/.openclaw/config.yaml` | `~/.openparlant/config.toml` | Fully automated |
-| **Agents** | `~/.openclaw/agents/*/agent.yaml` | `~/.openparlant/agents/*/agent.toml` | Fully automated |
-| **Memory** | `~/.openclaw/agents/*/MEMORY.md` | `~/.openparlant/agents/*/imported_memory.md` | Fully automated |
-| **Channels** | `~/.openclaw/messaging/*.yaml` | `~/.openparlant/channels_import.toml` | Automated (manual merge) |
+| **Config** | `~/.openclaw/config.yaml` | `~/.silicrew/config.toml` | Fully automated |
+| **Agents** | `~/.openclaw/agents/*/agent.yaml` | `~/.silicrew/agents/*/agent.toml` | Fully automated |
+| **Memory** | `~/.openclaw/agents/*/MEMORY.md` | `~/.silicrew/agents/*/imported_memory.md` | Fully automated |
+| **Channels** | `~/.openclaw/messaging/*.yaml` | `~/.silicrew/channels_import.toml` | Automated (manual merge) |
 | **Skills** | `~/.openclaw/skills/` | Scanned and reported | Manual reinstall |
 | **Sessions** | `~/.openclaw/agents/*/sessions/` | Not migrated | Fresh start recommended |
 | **Workspace files** | `~/.openclaw/agents/*/workspace/` | Not migrated | Copy manually if needed |
 
 ### Channel Import Note
 
-Channel configurations (Telegram, Discord, Slack) are exported to a `channels_import.toml` file. You must manually merge the `[channels]` section into your `~/.openparlant/config.toml`.
+Channel configurations (Telegram, Discord, Slack) are exported to a `channels_import.toml` file. You must manually merge the `[channels]` section into your `~/.silicrew/config.toml`.
 
 ### Skills Note
 
 OpenClaw skills (Node.js) are detected and listed in the migration report but not automatically converted. After migration, reinstall skills using:
 
 ```bash
-openparlant skill install <skill-name-or-path>
+silicrew skill install <skill-name-or-path>
 ```
 
 OpenParlant automatically detects OpenClaw-format skills and converts them during installation.
@@ -84,10 +84,10 @@ If you prefer migrating by hand (or need to handle edge cases), follow these ste
 ### 1. Initialize OpenParlant
 
 ```bash
-openparlant init
+silicrew init
 ```
 
-This creates `~/.openparlant/` with a default `config.toml`.
+This creates `~/.silicrew/` with a default `config.toml`.
 
 ### 2. Convert Your Config
 
@@ -103,7 +103,7 @@ memory:
   decay_rate: 0.05
 ```
 
-**OpenParlant** (`~/.openparlant/config.toml`):
+**OpenParlant** (`~/.silicrew/config.toml`):
 ```toml
 [default_model]
 provider = "anthropic"
@@ -136,12 +136,12 @@ tags:
   - dev
 ```
 
-**OpenParlant** (`~/.openparlant/agents/coder/agent.toml`):
+**OpenParlant** (`~/.silicrew/agents/coder/agent.toml`):
 ```toml
 name = "coder"
 version = "0.1.0"
 description = "A coding assistant"
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 tags = ["coding", "dev"]
 
@@ -166,7 +166,7 @@ allowed_users:
   - "123456789"
 ```
 
-**OpenParlant** (add to `~/.openparlant/config.toml`):
+**OpenParlant** (add to `~/.silicrew/config.toml`):
 ```toml
 [channels.telegram]
 bot_token_env = "TELEGRAM_BOT_TOKEN"
@@ -179,7 +179,7 @@ allowed_users = ["123456789"]
 Copy any `MEMORY.md` files from OpenClaw agents to OpenParlant agent directories:
 
 ```bash
-cp ~/.openclaw/agents/coder/MEMORY.md ~/.openparlant/agents/coder/imported_memory.md
+cp ~/.openclaw/agents/coder/MEMORY.md ~/.silicrew/agents/coder/imported_memory.md
 ```
 
 The kernel will ingest these on first boot.
@@ -191,7 +191,7 @@ The kernel will ingest these on first boot.
 | Aspect | OpenClaw | OpenParlant |
 |--------|----------|----------|
 | Format | YAML | TOML |
-| Config location | `~/.openclaw/config.yaml` | `~/.openparlant/config.toml` |
+| Config location | `~/.openclaw/config.yaml` | `~/.silicrew/config.toml` |
 | Agent definition | `agent.yaml` | `agent.toml` |
 | Channel config | Separate files per channel | Unified in `config.toml` |
 | Tool permissions | Implicit (tool list) | Capability-based (tools, memory, network, shell) |
@@ -324,7 +324,7 @@ OpenClaw's tool profiles map to explicit tool lists:
 The migration engine looks for `~/.openclaw/` by default. If your OpenClaw workspace is elsewhere:
 
 ```bash
-openparlant migrate --from openclaw --source-dir /path/to/your/workspace
+silicrew migrate --from openclaw --source-dir /path/to/your/workspace
 ```
 
 ### Agent fails to spawn after migration
@@ -339,7 +339,7 @@ Check the converted `agent.toml` for:
 OpenClaw Node.js skills must be reinstalled:
 
 ```bash
-openparlant skill install /path/to/openclaw/skills/my-skill
+silicrew skill install /path/to/openclaw/skills/my-skill
 ```
 
 The installer auto-detects OpenClaw format and converts the skill manifest.
@@ -349,12 +349,12 @@ The installer auto-detects OpenClaw format and converts the skill manifest.
 After migration, channels are exported to `channels_import.toml`. You must merge them into your `config.toml` manually:
 
 ```bash
-cat ~/.openparlant/channels_import.toml
-# Copy the [channels.*] sections into ~/.openparlant/config.toml
+cat ~/.silicrew/channels_import.toml
+# Copy the [channels.*] sections into ~/.silicrew/config.toml
 ```
 
 Then restart the daemon:
 
 ```bash
-openparlant start
+silicrew start
 ```

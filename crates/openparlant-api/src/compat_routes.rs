@@ -3,9 +3,9 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
-use openparlant_skills::clawhub::ClawHubClient;
-use openparlant_types::agent::AgentId;
-use openparlant_types::approval::ApprovalDecision;
+use silicrew_skills::clawhub::ClawHubClient;
+use silicrew_types::agent::AgentId;
+use silicrew_types::approval::ApprovalDecision;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path as StdPath, PathBuf};
@@ -55,7 +55,7 @@ fn list_directory_entries(
     let target = if relative_path.trim().is_empty() || relative_path == "." {
         root.to_path_buf()
     } else {
-        openparlant_runtime::workspace_sandbox::resolve_sandbox_path(relative_path, root)?
+        silicrew_runtime::workspace_sandbox::resolve_sandbox_path(relative_path, root)?
     };
 
     if !target.exists() {
@@ -173,7 +173,7 @@ pub async fn skills_browse_read(
             .into_response();
     };
 
-    let resolved = match openparlant_runtime::workspace_sandbox::resolve_sandbox_path(path, &root) {
+    let resolved = match silicrew_runtime::workspace_sandbox::resolve_sandbox_path(path, &root) {
         Ok(path) => path,
         Err(error) => {
             return (
@@ -209,7 +209,7 @@ pub async fn skills_browse_write(
     let _ = std::fs::create_dir_all(&root);
 
     let resolved =
-        match openparlant_runtime::workspace_sandbox::resolve_sandbox_path(&body.path, &root) {
+        match silicrew_runtime::workspace_sandbox::resolve_sandbox_path(&body.path, &root) {
             Ok(path) => path,
             Err(error) => {
                 return (
@@ -258,7 +258,7 @@ pub async fn skills_browse_delete(
             .into_response();
     };
 
-    let resolved = match openparlant_runtime::workspace_sandbox::resolve_sandbox_path(path, &root) {
+    let resolved = match silicrew_runtime::workspace_sandbox::resolve_sandbox_path(path, &root) {
         Ok(path) => path,
         Err(error) => {
             return (

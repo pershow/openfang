@@ -1,7 +1,7 @@
 name = "devops-lead"
 version = "0.1.0"
 description = "DevOps lead. Manages CI/CD, infrastructure, deployments, monitoring, and incident response."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 
 [model]

@@ -6,7 +6,7 @@
 /// Map an OpenClaw tool name to its OpenParlant equivalent.
 ///
 /// Returns `None` if the name has no known mapping (may already be
-/// an OpenParlant tool name — check with [`is_known_openparlant_tool`]).
+/// an OpenParlant tool name — check with [`is_known_silicrew_tool`]).
 pub fn map_tool_name(openclaw_name: &str) -> Option<&'static str> {
     match openclaw_name {
         // Claude-style tool names (capitalized)
@@ -43,14 +43,14 @@ pub fn map_tool_name(openclaw_name: &str) -> Option<&'static str> {
 /// Otherwise, tries to map it through [`map_tool_name`].
 /// Returns the original name if no mapping is found.
 pub fn normalize_tool_name(name: &str) -> &str {
-    if is_known_openparlant_tool(name) {
+    if is_known_silicrew_tool(name) {
         return name;
     }
     map_tool_name(name).unwrap_or(name)
 }
 
 /// Check if a tool name is a known OpenParlant built-in tool.
-pub fn is_known_openparlant_tool(name: &str) -> bool {
+pub fn is_known_silicrew_tool(name: &str) -> bool {
     matches!(
         name,
         "file_read"
@@ -174,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn test_is_known_openparlant_tool() {
+    fn test_is_known_silicrew_tool() {
         // All 23 built-in tools + location_get
         let known = [
             "file_read",
@@ -204,14 +204,14 @@ mod tests {
         ];
         for tool in &known {
             assert!(
-                is_known_openparlant_tool(tool),
+                is_known_silicrew_tool(tool),
                 "Expected {tool} to be known"
             );
         }
 
         // Unknown
-        assert!(!is_known_openparlant_tool("unknown"));
-        assert!(!is_known_openparlant_tool("Read"));
-        assert!(!is_known_openparlant_tool("Bash"));
+        assert!(!is_known_silicrew_tool("unknown"));
+        assert!(!is_known_silicrew_tool("Read"));
+        assert!(!is_known_silicrew_tool("Bash"));
     }
 }

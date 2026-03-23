@@ -1,41 +1,54 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { authApi } from './services/api';
-import Login from './pages/Login';
-import CompanySetup from './pages/CompanySetup';
-import Layout from './pages/Layout';
-import Dashboard from './pages/Dashboard';
-import Plaza from './pages/Plaza';
-import AgentDetail from './pages/AgentDetail';
-import AgentCreate from './pages/AgentCreate';
-import AgentChatRedirect from './pages/AgentChatRedirect';
-import Messages from './pages/Messages';
-import EnterpriseSettings from './pages/EnterpriseSettings';
-import InvitationCodes from './pages/InvitationCodes';
-import AdminCompanies from './pages/AdminCompanies';
-import Overview from './pages/Overview';
-import Analytics from './pages/Analytics';
-import Sessions from './pages/Sessions';
-import Approvals from './pages/Approvals';
-import Comms from './pages/Comms';
-import Workflows from './pages/Workflows';
-import Scheduler from './pages/Scheduler';
-import Channels from './pages/Channels';
-import Skills from './pages/Skills';
-import Hands from './pages/Hands';
-import Control from './pages/Control';
-import Runtime from './pages/Runtime';
-import Settings from './pages/Settings';
-import Logs from './pages/Logs';
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+const Login = lazy(() => import('./pages/Login'));
+const CompanySetup = lazy(() => import('./pages/CompanySetup'));
+const Layout = lazy(() => import('./pages/Layout'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Plaza = lazy(() => import('./pages/Plaza'));
+const AgentDetail = lazy(() => import('./pages/AgentDetail'));
+const AgentCreate = lazy(() => import('./pages/AgentCreate'));
+const AgentChatRedirect = lazy(() => import('./pages/AgentChatRedirect'));
+const Messages = lazy(() => import('./pages/Messages'));
+const EnterpriseSettings = lazy(() => import('./pages/EnterpriseSettings'));
+const InvitationCodes = lazy(() => import('./pages/InvitationCodes'));
+const AdminCompanies = lazy(() => import('./pages/AdminCompanies'));
+const Overview = lazy(() => import('./pages/Overview'));
+const Analytics = lazy(() => import('./pages/Analytics'));
+const Sessions = lazy(() => import('./pages/Sessions'));
+const Approvals = lazy(() => import('./pages/Approvals'));
+const Comms = lazy(() => import('./pages/Comms'));
+const Workflows = lazy(() => import('./pages/Workflows'));
+const Scheduler = lazy(() => import('./pages/Scheduler'));
+const Channels = lazy(() => import('./pages/Channels'));
+const Skills = lazy(() => import('./pages/Skills'));
+const Hands = lazy(() => import('./pages/Hands'));
+const Control = lazy(() => import('./pages/Control'));
+const Runtime = lazy(() => import('./pages/Runtime'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Logs = lazy(() => import('./pages/Logs'));
+
+function ProtectedRoute({ children }: { children: ReactNode }) {
     const token = useAuthStore((s) => s.token);
     const user = useAuthStore((s) => s.user);
     if (!token) return <Navigate to="/login" replace />;
     // Force company setup for users without a tenant
     if (user && !user.tenant_id) return <Navigate to="/setup-company" replace />;
     return <>{children}</>;
+}
+
+function RouteFallback() {
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '50vh', color: 'var(--text-tertiary)' }}>
+            加载中...
+        </div>
+    );
+}
+
+function withSuspense(element: ReactNode) {
+    return <Suspense fallback={<RouteFallback />}>{element}</Suspense>;
 }
 
 /* ─── Notification Bar ─── */
@@ -94,6 +107,12 @@ export default function App() {
         const savedTheme = localStorage.getItem('theme') || 'dark';
         document.documentElement.setAttribute('data-theme', savedTheme);
 
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations()
+                .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+                .catch(() => { });
+        }
+
         if (token && !user) {
             authApi.me()
                 .then((u) => setAuth(u, token))
@@ -117,34 +136,34 @@ export default function App() {
         <>
             <NotificationBar />
             <Routes>
-                <Route path="/login" element={<Login />} />
-                <Route path="/setup-company" element={<CompanySetup />} />
-                <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+                <Route path="/login" element={withSuspense(<Login />)} />
+                <Route path="/setup-company" element={withSuspense(<CompanySetup />)} />
+                <Route path="/" element={<ProtectedRoute>{withSuspense(<Layout />)}</ProtectedRoute>}>
                     <Route index element={<Navigate to="/plaza" replace />} />
-                    <Route path="overview" element={<Overview />} />
-                    <Route path="dashboard" element={<Dashboard />} />
-                    <Route path="analytics" element={<Analytics />} />
-                    <Route path="plaza" element={<Plaza />} />
-                    <Route path="agents/new" element={<AgentCreate />} />
-                    <Route path="agents/:id" element={<AgentDetail />} />
-                    <Route path="agents/:id/chat" element={<AgentChatRedirect />} />
-                    <Route path="sessions" element={<Sessions />} />
-                    <Route path="approvals" element={<Approvals />} />
-                    <Route path="comms" element={<Comms />} />
-                    <Route path="workflows" element={<Workflows />} />
-                    <Route path="scheduler" element={<Scheduler />} />
-                    <Route path="channels" element={<Channels />} />
-                    <Route path="skills" element={<Skills />} />
-                    <Route path="hands" element={<Hands />} />
-                    <Route path="control" element={<Control />} />
-                    <Route path="runtime" element={<Runtime />} />
-                    <Route path="settings" element={<Settings />} />
-                    <Route path="logs" element={<Logs />} />
+                    <Route path="overview" element={withSuspense(<Overview />)} />
+                    <Route path="dashboard" element={withSuspense(<Dashboard />)} />
+                    <Route path="analytics" element={withSuspense(<Analytics />)} />
+                    <Route path="plaza" element={withSuspense(<Plaza />)} />
+                    <Route path="agents/new" element={withSuspense(<AgentCreate />)} />
+                    <Route path="agents/:id" element={withSuspense(<AgentDetail />)} />
+                    <Route path="agents/:id/chat" element={withSuspense(<AgentChatRedirect />)} />
+                    <Route path="sessions" element={withSuspense(<Sessions />)} />
+                    <Route path="approvals" element={withSuspense(<Approvals />)} />
+                    <Route path="comms" element={withSuspense(<Comms />)} />
+                    <Route path="workflows" element={withSuspense(<Workflows />)} />
+                    <Route path="scheduler" element={withSuspense(<Scheduler />)} />
+                    <Route path="channels" element={withSuspense(<Channels />)} />
+                    <Route path="skills" element={withSuspense(<Skills />)} />
+                    <Route path="hands" element={withSuspense(<Hands />)} />
+                    <Route path="control" element={withSuspense(<Control />)} />
+                    <Route path="runtime" element={withSuspense(<Runtime />)} />
+                    <Route path="settings" element={withSuspense(<Settings />)} />
+                    <Route path="logs" element={withSuspense(<Logs />)} />
                     <Route path="wizard" element={<Navigate to="/agents/new" replace />} />
-                    <Route path="messages" element={<Messages />} />
-                    <Route path="enterprise" element={<EnterpriseSettings />} />
-                    <Route path="invitations" element={<InvitationCodes />} />
-                    <Route path="admin/platform-settings" element={<AdminCompanies />} />
+                    <Route path="messages" element={withSuspense(<Messages />)} />
+                    <Route path="enterprise" element={withSuspense(<EnterpriseSettings />)} />
+                    <Route path="invitations" element={withSuspense(<InvitationCodes />)} />
+                    <Route path="admin/platform-settings" element={withSuspense(<AdminCompanies />)} />
                 </Route>
             </Routes>
         </>

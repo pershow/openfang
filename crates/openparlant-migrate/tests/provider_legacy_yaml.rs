@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use openparlant_migrate::{run_migration, MigrateOptions, MigrateSource};
+use silicrew_migrate::{run_migration, MigrateOptions, MigrateSource};
 use tempfile::TempDir;
 
 fn create_legacy_workspace(

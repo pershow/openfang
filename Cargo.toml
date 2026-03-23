@@ -1,23 +1,23 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/openparlant-types",
-    "crates/openparlant-memory",
-    "crates/openparlant-runtime",
-    "crates/openparlant-wire",
-    "crates/openparlant-api",
-    "crates/openparlant-kernel",
-    "crates/openparlant-cli",
-    "crates/openparlant-channels",
-    "crates/openparlant-migrate",
-    "crates/openparlant-skills",
-    "crates/openparlant-desktop",
-    "crates/openparlant-hands",
-    "crates/openparlant-extensions",
-    "crates/openparlant-policy",
-    "crates/openparlant-journey",
-    "crates/openparlant-context",
-    "crates/openparlant-control",
+    "crates/silicrew-types",
+    "crates/silicrew-memory",
+    "crates/silicrew-runtime",
+    "crates/silicrew-wire",
+    "crates/silicrew-api",
+    "crates/silicrew-kernel",
+    "crates/silicrew-cli",
+    "crates/silicrew-channels",
+    "crates/silicrew-migrate",
+    "crates/silicrew-skills",
+    "crates/silicrew-desktop",
+    "crates/silicrew-hands",
+    "crates/silicrew-extensions",
+    "crates/silicrew-policy",
+    "crates/silicrew-journey",
+    "crates/silicrew-context",
+    "crates/silicrew-control",
     "xtask",
 ]
 
@@ -25,7 +25,7 @@ members = [
 version = "0.5.1"
 edition = "2021"
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/RightNow-AI/openparlant"
+repository = "https://github.com/RightNow-AI/silicrew"
 rust-version = "1.75"
 
 [workspace.dependencies]

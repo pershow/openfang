@@ -1,7 +1,7 @@
 name = "personal-finance"
 version = "0.1.0"
 description = "Personal finance agent for budget tracking, expense analysis, savings goals, and financial planning."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 tags = ["finance", "budget", "expenses", "savings", "planning", "money"]
 

@@ -1,7 +1,7 @@
 name = "social-media"
 version = "0.1.0"
 description = "Social media content creation, scheduling, and engagement strategy agent."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 tags = ["social-media", "content", "marketing", "engagement", "scheduling", "analytics"]
 

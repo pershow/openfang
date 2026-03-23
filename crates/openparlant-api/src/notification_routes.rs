@@ -6,7 +6,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::Json;
-use openparlant_control::NotificationRecord;
+use silicrew_control::NotificationRecord;
 use serde::Deserialize;
 use std::sync::Arc;
 

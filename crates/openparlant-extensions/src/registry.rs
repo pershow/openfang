@@ -1,14 +1,14 @@
 //! Integration Registry — manages bundled + installed integration templates.
 //!
 //! Loads 25 bundled MCP server templates at compile time, merges with user's
-//! installed state from `~/.openparlant/integrations.toml`, and converts installed
+//! installed state from `~/.silicrew/integrations.toml`, and converts installed
 //! integrations to `McpServerConfigEntry` for kernel consumption.
 
 use crate::{
     ExtensionError, ExtensionResult, InstalledIntegration, IntegrationCategory, IntegrationInfo,
     IntegrationStatus, IntegrationTemplate, IntegrationsFile,
 };
-use openparlant_types::config::{McpServerConfigEntry, McpTransportEntry};
+use silicrew_types::config::{McpServerConfigEntry, McpTransportEntry};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};

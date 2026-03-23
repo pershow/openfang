@@ -1,4 +1,4 @@
-//! Minimal `.env` file loader/saver for `~/.openparlant/.env`.
+//! Minimal `.env` file loader/saver for `~/.silicrew/.env`.
 //!
 //! No external crate needed — hand-rolled for simplicity.
 //! Format: `KEY=VALUE` lines, `#` comments, optional quotes.
@@ -7,19 +7,19 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Get the OpenParlant home directory, respecting OPENFANG_HOME env var.
-fn dotenv_openparlant_home() -> Option<PathBuf> {
+fn dotenv_silicrew_home() -> Option<PathBuf> {
     if let Ok(home) = std::env::var("OPENFANG_HOME") {
         return Some(PathBuf::from(home));
     }
-    dirs::home_dir().map(|h| h.join(".openparlant"))
+    dirs::home_dir().map(|h| h.join(".silicrew"))
 }
 
-/// Return the path to `~/.openparlant/.env`.
+/// Return the path to `~/.silicrew/.env`.
 pub fn env_file_path() -> Option<PathBuf> {
-    dotenv_openparlant_home().map(|h| h.join(".env"))
+    dotenv_silicrew_home().map(|h| h.join(".env"))
 }
 
-/// Load `~/.openparlant/.env` and `~/.openparlant/secrets.env` into `std::env`.
+/// Load `~/.silicrew/.env` and `~/.silicrew/secrets.env` into `std::env`.
 ///
 /// System env vars take priority — existing vars are NOT overridden.
 /// `secrets.env` is loaded second so `.env` values take priority over secrets
@@ -31,9 +31,9 @@ pub fn load_dotenv() {
     load_env_file(secrets_env_path());
 }
 
-/// Return the path to `~/.openparlant/secrets.env`.
+/// Return the path to `~/.silicrew/secrets.env`.
 pub fn secrets_env_path() -> Option<PathBuf> {
-    dotenv_openparlant_home().map(|h| h.join("secrets.env"))
+    dotenv_silicrew_home().map(|h| h.join("secrets.env"))
 }
 
 fn load_env_file(path: Option<PathBuf>) {
@@ -61,7 +61,7 @@ fn load_env_file(path: Option<PathBuf>) {
     }
 }
 
-/// Upsert a key in `~/.openparlant/.env`.
+/// Upsert a key in `~/.silicrew/.env`.
 ///
 /// Creates the file if missing. Sets 0600 permissions on Unix.
 /// Also sets the key in the current process environment.
@@ -83,7 +83,7 @@ pub fn save_env_key(key: &str, value: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Remove a key from `~/.openparlant/.env`.
+/// Remove a key from `~/.silicrew/.env`.
 ///
 /// Also removes it from the current process environment.
 pub fn remove_env_key(key: &str) -> Result<(), String> {
@@ -98,7 +98,7 @@ pub fn remove_env_key(key: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// List key names (without values) from `~/.openparlant/.env`.
+/// List key names (without values) from `~/.silicrew/.env`.
 #[allow(dead_code)]
 pub fn list_env_keys() -> Vec<String> {
     let path = match env_file_path() {
@@ -165,7 +165,7 @@ fn read_env_file(path: &PathBuf) -> BTreeMap<String, String> {
 /// Write key-value pairs back to the .env file with a header comment.
 fn write_env_file(path: &PathBuf, entries: &BTreeMap<String, String>) -> Result<(), String> {
     let mut content =
-        String::from("# OpenParlant environment — managed by `openparlant config set-key`\n");
+        String::from("# OpenParlant environment — managed by `silicrew config set-key`\n");
     content.push_str("# Do not edit while the daemon is running.\n\n");
 
     for (key, value) in entries {

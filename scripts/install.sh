@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # OpenParlant installer — works on Linux, macOS, WSL
-# Usage: curl -sSf https://openparlant.sh | sh
+# Usage: curl -sSf https://silicrew.sh | sh
 #
 # Environment variables:
-#   OPENFANG_INSTALL_DIR  — custom install directory (default: ~/.openparlant/bin)
+#   OPENFANG_INSTALL_DIR  — custom install directory (default: ~/.silicrew/bin)
 #   OPENFANG_VERSION      — install a specific version tag (default: latest)
 
 set -euo pipefail
 
-REPO="RightNow-AI/openparlant"
-INSTALL_DIR="${OPENFANG_INSTALL_DIR:-$HOME/.openparlant/bin}"
+REPO="RightNow-AI/silicrew"
+INSTALL_DIR="${OPENFANG_INSTALL_DIR:-$HOME/.silicrew/bin}"
 
 detect_platform() {
     OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -25,13 +25,13 @@ detect_platform() {
         mingw*|msys*|cygwin*)
             echo ""
             echo "  For Windows, use PowerShell instead:"
-            echo "    irm https://openparlant.sh/install.ps1 | iex"
+            echo "    irm https://silicrew.sh/install.ps1 | iex"
             echo ""
             echo "  Or download the .msi installer from:"
             echo "    https://github.com/$REPO/releases/latest"
             echo ""
             echo "  Or install via cargo:"
-            echo "    cargo install --git https://github.com/$REPO openparlant-cli"
+            echo "    cargo install --git https://github.com/$REPO silicrew-cli"
             exit 1
             ;;
         *) echo "  Unsupported OS: $OS"; exit 1 ;;
@@ -58,11 +58,11 @@ install() {
     if [ -z "$VERSION" ]; then
         echo "  Could not determine latest version."
         echo "  Install from source instead:"
-        echo "    cargo install --git https://github.com/$REPO openparlant-cli"
+        echo "    cargo install --git https://github.com/$REPO silicrew-cli"
         exit 1
     fi
 
-    URL="https://github.com/$REPO/releases/download/$VERSION/openparlant-$PLATFORM.tar.gz"
+    URL="https://github.com/$REPO/releases/download/$VERSION/silicrew-$PLATFORM.tar.gz"
     CHECKSUM_URL="$URL.sha256"
 
     echo "  Installing OpenParlant $VERSION for $PLATFORM..."
@@ -70,7 +70,7 @@ install() {
 
     # Download to temp
     TMPDIR=$(mktemp -d)
-    ARCHIVE="$TMPDIR/openparlant.tar.gz"
+    ARCHIVE="$TMPDIR/silicrew.tar.gz"
     CHECKSUM_FILE="$TMPDIR/checksum.sha256"
 
     cleanup() { rm -rf "$TMPDIR"; }
@@ -79,7 +79,7 @@ install() {
     if ! curl -fsSL "$URL" -o "$ARCHIVE" 2>/dev/null; then
         echo "  Download failed. The release may not exist for your platform."
         echo "  Install from source instead:"
-        echo "    cargo install --git https://github.com/$REPO openparlant-cli"
+        echo "    cargo install --git https://github.com/$REPO silicrew-cli"
         exit 1
     fi
 
@@ -108,7 +108,7 @@ install() {
 
     # Extract
     tar xzf "$ARCHIVE" -C "$INSTALL_DIR"
-    chmod +x "$INSTALL_DIR/openparlant"
+    chmod +x "$INSTALL_DIR/silicrew"
 
     # Ad-hoc codesign on macOS (prevents SIGKILL on Apple Silicon)
     # Must strip extended attributes (com.apple.quarantine) BEFORE signing,
@@ -116,14 +116,14 @@ install() {
     # rejects it as "Code Signature Invalid" → SIGKILL.
     if [ "$OS" = "darwin" ]; then
         if command -v xattr &>/dev/null; then
-            xattr -cr "$INSTALL_DIR/openparlant" 2>/dev/null || true
+            xattr -cr "$INSTALL_DIR/silicrew" 2>/dev/null || true
         fi
         if command -v codesign &>/dev/null; then
-            if ! codesign --force --sign - "$INSTALL_DIR/openparlant"; then
+            if ! codesign --force --sign - "$INSTALL_DIR/silicrew"; then
                 echo ""
                 echo "  Warning: ad-hoc code signing failed."
                 echo "  On Apple Silicon, the binary may be killed (SIGKILL) by Gatekeeper."
-                echo "  Try manually: xattr -cr $INSTALL_DIR/openparlant && codesign --force --sign - $INSTALL_DIR/openparlant"
+                echo "  Try manually: xattr -cr $INSTALL_DIR/silicrew && codesign --force --sign - $INSTALL_DIR/silicrew"
                 echo ""
             fi
         fi
@@ -158,7 +158,7 @@ install() {
         fi
     fi
 
-    if [ -n "$SHELL_RC" ] && ! grep -q "openparlant" "$SHELL_RC" 2>/dev/null; then
+    if [ -n "$SHELL_RC" ] && ! grep -q "silicrew" "$SHELL_RC" 2>/dev/null; then
         # Determine syntax from the TARGET FILE, not $USER_SHELL — this
         # prevents Bash syntax from ever being written to config.fish even
         # when shell detection mis-identifies the user's shell.
@@ -175,18 +175,18 @@ install() {
     fi
 
     # Verify installation
-    if "$INSTALL_DIR/openparlant" --version >/dev/null 2>&1; then
-        INSTALLED_VERSION=$("$INSTALL_DIR/openparlant" --version 2>/dev/null || echo "$VERSION")
+    if "$INSTALL_DIR/silicrew" --version >/dev/null 2>&1; then
+        INSTALLED_VERSION=$("$INSTALL_DIR/silicrew" --version 2>/dev/null || echo "$VERSION")
         echo ""
         echo "  OpenParlant installed successfully! ($INSTALLED_VERSION)"
     else
         echo ""
-        echo "  OpenParlant binary installed to $INSTALL_DIR/openparlant"
+        echo "  OpenParlant binary installed to $INSTALL_DIR/silicrew"
     fi
 
     echo ""
     echo "  Get started:"
-    echo "    openparlant init"
+    echo "    silicrew init"
     echo ""
     echo "  The setup wizard will guide you through provider selection"
     echo "  and configuration."

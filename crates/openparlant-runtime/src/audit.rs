@@ -8,7 +8,7 @@
 //! the `audit_entries` table (schema V8) so the trail survives daemon restarts.
 
 use chrono::Utc;
-use openparlant_memory::db::{block_on, SharedDb};
+use silicrew_memory::db::{block_on, SharedDb};
 #[cfg(test)]
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};

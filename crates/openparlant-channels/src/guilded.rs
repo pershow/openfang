@@ -278,7 +278,7 @@ impl ChannelAdapter for GuildedAdapter {
                         sender: ChannelUser {
                             platform_id: channel_id,
                             display_name: created_by.to_string(),
-                            openparlant_user: None,
+                            silicrew_user: None,
                         },
                         content: msg_content,
                         target_agent: None,

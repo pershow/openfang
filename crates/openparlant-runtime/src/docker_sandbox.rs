@@ -3,7 +3,7 @@
 //! Provides secure command execution inside Docker containers with strict
 //! resource limits, network isolation, and capability dropping.
 
-use openparlant_types::config::DockerSandboxConfig;
+use silicrew_types::config::DockerSandboxConfig;
 use std::path::Path;
 use std::time::Duration;
 use tracing::{debug, warn};
@@ -434,8 +434,8 @@ mod tests {
 
     #[test]
     fn test_sanitize_container_name_valid() {
-        let result = sanitize_container_name("openparlant-sandbox-abc123").unwrap();
-        assert_eq!(result, "openparlant-sandbox-abc123");
+        let result = sanitize_container_name("silicrew-sandbox-abc123").unwrap();
+        assert_eq!(result, "silicrew-sandbox-abc123");
     }
 
     #[test]
@@ -518,7 +518,7 @@ mod tests {
         let config = DockerSandboxConfig::default();
         assert!(!config.enabled);
         assert_eq!(config.image, "python:3.12-slim");
-        assert_eq!(config.container_prefix, "openparlant-sandbox");
+        assert_eq!(config.container_prefix, "silicrew-sandbox");
         assert_eq!(config.workdir, "/workspace");
         assert_eq!(config.network, "none");
         assert_eq!(config.memory_limit, "512m");

@@ -12,7 +12,7 @@ Use workflows when you need to:
 - Iterate a step in a loop until a quality gate is met.
 - Build reproducible, auditable multi-agent processes that can be triggered via API or CLI.
 
-The implementation lives in `openparlant-kernel/src/workflow.rs`. The workflow engine is decoupled from the kernel through closures -- it never directly owns or references the kernel, making it testable in isolation.
+The implementation lives in `silicrew-kernel/src/workflow.rs`. The workflow engine is decoupled from the kernel through closures -- it never directly owns or references the kernel, making it testable in isolation.
 
 ---
 
@@ -412,7 +412,7 @@ The loop runs the reviewer up to 4 times. Each iteration receives the previous i
 
 ## Trigger Engine
 
-The trigger engine (`openparlant-kernel/src/triggers.rs`) provides event-driven automation. Triggers watch the kernel's event bus and automatically send messages to agents when matching events arrive.
+The trigger engine (`silicrew-kernel/src/triggers.rs`) provides event-driven automation. Triggers watch the kernel's event bus and automatically send messages to agents when matching events arrive.
 
 ### Core Types
 
@@ -688,29 +688,29 @@ All workflow and trigger CLI commands require a running OpenParlant daemon.
 ### Workflow Commands
 
 ```
-openparlant workflow list
+silicrew workflow list
 ```
 Lists all registered workflows with their ID, name, step count, and creation date.
 
 ```
-openparlant workflow create <file>
+silicrew workflow create <file>
 ```
 Creates a workflow from a JSON file. The file should contain the same JSON structure as the `POST /api/workflows` request body.
 
 ```
-openparlant workflow run <workflow_id> <input>
+silicrew workflow run <workflow_id> <input>
 ```
 Executes a workflow by its UUID with the given input text. Blocks until completion and prints the output.
 
 ### Trigger Commands
 
 ```
-openparlant trigger list [--agent-id <uuid>]
+silicrew trigger list [--agent-id <uuid>]
 ```
 Lists all registered triggers. Optionally filter by agent ID.
 
 ```
-openparlant trigger create <agent_id> <pattern_json> [--prompt <template>] [--max-fires <n>]
+silicrew trigger create <agent_id> <pattern_json> [--prompt <template>] [--max-fires <n>]
 ```
 Creates a trigger for the specified agent. The `pattern_json` argument is a JSON string describing the pattern.
 
@@ -721,17 +721,17 @@ Defaults:
 Examples:
 ```bash
 # Watch all lifecycle events
-openparlant trigger create <agent-id> '"lifecycle"' --prompt "Lifecycle: {{event}}"
+silicrew trigger create <agent-id> '"lifecycle"' --prompt "Lifecycle: {{event}}"
 
 # Watch for a specific agent spawn
-openparlant trigger create <agent-id> '{"agent_spawned":{"name_pattern":"coder"}}' --max-fires 1
+silicrew trigger create <agent-id> '{"agent_spawned":{"name_pattern":"coder"}}' --max-fires 1
 
 # Watch for content containing "error"
-openparlant trigger create <agent-id> '{"content_match":{"substring":"error"}}'
+silicrew trigger create <agent-id> '{"content_match":{"substring":"error"}}'
 ```
 
 ```
-openparlant trigger delete <trigger_id>
+silicrew trigger delete <trigger_id>
 ```
 Deletes a trigger by its UUID.
 
@@ -753,7 +753,7 @@ Loop steps are bounded by `max_iterations` (default: 5 in the API). The engine w
 
 ### Hourly Token Quota
 
-The `AgentScheduler` (in `openparlant-kernel/src/scheduler.rs`) tracks per-agent token usage with a rolling 1-hour window via `UsageTracker`. If an agent exceeds its `ResourceQuota.max_llm_tokens_per_hour`, the scheduler returns `SiliCrewError::QuotaExceeded`. The window resets automatically after 3600 seconds. This quota applies to all agent interactions, including those invoked by workflows.
+The `AgentScheduler` (in `silicrew-kernel/src/scheduler.rs`) tracks per-agent token usage with a rolling 1-hour window via `UsageTracker`. If an agent exceeds its `ResourceQuota.max_llm_tokens_per_hour`, the scheduler returns `SiliCrewError::QuotaExceeded`. The window resets automatically after 3600 seconds. This quota applies to all agent interactions, including those invoked by workflows.
 
 ---
 

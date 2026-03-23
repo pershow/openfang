@@ -24,7 +24,7 @@ A skill consists of:
 1. A **manifest** (`skill.toml` or `SKILL.md`) that declares metadata, runtime type, provided tools, and requirements.
 2. An **entry point** (Python script, WASM module, Node.js module, or prompt-only Markdown) that implements the tool logic.
 
-Skills are installed to `~/.openparlant/skills/` and made available to agents through the skill registry. OpenParlant ships with **60 bundled skills** that are compiled into the binary and available immediately.
+Skills are installed to `~/.silicrew/skills/` and made available to agents through the skill registry. OpenParlant ships with **60 bundled skills** that are compiled into the binary and available immediately.
 
 ### Supported Runtimes
 
@@ -102,7 +102,7 @@ my-skill/
 name = "web-summarizer"
 version = "0.1.0"
 description = "Summarizes any web page into bullet points"
-author = "openparlant-community"
+author = "silicrew-community"
 license = "MIT"
 tags = ["web", "summarizer", "research"]
 
@@ -260,11 +260,11 @@ if __name__ == "__main__":
 
 ### Using the OpenParlant Python SDK
 
-For more advanced skills, use the Python SDK (`sdk/python/openparlant_sdk.py`):
+For more advanced skills, use the Python SDK (`sdk/python/silicrew_sdk.py`):
 
 ```python
 #!/usr/bin/env python3
-from openparlant_sdk import SkillHandler
+from silicrew_sdk import SkillHandler
 
 handler = SkillHandler()
 
@@ -374,15 +374,15 @@ capabilities = ["NetConnect(*)", "ShellExec(python3)"]
 ### From a Local Directory
 
 ```bash
-openparlant skill install /path/to/my-skill
+silicrew skill install /path/to/my-skill
 ```
 
-This reads the `skill.toml`, validates the manifest, and copies the skill to `~/.openparlant/skills/my-skill/`.
+This reads the `skill.toml`, validates the manifest, and copies the skill to `~/.silicrew/skills/my-skill/`.
 
 ### From FangHub
 
 ```bash
-openparlant skill install web-summarizer
+silicrew skill install web-summarizer
 ```
 
 This downloads the skill from the FangHub marketplace registry.
@@ -390,13 +390,13 @@ This downloads the skill from the FangHub marketplace registry.
 ### From a Git Repository
 
 ```bash
-openparlant skill install https://github.com/user/openparlant-skill-example.git
+silicrew skill install https://github.com/user/silicrew-skill-example.git
 ```
 
 ### Listing Installed Skills
 
 ```bash
-openparlant skill list
+silicrew skill list
 ```
 
 Output:
@@ -414,7 +414,7 @@ code-formatter       1.0.0      1        Format code in 20+ languages
 ### Removing Skills
 
 ```bash
-openparlant skill remove web-summarizer
+silicrew skill remove web-summarizer
 ```
 
 ---
@@ -431,14 +431,14 @@ FangHub is the community skill marketplace for OpenParlant.
 3. Test your skill locally:
 
 ```bash
-openparlant skill install /path/to/my-skill
+silicrew skill install /path/to/my-skill
 # Spawn an agent with the skill's tools and test them
 ```
 
 ### Searching FangHub
 
 ```bash
-openparlant skill search "web scraping"
+silicrew skill search "web scraping"
 ```
 
 Output:
@@ -460,7 +460,7 @@ Skills matching "web scraping":
 Publishing to FangHub will be available via:
 
 ```bash
-openparlant skill publish
+silicrew skill publish
 ```
 
 This validates the manifest, packages the skill, and uploads it to the FangHub registry.
@@ -473,25 +473,25 @@ This validates the manifest, packages the skill, and uploads it to the FangHub r
 
 ```bash
 # Install a skill (local directory, FangHub name, or git URL)
-openparlant skill install <source>
+silicrew skill install <source>
 
 # List all installed skills
-openparlant skill list
+silicrew skill list
 
 # Remove an installed skill
-openparlant skill remove <name>
+silicrew skill remove <name>
 
 # Search FangHub for skills
-openparlant skill search <query>
+silicrew skill search <query>
 
 # Create a new skill scaffold (interactive)
-openparlant skill create
+silicrew skill create
 ```
 
 ### Creating a Skill Scaffold
 
 ```bash
-openparlant skill create
+silicrew skill create
 ```
 
 This interactive command prompts for:
@@ -502,7 +502,7 @@ This interactive command prompts for:
 It generates:
 
 ```
-~/.openparlant/skills/my-skill/
+~/.silicrew/skills/my-skill/
   skill.toml        # Pre-filled manifest
   src/
     main.py         # Starter entry point (for Python)
@@ -518,7 +518,7 @@ Reference skills in the agent manifest's `skills` field:
 name = "my-assistant"
 version = "0.1.0"
 description = "An assistant with extra skills"
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 skills = ["web-summarizer", "data-analyzer"]
 
@@ -543,7 +543,7 @@ OpenParlant can install and run OpenClaw-format skills. The skill installer auto
 ### Automatic Conversion
 
 ```bash
-openparlant skill install /path/to/openclaw-skill
+silicrew skill install /path/to/openclaw-skill
 ```
 
 If the directory contains an OpenClaw-style skill (Node.js package), OpenParlant:
@@ -576,10 +576,10 @@ input_schema = { type = "object", properties = { input = { type = "string" } }, 
 Place this alongside the existing `index.js`/`index.ts` and install:
 
 ```bash
-openparlant skill install /path/to/skill-directory
+silicrew skill install /path/to/skill-directory
 ```
 
-Skills imported via `openparlant migrate --from openclaw` are also scanned and reported in the migration report, with instructions for manual reinstallation.
+Skills imported via `silicrew migrate --from openclaw` are also scanned and reported in the migration report, with instructions for manual reinstallation.
 
 ---
 

@@ -1,5 +1,5 @@
 [package]
-name = "openparlant-desktop"
+name = "silicrew-desktop"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,9 +9,9 @@ description = "Native desktop application for the OpenParlant Agent OS (Tauri 2.
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-openparlant-kernel = { path = "../openparlant-kernel" }
-openparlant-api = { path = "../openparlant-api" }
-openparlant-types = { path = "../openparlant-types" }
+silicrew-kernel = { path = "../silicrew-kernel" }
+silicrew-api = { path = "../silicrew-api" }
+silicrew-types = { path = "../silicrew-types" }
 tokio = { workspace = true }
 axum = { workspace = true }
 serde_json = { workspace = true }
@@ -34,5 +34,5 @@ open = "5"
 custom-protocol = ["tauri/custom-protocol"]
 
 [[bin]]
-name = "openparlant-desktop"
+name = "silicrew-desktop"
 path = "src/main.rs"

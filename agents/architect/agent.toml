@@ -1,7 +1,7 @@
 name = "architect"
 version = "0.1.0"
 description = "System architect. Designs software architectures, evaluates trade-offs, creates technical specifications."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 tags = ["architecture", "design", "planning"]
 

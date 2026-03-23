@@ -1,3 +1,9 @@
 self.addEventListener('fetch', (event) => {
-  event.respondWith(fetch(event.request));
+  event.respondWith((async () => {
+    try {
+      return await fetch(event.request);
+    } catch {
+      return Response.error();
+    }
+  })());
 });

@@ -1,8 +1,8 @@
 //! Metering engine — tracks LLM cost and enforces spending quotas.
 
-use openparlant_memory::usage::{ModelUsage, UsageRecord, UsageStore, UsageSummary};
-use openparlant_types::agent::{AgentId, ResourceQuota};
-use openparlant_types::error::{SiliCrewError, SiliCrewResult};
+use silicrew_memory::usage::{ModelUsage, UsageRecord, UsageStore, UsageSummary};
+use silicrew_types::agent::{AgentId, ResourceQuota};
+use silicrew_types::error::{SiliCrewError, SiliCrewResult};
 use std::sync::Arc;
 
 /// The metering engine tracks usage cost and enforces quota limits.
@@ -64,7 +64,7 @@ impl MeteringEngine {
     /// Check global budget limits (across all agents).
     pub fn check_global_budget(
         &self,
-        budget: &openparlant_types::config::BudgetConfig,
+        budget: &silicrew_types::config::BudgetConfig,
     ) -> SiliCrewResult<()> {
         if budget.max_hourly_usd > 0.0 {
             let cost = self.store.query_global_hourly()?;
@@ -100,7 +100,7 @@ impl MeteringEngine {
     }
 
     /// Get budget status — current spend vs limits for all time windows.
-    pub fn budget_status(&self, budget: &openparlant_types::config::BudgetConfig) -> BudgetStatus {
+    pub fn budget_status(&self, budget: &silicrew_types::config::BudgetConfig) -> BudgetStatus {
         let hourly = self.store.query_global_hourly().unwrap_or(0.0);
         let daily = self.store.query_today_cost().unwrap_or(0.0);
         let monthly = self.store.query_global_monthly().unwrap_or(0.0);
@@ -195,7 +195,7 @@ impl MeteringEngine {
     /// Falls back to the default rate ($1/$3 per million) if the model is not
     /// found in the catalog.
     pub fn estimate_cost_with_catalog(
-        catalog: &openparlant_runtime::model_catalog::ModelCatalog,
+        catalog: &silicrew_runtime::model_catalog::ModelCatalog,
         model: &str,
         input_tokens: u64,
         output_tokens: u64,
@@ -511,7 +511,7 @@ fn estimate_cost_rates(model: &str) -> (f64, f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openparlant_memory::MemorySubstrate;
+    use silicrew_memory::MemorySubstrate;
 
     fn setup() -> MeteringEngine {
         let substrate = MemorySubstrate::open_in_memory(0.1).unwrap();
@@ -750,7 +750,7 @@ mod tests {
 
     #[test]
     fn test_estimate_cost_with_catalog() {
-        let catalog = openparlant_runtime::model_catalog::ModelCatalog::new();
+        let catalog = silicrew_runtime::model_catalog::ModelCatalog::new();
         // Sonnet: $3/M input, $15/M output
         let cost = MeteringEngine::estimate_cost_with_catalog(
             &catalog,
@@ -763,7 +763,7 @@ mod tests {
 
     #[test]
     fn test_estimate_cost_with_catalog_alias() {
-        let catalog = openparlant_runtime::model_catalog::ModelCatalog::new();
+        let catalog = silicrew_runtime::model_catalog::ModelCatalog::new();
         // "sonnet" alias should resolve to same pricing
         let cost =
             MeteringEngine::estimate_cost_with_catalog(&catalog, "sonnet", 1_000_000, 1_000_000);
@@ -772,7 +772,7 @@ mod tests {
 
     #[test]
     fn test_estimate_cost_with_catalog_unknown_uses_default() {
-        let catalog = openparlant_runtime::model_catalog::ModelCatalog::new();
+        let catalog = silicrew_runtime::model_catalog::ModelCatalog::new();
         // Unknown model falls back to $1/$3
         let cost = MeteringEngine::estimate_cost_with_catalog(
             &catalog,

@@ -19,10 +19,10 @@ use axum::response::IntoResponse;
 use dashmap::DashMap;
 use futures::stream::SplitSink;
 use futures::{SinkExt, StreamExt};
-use openparlant_runtime::kernel_handle::KernelHandle;
-use openparlant_runtime::llm_driver::StreamEvent;
-use openparlant_runtime::llm_errors;
-use openparlant_types::agent::AgentId;
+use silicrew_runtime::kernel_handle::KernelHandle;
+use silicrew_runtime::llm_driver::StreamEvent;
+use silicrew_runtime::llm_errors;
+use silicrew_types::agent::AgentId;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::net::{IpAddr, SocketAddr};
@@ -439,7 +439,7 @@ async fn handle_text_message(
 
             // Resolve file attachments into image content blocks
             let mut has_images = false;
-            let mut ws_content_blocks: Option<Vec<openparlant_types::message::ContentBlock>> = None;
+            let mut ws_content_blocks: Option<Vec<silicrew_types::message::ContentBlock>> = None;
             if let Some(attachments) = parsed["attachments"].as_array() {
                 let refs: Vec<crate::types::AttachmentRef> = attachments
                     .iter()
@@ -521,7 +521,7 @@ async fn handle_text_message(
                     let stream_task = tokio::spawn(async move {
                         let mut text_buffer = String::new();
                         let mut accumulated_text = String::new();
-                        let mut stream_usage: Option<openparlant_types::message::TokenUsage> = None;
+                        let mut stream_usage: Option<silicrew_types::message::TokenUsage> = None;
                         let mut is_silent = false;
                         let far_future = tokio::time::Instant::now() + Duration::from_secs(86400);
                         let mut flush_deadline = far_future;
@@ -887,7 +887,7 @@ async fn handle_command(
         },
         "context" => match state.kernel.context_report(agent_id) {
             Ok(report) => {
-                let formatted = openparlant_runtime::compactor::format_context_report(&report);
+                let formatted = silicrew_runtime::compactor::format_context_report(&report);
                 serde_json::json!({
                     "type": "command_result",
                     "command": cmd,
@@ -1141,9 +1141,9 @@ fn sanitize_text(s: &str) -> String {
 
 /// Classify a streaming/setup error into a user-friendly message.
 ///
-/// Uses the proper LLM error classifier from `openparlant_runtime::llm_errors`
+/// Uses the proper LLM error classifier from `silicrew_runtime::llm_errors`
 /// for comprehensive 20-provider coverage with actionable advice.
-fn classify_streaming_error(err: &openparlant_kernel::error::KernelError) -> String {
+fn classify_streaming_error(err: &silicrew_kernel::error::KernelError) -> String {
     let inner = format!("{err}");
 
     // Check for agent-specific errors first (not LLM errors)

@@ -1,7 +1,7 @@
 name = "writer"
 version = "0.1.0"
 description = "Content writer. Creates documentation, articles, and technical writing."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 
 [model]

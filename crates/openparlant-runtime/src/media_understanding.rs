@@ -2,7 +2,7 @@
 //!
 //! Auto-cascades through available providers based on configured API keys.
 
-use openparlant_types::media::{
+use silicrew_types::media::{
     MediaAttachment, MediaConfig, MediaSource, MediaType, MediaUnderstanding,
 };
 use std::sync::Arc;
@@ -280,7 +280,7 @@ async fn transcribe_with_parakeet_mlx(
                 _ => "wav",
             };
             let path = std::env::temp_dir().join(format!(
-                "openparlant_parakeet_{}.{}",
+                "silicrew_parakeet_{}.{}",
                 uuid::Uuid::new_v4(),
                 ext
             ));
@@ -392,7 +392,7 @@ fn default_audio_model(provider: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openparlant_types::media::{MediaSource, MAX_IMAGE_BYTES};
+    use silicrew_types::media::{MediaSource, MAX_IMAGE_BYTES};
 
     #[test]
     fn test_engine_creation() {

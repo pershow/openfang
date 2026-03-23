@@ -507,25 +507,25 @@ CanonicalMessage
 建议在 Fork 后新增以下 crate：
 
 ```text
-fork-openparlant/
+fork-silicrew/
 ├── crates/
-│   ├── openparlant-runtime
-│   ├── openparlant-api
-│   ├── openparlant-channels
-│   ├── openparlant-skills
-│   ├── openparlant-kernel
-│   ├── openparlant-types
-│   ├── openparlant-memory
-│   ├── openparlant-session
-│   ├── openparlant-policy
-│   ├── openparlant-journey
-│   ├── openparlant-retriever
-│   ├── openparlant-context
-│   ├── openparlant-inference
-│   ├── openparlant-handoff
-│   ├── openparlant-console
-│   ├── openparlant-webchat
-│   └── openparlant-feishu
+│   ├── silicrew-runtime
+│   ├── silicrew-api
+│   ├── silicrew-channels
+│   ├── silicrew-skills
+│   ├── silicrew-kernel
+│   ├── silicrew-types
+│   ├── silicrew-memory
+│   ├── silicrew-session
+│   ├── silicrew-policy
+│   ├── silicrew-journey
+│   ├── silicrew-retriever
+│   ├── silicrew-context
+│   ├── silicrew-inference
+│   ├── silicrew-handoff
+│   ├── silicrew-console
+│   ├── silicrew-webchat
+│   └── silicrew-feishu
 ├── apps/
 │   ├── server
 │   ├── worker
@@ -537,24 +537,24 @@ fork-openparlant/
 
 ### 11.1 保留为主
 
-- `openparlant-runtime`
-- `openparlant-api`
-- `openparlant-channels`
-- `openparlant-skills`
-- `openparlant-kernel`
-- `openparlant-types`
+- `silicrew-runtime`
+- `silicrew-api`
+- `silicrew-channels`
+- `silicrew-skills`
+- `silicrew-kernel`
+- `silicrew-types`
 
 ### 11.2 部分重做
 
-- `openparlant-memory`：迁移为 PostgreSQL-first
+- `silicrew-memory`：迁移为 PostgreSQL-first
 
 ### 11.3 重点新增
 
-- `openparlant-policy`
-- `openparlant-journey`
-- `openparlant-retriever`
-- `openparlant-context`
-- `openparlant-inference`
+- `silicrew-policy`
+- `silicrew-journey`
+- `silicrew-retriever`
+- `silicrew-context`
+- `silicrew-inference`
 
 ---
 

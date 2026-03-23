@@ -1,13 +1,13 @@
 [package]
-name = "openparlant-journey"
+name = "silicrew-journey"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Journey runtime traits for the OpenParlant control plane"
 
 [dependencies]
-openparlant-memory = { path = "../openparlant-memory" }
-openparlant-types = { path = "../openparlant-types" }
+silicrew-memory = { path = "../silicrew-memory" }
+silicrew-types = { path = "../silicrew-types" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }

@@ -6,7 +6,7 @@ use crate::{
     HandStatus, RequirementType,
 };
 use dashmap::DashMap;
-use openparlant_types::agent::AgentId;
+use silicrew_types::agent::AgentId;
 use serde::Serialize;
 use std::collections::HashMap;
 use tracing::{info, warn};

@@ -1,10 +1,10 @@
 //! WhatsApp Web gateway — embedded Node.js process management.
 //!
-//! Embeds the gateway JS at compile time, extracts it to `~/.openparlant/whatsapp-gateway/`,
+//! Embeds the gateway JS at compile time, extracts it to `~/.silicrew/whatsapp-gateway/`,
 //! runs `npm install` if needed, and spawns `node index.js` as a managed child process
 //! that auto-restarts on crash.
 
-use crate::config::openparlant_home;
+use crate::config::silicrew_home;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{info, warn};
@@ -24,7 +24,7 @@ const RESTART_DELAYS: [u64; 3] = [5, 10, 20];
 
 /// Get the gateway installation directory.
 fn gateway_dir() -> PathBuf {
-    openparlant_home().join("whatsapp-gateway")
+    silicrew_home().join("whatsapp-gateway")
 }
 
 /// Compute a simple hash of content for change detection.
@@ -154,7 +154,7 @@ pub async fn start_whatsapp_gateway(kernel: &Arc<super::kernel::SiliCrewKernel>)
 
     let port = DEFAULT_GATEWAY_PORT;
     let api_listen = &kernel.config.api_listen;
-    let openparlant_url = format!("http://{api_listen}");
+    let silicrew_url = format!("http://{api_listen}");
     let default_agent = wa_config
         .default_agent
         .as_deref()
@@ -184,7 +184,7 @@ pub async fn start_whatsapp_gateway(kernel: &Arc<super::kernel::SiliCrewKernel>)
                 .arg("index.js")
                 .current_dir(&gateway_path)
                 .env("WHATSAPP_GATEWAY_PORT", port.to_string())
-                .env("OPENFANG_URL", &openparlant_url)
+                .env("OPENFANG_URL", &silicrew_url)
                 .env("OPENFANG_DEFAULT_AGENT", &default_agent)
                 .stdout(std::process::Stdio::inherit())
                 .stderr(std::process::Stdio::inherit())
@@ -272,7 +272,7 @@ mod tests {
         assert!(!GATEWAY_INDEX_JS.is_empty());
         assert!(!GATEWAY_PACKAGE_JSON.is_empty());
         assert!(GATEWAY_INDEX_JS.contains("WhatsApp"));
-        assert!(GATEWAY_PACKAGE_JSON.contains("@openparlant/whatsapp-gateway"));
+        assert!(GATEWAY_PACKAGE_JSON.contains("@silicrew/whatsapp-gateway"));
     }
 
     #[test]
@@ -290,19 +290,19 @@ mod tests {
     }
 
     #[test]
-    fn test_gateway_dir_under_openparlant_home() {
+    fn test_gateway_dir_under_silicrew_home() {
         let dir = gateway_dir();
         assert!(dir.ends_with("whatsapp-gateway"));
         assert!(dir
             .parent()
             .unwrap()
             .to_string_lossy()
-            .contains(".openparlant"));
+            .contains(".silicrew"));
     }
 
     #[test]
     fn test_write_if_changed_creates_new_file() {
-        let tmp = std::env::temp_dir().join("openparlant_test_gateway");
+        let tmp = std::env::temp_dir().join("silicrew_test_gateway");
         let _ = std::fs::create_dir_all(&tmp);
         let path = tmp.join("test_write.js");
         let hash_path = path.with_extension("hash");

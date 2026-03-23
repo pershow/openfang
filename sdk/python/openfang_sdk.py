@@ -3,7 +3,7 @@ OpenParlant Python SDK — helper library for writing Python agents.
 
 Usage:
 
-    from openparlant_sdk import Agent
+    from silicrew_sdk import Agent
 
     agent = Agent()
 
@@ -15,7 +15,7 @@ Usage:
 
 Or for simple scripts without the decorator pattern:
 
-    from openparlant_sdk import read_input, respond
+    from silicrew_sdk import read_input, respond
 
     data = read_input()
     result = f"Echo: {data['message']}"
@@ -136,7 +136,7 @@ if __name__ == "__main__":
     print()
     print("Import this module in your agent scripts:")
     print()
-    print("  from openparlant_sdk import Agent")
+    print("  from silicrew_sdk import Agent")
     print()
     print("  agent = Agent()")
     print()

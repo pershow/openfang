@@ -45,7 +45,7 @@ pub struct IrcAdapter {
     nick: String,
     /// SECURITY: Optional server password, zeroized on drop.
     password: Option<Zeroizing<String>>,
-    /// IRC channels to join (e.g., ["#openparlant", "#bots"]).
+    /// IRC channels to join (e.g., ["#silicrew", "#bots"]).
     channels: Vec<String>,
     /// Reserved for future TLS support. Currently only plaintext is implemented.
     #[allow(dead_code)]
@@ -206,7 +206,7 @@ fn parse_privmsg(line: &IrcLine, bot_nick: &str) -> Option<ChannelMessage> {
         sender: ChannelUser {
             platform_id,
             display_name: sender_nick.to_string(),
-            openparlant_user: None,
+            silicrew_user: None,
         },
         content,
         target_agent: None,
@@ -461,9 +461,9 @@ mod tests {
         let adapter = IrcAdapter::new(
             "irc.libera.chat".to_string(),
             6667,
-            "openparlant".to_string(),
+            "silicrew".to_string(),
             None,
-            vec!["#openparlant".to_string()],
+            vec!["#silicrew".to_string()],
             false,
         );
         assert_eq!(adapter.name(), "irc");
@@ -510,10 +510,10 @@ mod tests {
     #[test]
     fn test_parse_irc_line_privmsg() {
         let line =
-            parse_irc_line(":alice!alice@host PRIVMSG #openparlant :Hello everyone!").unwrap();
+            parse_irc_line(":alice!alice@host PRIVMSG #silicrew :Hello everyone!").unwrap();
         assert_eq!(line.prefix.as_deref(), Some("alice!alice@host"));
         assert_eq!(line.command, "PRIVMSG");
-        assert_eq!(line.params, vec!["#openparlant"]);
+        assert_eq!(line.params, vec!["#silicrew"]);
         assert_eq!(line.trailing.as_deref(), Some("Hello everyone!"));
     }
 
@@ -528,9 +528,9 @@ mod tests {
 
     #[test]
     fn test_parse_irc_line_no_trailing() {
-        let line = parse_irc_line(":alice!alice@host JOIN #openparlant").unwrap();
+        let line = parse_irc_line(":alice!alice@host JOIN #silicrew").unwrap();
         assert_eq!(line.command, "JOIN");
-        assert_eq!(line.params, vec!["#openparlant"]);
+        assert_eq!(line.params, vec!["#silicrew"]);
         assert!(line.trailing.is_none());
     }
 
@@ -555,14 +555,14 @@ mod tests {
         let line = IrcLine {
             prefix: Some("alice!alice@host".to_string()),
             command: "PRIVMSG".to_string(),
-            params: vec!["#openparlant".to_string()],
+            params: vec!["#silicrew".to_string()],
             trailing: Some("Hello from IRC!".to_string()),
         };
 
-        let msg = parse_privmsg(&line, "openparlant-bot").unwrap();
+        let msg = parse_privmsg(&line, "silicrew-bot").unwrap();
         assert_eq!(msg.channel, ChannelType::Custom("irc".to_string()));
         assert_eq!(msg.sender.display_name, "alice");
-        assert_eq!(msg.sender.platform_id, "#openparlant");
+        assert_eq!(msg.sender.platform_id, "#silicrew");
         assert!(msg.is_group);
         assert!(matches!(msg.content, ChannelContent::Text(ref t) if t == "Hello from IRC!"));
     }
@@ -572,11 +572,11 @@ mod tests {
         let line = IrcLine {
             prefix: Some("bob!bob@host".to_string()),
             command: "PRIVMSG".to_string(),
-            params: vec!["openparlant-bot".to_string()],
+            params: vec!["silicrew-bot".to_string()],
             trailing: Some("Private message".to_string()),
         };
 
-        let msg = parse_privmsg(&line, "openparlant-bot").unwrap();
+        let msg = parse_privmsg(&line, "silicrew-bot").unwrap();
         assert!(!msg.is_group);
         assert_eq!(msg.sender.platform_id, "bob"); // DM replies go to sender
     }
@@ -584,13 +584,13 @@ mod tests {
     #[test]
     fn test_parse_privmsg_skips_self() {
         let line = IrcLine {
-            prefix: Some("openparlant-bot!bot@host".to_string()),
+            prefix: Some("silicrew-bot!bot@host".to_string()),
             command: "PRIVMSG".to_string(),
-            params: vec!["#openparlant".to_string()],
+            params: vec!["#silicrew".to_string()],
             trailing: Some("My own message".to_string()),
         };
 
-        let msg = parse_privmsg(&line, "openparlant-bot");
+        let msg = parse_privmsg(&line, "silicrew-bot");
         assert!(msg.is_none());
     }
 
@@ -599,11 +599,11 @@ mod tests {
         let line = IrcLine {
             prefix: Some("alice!alice@host".to_string()),
             command: "PRIVMSG".to_string(),
-            params: vec!["#openparlant".to_string()],
+            params: vec!["#silicrew".to_string()],
             trailing: Some("/agent hello-world".to_string()),
         };
 
-        let msg = parse_privmsg(&line, "openparlant-bot").unwrap();
+        let msg = parse_privmsg(&line, "silicrew-bot").unwrap();
         match &msg.content {
             ChannelContent::Command { name, args } => {
                 assert_eq!(name, "agent");
@@ -618,11 +618,11 @@ mod tests {
         let line = IrcLine {
             prefix: Some("alice!alice@host".to_string()),
             command: "PRIVMSG".to_string(),
-            params: vec!["#openparlant".to_string()],
+            params: vec!["#silicrew".to_string()],
             trailing: Some("".to_string()),
         };
 
-        let msg = parse_privmsg(&line, "openparlant-bot");
+        let msg = parse_privmsg(&line, "silicrew-bot");
         assert!(msg.is_none());
     }
 
@@ -631,11 +631,11 @@ mod tests {
         let line = IrcLine {
             prefix: Some("alice!alice@host".to_string()),
             command: "PRIVMSG".to_string(),
-            params: vec!["#openparlant".to_string()],
+            params: vec!["#silicrew".to_string()],
             trailing: None,
         };
 
-        let msg = parse_privmsg(&line, "openparlant-bot");
+        let msg = parse_privmsg(&line, "silicrew-bot");
         assert!(msg.is_none());
     }
 
@@ -644,11 +644,11 @@ mod tests {
         let line = IrcLine {
             prefix: Some("alice!alice@host".to_string()),
             command: "NOTICE".to_string(),
-            params: vec!["#openparlant".to_string()],
+            params: vec!["#silicrew".to_string()],
             trailing: Some("Notice text".to_string()),
         };
 
-        let msg = parse_privmsg(&line, "openparlant-bot");
+        let msg = parse_privmsg(&line, "silicrew-bot");
         assert!(msg.is_none());
     }
 }

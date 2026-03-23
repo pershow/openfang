@@ -119,7 +119,7 @@ function settingsPage() {
       {
         name: 'Bearer Token Authentication', key: 'auth',
         description: 'All non-health endpoints require Authorization: Bearer header. When no API key is configured, all requests are restricted to localhost only.',
-        configHint: 'Set api_key in ~/.openparlant/config.toml for remote access. Empty = localhost only.',
+        configHint: 'Set api_key in ~/.silicrew/config.toml for remote access. Empty = localhost only.',
         valueKey: 'auth'
       }
     ],

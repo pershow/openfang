@@ -4,8 +4,8 @@
 
 use crate::db::{block_on, SharedDb};
 use chrono::Utc;
-use openparlant_types::error::{SiliCrewError, SiliCrewResult};
-use openparlant_types::memory::{
+use silicrew_types::error::{SiliCrewError, SiliCrewResult};
+use silicrew_types::memory::{
     Entity, EntityType, GraphMatch, GraphPattern, Relation, RelationType,
 };
 #[cfg(test)]

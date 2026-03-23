@@ -2,8 +2,8 @@
 
 use crate::types::ChannelType;
 use dashmap::DashMap;
-use openparlant_types::agent::AgentId;
-use openparlant_types::config::{AgentBinding, BroadcastConfig, BroadcastStrategy};
+use silicrew_types::agent::AgentId;
+use silicrew_types::config::{AgentBinding, BroadcastConfig, BroadcastStrategy};
 use std::sync::Mutex;
 use tracing::warn;
 
@@ -26,7 +26,7 @@ pub struct BindingContext {
 ///
 /// Routing priority: bindings (most specific first) > direct routes > user defaults > system default.
 pub struct AgentRouter {
-    /// Default agent per user (keyed by openparlant_user or platform_id).
+    /// Default agent per user (keyed by silicrew_user or platform_id).
     user_defaults: DashMap<String, AgentId>,
     /// Direct routes: (channel_type_key, platform_user_id) -> AgentId.
     direct_routes: DashMap<(String, String), AgentId>,
@@ -406,7 +406,7 @@ mod tests {
         router.register_agent("coder".to_string(), agent_id);
         router.load_bindings(&[AgentBinding {
             agent: "coder".to_string(),
-            match_rule: openparlant_types::config::BindingMatchRule {
+            match_rule: silicrew_types::config::BindingMatchRule {
                 channel: Some("telegram".to_string()),
                 ..Default::default()
             },
@@ -428,7 +428,7 @@ mod tests {
         router.register_agent("support".to_string(), agent_id);
         router.load_bindings(&[AgentBinding {
             agent: "support".to_string(),
-            match_rule: openparlant_types::config::BindingMatchRule {
+            match_rule: silicrew_types::config::BindingMatchRule {
                 peer_id: Some("vip_user".to_string()),
                 ..Default::default()
             },
@@ -448,7 +448,7 @@ mod tests {
         router.register_agent("admin-bot".to_string(), agent_id);
         router.load_bindings(&[AgentBinding {
             agent: "admin-bot".to_string(),
-            match_rule: openparlant_types::config::BindingMatchRule {
+            match_rule: silicrew_types::config::BindingMatchRule {
                 guild_id: Some("guild_123".to_string()),
                 roles: vec!["admin".to_string()],
                 ..Default::default()
@@ -489,14 +489,14 @@ mod tests {
         router.load_bindings(&[
             AgentBinding {
                 agent: "general".to_string(),
-                match_rule: openparlant_types::config::BindingMatchRule {
+                match_rule: silicrew_types::config::BindingMatchRule {
                     channel: Some("discord".to_string()),
                     ..Default::default()
                 },
             },
             AgentBinding {
                 agent: "specific".to_string(),
-                match_rule: openparlant_types::config::BindingMatchRule {
+                match_rule: silicrew_types::config::BindingMatchRule {
                     channel: Some("discord".to_string()),
                     peer_id: Some("user1".to_string()),
                     guild_id: Some("guild_1".to_string()),
@@ -587,7 +587,7 @@ mod tests {
         // Don't register the agent — binding should match but resolve_binding returns None
         router.load_bindings(&[AgentBinding {
             agent: "ghost-agent".to_string(),
-            match_rule: openparlant_types::config::BindingMatchRule {
+            match_rule: silicrew_types::config::BindingMatchRule {
                 channel: Some("telegram".to_string()),
                 ..Default::default()
             },
@@ -607,7 +607,7 @@ mod tests {
 
         router.add_binding(AgentBinding {
             agent: "test".to_string(),
-            match_rule: openparlant_types::config::BindingMatchRule {
+            match_rule: silicrew_types::config::BindingMatchRule {
                 channel: Some("slack".to_string()),
                 ..Default::default()
             },
@@ -621,7 +621,7 @@ mod tests {
 
     #[test]
     fn test_binding_specificity_scores() {
-        use openparlant_types::config::BindingMatchRule;
+        use silicrew_types::config::BindingMatchRule;
 
         let empty = BindingMatchRule::default();
         assert_eq!(empty.specificity(), 0);

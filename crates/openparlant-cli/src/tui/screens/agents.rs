@@ -109,7 +109,7 @@ pub struct DaemonAgent {
 
 #[derive(Clone)]
 pub struct InProcessAgent {
-    pub id: openparlant_types::agent::AgentId,
+    pub id: silicrew_types::agent::AgentId,
     pub name: String,
     pub state: String,
     pub provider: String,
@@ -231,7 +231,7 @@ impl AgentSelectState {
     }
 
     /// Load in-process agents from the kernel.
-    pub fn load_inprocess_agents(&mut self, kernel: &openparlant_kernel::SiliCrewKernel) {
+    pub fn load_inprocess_agents(&mut self, kernel: &silicrew_kernel::SiliCrewKernel) {
         self.inprocess_agents.clear();
         for entry in kernel.registry.list() {
             self.inprocess_agents.push(InProcessAgent {
@@ -1526,7 +1526,7 @@ fn truncate(s: &str, max: usize) -> String {
     } else {
         format!(
             "{}\u{2026}",
-            openparlant_types::truncate_str(s, max.saturating_sub(1))
+            silicrew_types::truncate_str(s, max.saturating_sub(1))
         )
     }
 }

@@ -1,7 +1,7 @@
 name = "translator"
 version = "0.1.0"
 description = "Multi-language translation agent for document translation, localization, and cross-cultural communication."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 tags = ["translation", "languages", "localization", "multilingual", "communication", "i18n"]
 

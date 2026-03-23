@@ -324,7 +324,7 @@ fn parse_bluesky_notification(
         sender: ChannelUser {
             platform_id: author_did.to_string(),
             display_name,
-            openparlant_user: None,
+            silicrew_user: None,
         },
         content,
         target_agent: None,

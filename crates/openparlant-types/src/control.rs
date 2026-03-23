@@ -744,7 +744,7 @@ pub struct ToolGateDecision {
 
 /// Minimal LLM call abstraction for control-plane semantic matching.
 ///
-/// Deliberately thin — the concrete implementation in `openparlant-api` bridges
+/// Deliberately thin — the concrete implementation in `silicrew-api` bridges
 /// this to the existing `LlmDriver` inside the kernel.
 #[async_trait]
 pub trait ControlLlmCaller: Send + Sync {

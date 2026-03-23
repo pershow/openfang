@@ -7,7 +7,7 @@
 //! They receive `&GuestState` (not `&mut`) and return JSON values.
 
 use crate::sandbox::GuestState;
-use openparlant_types::capability::{capability_matches, Capability};
+use silicrew_types::capability::{capability_matches, Capability};
 use serde_json::json;
 use std::net::ToSocketAddrs;
 use std::path::{Component, Path};

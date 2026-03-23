@@ -1,7 +1,7 @@
 use crate::store::{ControlStore, PlazaCommentRecord, PlazaPostRecord};
 use chrono::{DateTime, Utc};
-use openparlant_memory::db::{block_on, SharedDb};
-use openparlant_types::error::{SiliCrewError, SiliCrewResult};
+use silicrew_memory::db::{block_on, SharedDb};
+use silicrew_types::error::{SiliCrewError, SiliCrewResult};
 use rusqlite::params;
 use sqlx::Row;
 use std::collections::HashMap;

@@ -1,14 +1,14 @@
 {
-  "name": "@openparlant/sdk",
+  "name": "@silicrew/sdk",
   "version": "0.1.0",
   "description": "Official JavaScript/TypeScript client for the OpenParlant Agent OS REST API",
   "main": "index.js",
   "types": "index.d.ts",
-  "keywords": ["openparlant", "agent", "ai", "llm", "sdk"],
+  "keywords": ["silicrew", "agent", "ai", "llm", "sdk"],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/openparlant/openparlant"
+    "url": "https://github.com/silicrew/silicrew"
   },
   "engines": {
     "node": ">=18.0.0"

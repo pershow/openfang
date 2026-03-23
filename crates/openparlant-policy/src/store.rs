@@ -1,9 +1,9 @@
-use openparlant_memory::db::{block_on, SharedDb};
-use openparlant_types::control::{
+use silicrew_memory::db::{block_on, SharedDb};
+use silicrew_types::control::{
     GuidelineDefinition, GuidelineId, ObservationDefinition, ObservationId, ScopeId,
     ToolExposurePolicy,
 };
-use openparlant_types::error::{SiliCrewError, SiliCrewResult};
+use silicrew_types::error::{SiliCrewError, SiliCrewResult};
 use rusqlite::params;
 use sqlx::Row;
 use std::sync::Arc;
@@ -790,7 +790,7 @@ impl PolicyStore {
                     let (pid, sid, tool, skill, obs, js, gr, am, en) =
                         row.map_err(|e| SiliCrewError::Memory(e.to_string()))?;
                     let approval_mode = am
-                        .parse::<openparlant_types::control::ApprovalMode>()
+                        .parse::<silicrew_types::control::ApprovalMode>()
                         .unwrap_or_default();
                     result.push(ToolExposurePolicy {
                         policy_id: pid,
@@ -875,7 +875,7 @@ impl PolicyStore {
                 match row {
                     Ok((pid, sid, tool, skill, obs, js, gr, am, en)) => {
                         let approval_mode = am
-                            .parse::<openparlant_types::control::ApprovalMode>()
+                            .parse::<silicrew_types::control::ApprovalMode>()
                             .unwrap_or_default();
                         Ok(Some(ToolExposurePolicy {
                             policy_id: pid,
@@ -930,6 +930,36 @@ impl PolicyStore {
             }
         }
     }
+
+    /// Delete a single tool-exposure policy by id.
+    pub fn delete_tool_exposure_policy(&self, policy_id: &str) -> SiliCrewResult<bool> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                let rows = conn
+                    .execute(
+                        "DELETE FROM tool_exposure_policies WHERE policy_id = ?1",
+                        params![policy_id],
+                    )
+                    .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
+                Ok(rows > 0)
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let policy_id = policy_id.to_string();
+                let rows = block_on(async move {
+                    sqlx::query("DELETE FROM tool_exposure_policies WHERE policy_id = $1")
+                        .bind(policy_id)
+                        .execute(&*pool)
+                        .await
+                })
+                .map_err(|e| SiliCrewError::Memory(e.to_string()))?;
+                Ok(rows.rows_affected() > 0)
+            }
+        }
+    }
 }
 
 fn observation_from_row(
@@ -977,7 +1007,7 @@ fn memory_parse_error<E: std::fmt::Display>(error: E) -> SiliCrewError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openparlant_memory::migration::run_migrations;
+    use silicrew_memory::migration::run_migrations;
     use rusqlite::Connection;
     use serde_json::json;
     use std::sync::{Arc, Mutex};
@@ -1183,5 +1213,29 @@ mod tests {
             .list_tool_exposure_policies(&scope_id)
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn deleting_tool_policy_removes_record() {
+        let store = test_store();
+        let scope_id = ScopeId::from("default");
+        let policy = ToolExposurePolicy {
+            policy_id: "policy-delete".to_string(),
+            scope_id: scope_id.clone(),
+            tool_name: "browser_navigate".to_string(),
+            skill_ref: None,
+            observation_ref: None,
+            journey_state_ref: None,
+            guideline_ref: None,
+            approval_mode: silicrew_types::control::ApprovalMode::None,
+            enabled: true,
+        };
+
+        store.upsert_tool_exposure_policy(&policy).unwrap();
+        assert!(store.delete_tool_exposure_policy("policy-delete").unwrap());
+        assert!(store
+            .get_tool_exposure_policy("policy-delete")
+            .unwrap()
+            .is_none());
     }
 }

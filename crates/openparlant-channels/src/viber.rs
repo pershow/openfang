@@ -183,7 +183,7 @@ impl ViberAdapter {
                 "receiver": receiver,
                 "min_api_version": 1,
                 "sender": sender,
-                "tracking_data": "openparlant",
+                "tracking_data": "silicrew",
                 "type": "text",
                 "text": chunk,
             });
@@ -286,7 +286,7 @@ fn parse_viber_event(event: &serde_json::Value) -> Option<ChannelMessage> {
         sender: ChannelUser {
             platform_id: sender_id,
             display_name: sender_name,
-            openparlant_user: None,
+            silicrew_user: None,
         },
         content,
         target_agent: None,

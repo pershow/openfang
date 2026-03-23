@@ -1,8 +1,8 @@
 //! Event bus — pub/sub with pattern matching and history ring buffer.
 
 use dashmap::DashMap;
-use openparlant_types::agent::AgentId;
-use openparlant_types::event::{Event, EventTarget};
+use silicrew_types::agent::AgentId;
+use silicrew_types::event::{Event, EventTarget};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
@@ -107,7 +107,7 @@ impl Default for EventBus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openparlant_types::event::{EventPayload, SystemEvent};
+    use silicrew_types::event::{EventPayload, SystemEvent};
 
     #[tokio::test]
     async fn test_publish_and_history() {

@@ -1,6 +1,6 @@
 //! Interactive launcher — lightweight Ratatui one-shot menu.
 //!
-//! Shown when `openparlant` is run with no subcommand in a TTY.
+//! Shown when `silicrew` is run with no subcommand in a TTY.
 //! Full-width left-aligned layout, adapts for first-time vs returning users.
 
 use ratatui::crossterm::event::{self, Event as CtEvent, KeyCode, KeyEventKind};
@@ -43,7 +43,7 @@ fn is_first_run() -> bool {
         std::path::PathBuf::from(h)
     } else {
         match dirs::home_dir() {
-            Some(h) => h.join(".openparlant"),
+            Some(h) => h.join(".silicrew"),
             None => return true,
         }
     };
@@ -549,9 +549,9 @@ pub fn launch_desktop_app() {
         let dir = exe.as_ref().and_then(|e| e.parent());
 
         #[cfg(windows)]
-        let name = "openparlant-desktop.exe";
+        let name = "silicrew-desktop.exe";
         #[cfg(not(windows))]
-        let name = "openparlant-desktop";
+        let name = "silicrew-desktop";
 
         // Check sibling of current exe first
         let sibling = dir.map(|d| d.join(name));
@@ -576,7 +576,7 @@ pub fn launch_desktop_app() {
                 Err(e) => {
                     ui::error_with_fix(
                         &format!("Failed to launch desktop app: {e}"),
-                        "Build it: cargo build -p openparlant-desktop",
+                        "Build it: cargo build -p silicrew-desktop",
                     );
                 }
             }
@@ -584,7 +584,7 @@ pub fn launch_desktop_app() {
         _ => {
             ui::error_with_fix(
                 "Desktop app not found",
-                "Build it: cargo build -p openparlant-desktop",
+                "Build it: cargo build -p silicrew-desktop",
             );
         }
     }

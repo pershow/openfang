@@ -1,7 +1,7 @@
 name = "home-automation"
 version = "0.1.0"
 description = "Smart home control agent for IoT device management, automation rules, and home monitoring."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 tags = ["smart-home", "iot", "automation", "devices", "monitoring", "home"]
 

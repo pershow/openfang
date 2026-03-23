@@ -3,17 +3,17 @@
 //! Measures throughput under concurrent access: agent spawning, API endpoint
 //! latency, session management, and memory usage.
 //!
-//! Run: cargo test -p openparlant-api --test load_test -- --nocapture
+//! Run: cargo test -p silicrew-api --test load_test -- --nocapture
 
 use axum::Router;
-use openparlant_api::middleware;
-use openparlant_api::routes::{self, AppState};
-use openparlant_control::{ControlStore, DefaultTurnControlCoordinator};
-use openparlant_journey::{JourneyStore, StoreJourneyRuntime};
-use openparlant_kernel::SiliCrewKernel;
-use openparlant_memory::migration::run_migrations;
-use openparlant_policy::{PolicyStore, StoreObservationMatcher, StorePolicyResolver};
-use openparlant_types::config::{DefaultModelConfig, KernelConfig};
+use silicrew_api::middleware;
+use silicrew_api::routes::{self, AppState};
+use silicrew_control::{ControlStore, DefaultTurnControlCoordinator};
+use silicrew_journey::{JourneyStore, StoreJourneyRuntime};
+use silicrew_kernel::SiliCrewKernel;
+use silicrew_memory::migration::run_migrations;
+use silicrew_policy::{PolicyStore, StoreObservationMatcher, StorePolicyResolver};
+use silicrew_types::config::{DefaultModelConfig, KernelConfig};
 use rusqlite::Connection;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -64,7 +64,7 @@ async fn start_test_server() -> TestServer {
         channels_config: tokio::sync::RwLock::new(Default::default()),
         shutdown_notify: Arc::new(tokio::sync::Notify::new()),
         clawhub_cache: dashmap::DashMap::new(),
-        provider_probe_cache: openparlant_runtime::provider_health::ProbeCache::new(),
+        provider_probe_cache: silicrew_runtime::provider_health::ProbeCache::new(),
         control_coordinator: {
             let c2 = Connection::open_in_memory().expect("test coordinator db");
             run_migrations(&c2).ok();
@@ -73,7 +73,7 @@ async fn start_test_server() -> TestServer {
                 StoreObservationMatcher::new(c2.clone()),
                 StorePolicyResolver::new(c2.clone()),
                 StoreJourneyRuntime::new(c2.clone()),
-                openparlant_context::NoopKnowledgeCompiler,
+                silicrew_context::NoopKnowledgeCompiler,
             ))
         },
         control_store: {
@@ -605,7 +605,7 @@ async fn load_metrics_sustained() {
             .unwrap();
         assert_eq!(res.status().as_u16(), 200);
         let body = res.text().await.unwrap();
-        assert!(body.contains("openparlant_agents_active"));
+        assert!(body.contains("silicrew_agents_active"));
     }
 
     let elapsed = start.elapsed();

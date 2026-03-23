@@ -122,7 +122,7 @@ function toolIcon(toolName) {
 // Alpine.js global store
 document.addEventListener('alpine:init', function() {
   // Restore saved API key on load
-  var savedKey = localStorage.getItem('openparlant-api-key');
+  var savedKey = localStorage.getItem('silicrew-api-key');
   if (savedKey) SiliCrewAPI.setAuthToken(savedKey);
 
   Alpine.store('app', {
@@ -137,7 +137,7 @@ document.addEventListener('alpine:init', function() {
     pendingApprovalCount: 0,
     lastPendingApprovalSignature: '',
     pendingAgent: null,
-    focusMode: localStorage.getItem('openparlant-focus') === 'true',
+    focusMode: localStorage.getItem('silicrew-focus') === 'true',
     showOnboarding: false,
     showAuthPrompt: false,
     authMode: 'apikey',
@@ -145,7 +145,7 @@ document.addEventListener('alpine:init', function() {
 
     toggleFocusMode() {
       this.focusMode = !this.focusMode;
-      localStorage.setItem('openparlant-focus', this.focusMode);
+      localStorage.setItem('silicrew-focus', this.focusMode);
     },
 
     async refreshAgents() {
@@ -189,7 +189,7 @@ document.addEventListener('alpine:init', function() {
     },
 
     async checkOnboarding() {
-      if (localStorage.getItem('openparlant-onboarded')) return;
+      if (localStorage.getItem('silicrew-onboarded')) return;
       try {
         var config = await SiliCrewAPI.get('/api/config');
         var apiKey = config && config.api_key;
@@ -205,7 +205,7 @@ document.addEventListener('alpine:init', function() {
 
     dismissOnboarding() {
       this.showOnboarding = false;
-      localStorage.setItem('openparlant-onboarded', 'true');
+      localStorage.setItem('silicrew-onboarded', 'true');
     },
 
     async checkAuth() {
@@ -235,10 +235,10 @@ document.addEventListener('alpine:init', function() {
         this.showAuthPrompt = false;
       } catch(e) {
         if (e.message && (e.message.indexOf('Not authorized') >= 0 || e.message.indexOf('401') >= 0 || e.message.indexOf('Missing Authorization') >= 0 || e.message.indexOf('Unauthorized') >= 0)) {
-          var saved = localStorage.getItem('openparlant-api-key');
+          var saved = localStorage.getItem('silicrew-api-key');
           if (saved) {
             SiliCrewAPI.setAuthToken('');
-            localStorage.removeItem('openparlant-api-key');
+            localStorage.removeItem('silicrew-api-key');
           }
           this.showAuthPrompt = true;
         }
@@ -248,7 +248,7 @@ document.addEventListener('alpine:init', function() {
     submitApiKey(key) {
       if (!key || !key.trim()) return;
       SiliCrewAPI.setAuthToken(key.trim());
-      localStorage.setItem('openparlant-api-key', key.trim());
+      localStorage.setItem('silicrew-api-key', key.trim());
       this.showAuthPrompt = false;
       this.refreshAgents();
     },
@@ -278,7 +278,7 @@ document.addEventListener('alpine:init', function() {
 
     clearApiKey() {
       SiliCrewAPI.setAuthToken('');
-      localStorage.removeItem('openparlant-api-key');
+      localStorage.removeItem('silicrew-api-key');
     }
   });
 });
@@ -287,13 +287,13 @@ document.addEventListener('alpine:init', function() {
 function app() {
   return {
     page: 'agents',
-    themeMode: localStorage.getItem('openparlant-theme-mode') || 'system',
+    themeMode: localStorage.getItem('silicrew-theme-mode') || 'system',
     theme: (() => {
-      var mode = localStorage.getItem('openparlant-theme-mode') || 'system';
+      var mode = localStorage.getItem('silicrew-theme-mode') || 'system';
       if (mode === 'system') return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       return mode;
     })(),
-    sidebarCollapsed: localStorage.getItem('openparlant-sidebar') === 'collapsed',
+    sidebarCollapsed: localStorage.getItem('silicrew-sidebar') === 'collapsed',
     mobileMenuOpen: false,
     connected: false,
     wsConnected: false,
@@ -390,7 +390,7 @@ function app() {
 
     setTheme(mode) {
       this.themeMode = mode;
-      localStorage.setItem('openparlant-theme-mode', mode);
+      localStorage.setItem('silicrew-theme-mode', mode);
       if (mode === 'system') {
         this.theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       } else {
@@ -406,7 +406,7 @@ function app() {
 
     toggleSidebar() {
       this.sidebarCollapsed = !this.sidebarCollapsed;
-      localStorage.setItem('openparlant-sidebar', this.sidebarCollapsed ? 'collapsed' : 'expanded');
+      localStorage.setItem('silicrew-sidebar', this.sidebarCollapsed ? 'collapsed' : 'expanded');
     },
 
     async pollStatus() {

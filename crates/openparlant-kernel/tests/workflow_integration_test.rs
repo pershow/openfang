@@ -6,12 +6,12 @@
 //! LLM tests require GROQ_API_KEY. Non-LLM tests verify the kernel-level
 //! workflow wiring without making real API calls.
 
-use openparlant_kernel::workflow::{
+use silicrew_kernel::workflow::{
     ErrorMode, StepAgent, StepMode, Workflow, WorkflowId, WorkflowStep,
 };
-use openparlant_kernel::SiliCrewKernel;
-use openparlant_types::agent::AgentManifest;
-use openparlant_types::config::{DefaultModelConfig, KernelConfig};
+use silicrew_kernel::SiliCrewKernel;
+use silicrew_types::agent::AgentManifest;
+use silicrew_types::config::{DefaultModelConfig, KernelConfig};
 use std::sync::Arc;
 
 fn test_config(provider: &str, model: &str, api_key_env: &str) -> KernelConfig {
@@ -33,7 +33,7 @@ fn spawn_test_agent(
     kernel: &SiliCrewKernel,
     name: &str,
     system_prompt: &str,
-) -> openparlant_types::agent::AgentId {
+) -> silicrew_types::agent::AgentId {
     let manifest_str = format!(
         r#"
 name = "{name}"
@@ -231,7 +231,7 @@ memory_write = ["self.*"]
 /// Test trigger registration and listing at kernel level.
 #[tokio::test]
 async fn test_trigger_registration_with_kernel() {
-    use openparlant_kernel::triggers::TriggerPattern;
+    use silicrew_kernel::triggers::TriggerPattern;
 
     let config = test_config("ollama", "test-model", "OLLAMA_API_KEY");
     let kernel = SiliCrewKernel::boot_with_config(config).expect("Kernel should boot");
@@ -384,7 +384,7 @@ async fn test_workflow_e2e_with_groq() {
     let run = kernel.workflows.get_run(run_id).await.unwrap();
     assert!(matches!(
         run.state,
-        openparlant_kernel::workflow::WorkflowRunState::Completed
+        silicrew_kernel::workflow::WorkflowRunState::Completed
     ));
     assert_eq!(run.step_results.len(), 2);
     assert_eq!(run.step_results[0].step_name, "analyze");

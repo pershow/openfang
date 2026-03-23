@@ -6,7 +6,7 @@
 //!
 //! All MCP tools are namespaced with `mcp_{server}_{tool}` to prevent collisions.
 
-use openparlant_types::tool::ToolDefinition;
+use silicrew_types::tool::ToolDefinition;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::process::Stdio;
@@ -165,7 +165,7 @@ impl McpConnection {
             "protocolVersion": "2024-11-05",
             "capabilities": {},
             "clientInfo": {
-                "name": "openparlant",
+                "name": "silicrew",
                 "version": env!("CARGO_PKG_VERSION")
             }
         });
@@ -696,7 +696,7 @@ mod tests {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
                 "clientInfo": {
-                    "name": "openparlant",
+                    "name": "silicrew",
                     "version": "0.1.0"
                 }
             })),
@@ -704,7 +704,7 @@ mod tests {
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("initialize"));
         assert!(json.contains("protocolVersion"));
-        assert!(json.contains("openparlant"));
+        assert!(json.contains("silicrew"));
     }
 
     #[test]

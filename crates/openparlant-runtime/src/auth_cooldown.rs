@@ -404,7 +404,7 @@ impl ProviderCooldown {
     pub fn select_profile(
         &self,
         provider: &str,
-        profiles: &[openparlant_types::config::AuthProfile],
+        profiles: &[silicrew_types::config::AuthProfile],
     ) -> Option<(String, String)> {
         if profiles.is_empty() {
             return None;

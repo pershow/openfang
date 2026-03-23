@@ -1,7 +1,7 @@
 name = "analyst"
 version = "0.1.0"
 description = "Data analyst. Processes data, generates insights, creates reports."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 
 [model]

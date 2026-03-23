@@ -3,65 +3,65 @@
 //! Implements `ChannelBridgeHandle` on `SiliCrewKernel` and provides the
 //! `start_channel_bridge()` entry point called by the daemon.
 
-use openparlant_channels::bridge::{BridgeManager, ChannelBridgeHandle};
-use openparlant_channels::discord::DiscordAdapter;
-use openparlant_channels::email::EmailAdapter;
-use openparlant_channels::google_chat::GoogleChatAdapter;
-use openparlant_channels::irc::IrcAdapter;
-use openparlant_channels::matrix::MatrixAdapter;
-use openparlant_channels::mattermost::MattermostAdapter;
-use openparlant_channels::rocketchat::RocketChatAdapter;
-use openparlant_channels::router::AgentRouter;
-use openparlant_channels::signal::SignalAdapter;
-use openparlant_channels::slack::SlackAdapter;
-use openparlant_channels::teams::TeamsAdapter;
-use openparlant_channels::telegram::TelegramAdapter;
-use openparlant_channels::twitch::TwitchAdapter;
-use openparlant_channels::types::ChannelAdapter;
-use openparlant_channels::whatsapp::WhatsAppAdapter;
-use openparlant_channels::xmpp::XmppAdapter;
-use openparlant_channels::zulip::ZulipAdapter;
+use silicrew_channels::bridge::{BridgeManager, ChannelBridgeHandle};
+use silicrew_channels::discord::DiscordAdapter;
+use silicrew_channels::email::EmailAdapter;
+use silicrew_channels::google_chat::GoogleChatAdapter;
+use silicrew_channels::irc::IrcAdapter;
+use silicrew_channels::matrix::MatrixAdapter;
+use silicrew_channels::mattermost::MattermostAdapter;
+use silicrew_channels::rocketchat::RocketChatAdapter;
+use silicrew_channels::router::AgentRouter;
+use silicrew_channels::signal::SignalAdapter;
+use silicrew_channels::slack::SlackAdapter;
+use silicrew_channels::teams::TeamsAdapter;
+use silicrew_channels::telegram::TelegramAdapter;
+use silicrew_channels::twitch::TwitchAdapter;
+use silicrew_channels::types::ChannelAdapter;
+use silicrew_channels::whatsapp::WhatsAppAdapter;
+use silicrew_channels::xmpp::XmppAdapter;
+use silicrew_channels::zulip::ZulipAdapter;
 // Wave 3
-use openparlant_channels::bluesky::BlueskyAdapter;
-use openparlant_channels::feishu::FeishuAdapter;
-use openparlant_channels::line::LineAdapter;
-use openparlant_channels::mastodon::MastodonAdapter;
-use openparlant_channels::messenger::MessengerAdapter;
-use openparlant_channels::reddit::RedditAdapter;
-use openparlant_channels::revolt::RevoltAdapter;
-use openparlant_channels::viber::ViberAdapter;
+use silicrew_channels::bluesky::BlueskyAdapter;
+use silicrew_channels::feishu::FeishuAdapter;
+use silicrew_channels::line::LineAdapter;
+use silicrew_channels::mastodon::MastodonAdapter;
+use silicrew_channels::messenger::MessengerAdapter;
+use silicrew_channels::reddit::RedditAdapter;
+use silicrew_channels::revolt::RevoltAdapter;
+use silicrew_channels::viber::ViberAdapter;
 // Wave 4
-use openparlant_channels::flock::FlockAdapter;
-use openparlant_channels::guilded::GuildedAdapter;
-use openparlant_channels::keybase::KeybaseAdapter;
-use openparlant_channels::nextcloud::NextcloudAdapter;
-use openparlant_channels::nostr::NostrAdapter;
-use openparlant_channels::pumble::PumbleAdapter;
-use openparlant_channels::threema::ThreemaAdapter;
-use openparlant_channels::twist::TwistAdapter;
-use openparlant_channels::webex::WebexAdapter;
+use silicrew_channels::flock::FlockAdapter;
+use silicrew_channels::guilded::GuildedAdapter;
+use silicrew_channels::keybase::KeybaseAdapter;
+use silicrew_channels::nextcloud::NextcloudAdapter;
+use silicrew_channels::nostr::NostrAdapter;
+use silicrew_channels::pumble::PumbleAdapter;
+use silicrew_channels::threema::ThreemaAdapter;
+use silicrew_channels::twist::TwistAdapter;
+use silicrew_channels::webex::WebexAdapter;
 // Wave 5
 use async_trait::async_trait;
-use openparlant_channels::dingtalk::DingTalkAdapter;
-use openparlant_channels::dingtalk_stream::DingTalkStreamAdapter;
-use openparlant_channels::discourse::DiscourseAdapter;
-use openparlant_channels::gitter::GitterAdapter;
-use openparlant_channels::gotify::GotifyAdapter;
-use openparlant_channels::linkedin::LinkedInAdapter;
-use openparlant_channels::mumble::MumbleAdapter;
-use openparlant_channels::ntfy::NtfyAdapter;
-use openparlant_channels::webhook::WebhookAdapter;
-use openparlant_channels::wecom::WeComAdapter;
-use openparlant_control::ControlStore;
-use openparlant_kernel::SiliCrewKernel;
-use openparlant_types::agent::AgentId;
-use openparlant_types::config::FeishuMode;
-use openparlant_types::control::{ScopeId, SessionBinding};
+use silicrew_channels::dingtalk::DingTalkAdapter;
+use silicrew_channels::dingtalk_stream::DingTalkStreamAdapter;
+use silicrew_channels::discourse::DiscourseAdapter;
+use silicrew_channels::gitter::GitterAdapter;
+use silicrew_channels::gotify::GotifyAdapter;
+use silicrew_channels::linkedin::LinkedInAdapter;
+use silicrew_channels::mumble::MumbleAdapter;
+use silicrew_channels::ntfy::NtfyAdapter;
+use silicrew_channels::webhook::WebhookAdapter;
+use silicrew_channels::wecom::WeComAdapter;
+use silicrew_control::ControlStore;
+use silicrew_kernel::SiliCrewKernel;
+use silicrew_types::agent::AgentId;
+use silicrew_types::config::FeishuMode;
+use silicrew_types::control::{ScopeId, SessionBinding};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
 
-use openparlant_runtime::str_utils::safe_truncate_str;
+use silicrew_runtime::str_utils::safe_truncate_str;
 
 /// Wraps `SiliCrewKernel` to implement `ChannelBridgeHandle`.
 pub struct KernelBridgeAdapter {
@@ -91,13 +91,13 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
     async fn send_message_with_blocks(
         &self,
         agent_id: AgentId,
-        blocks: Vec<openparlant_types::message::ContentBlock>,
+        blocks: Vec<silicrew_types::message::ContentBlock>,
     ) -> Result<String, String> {
         // Extract text for the message parameter (used for memory recall / logging)
         let text: String = blocks
             .iter()
             .filter_map(|b| match b {
-                openparlant_types::message::ContentBlock::Text { text, .. } => Some(text.as_str()),
+                silicrew_types::message::ContentBlock::Text { text, .. } => Some(text.as_str()),
                 _ => None,
             })
             .collect::<Vec<_>>()
@@ -215,7 +215,7 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
     }
 
     async fn spawn_agent_by_name(&self, manifest_name: &str) -> Result<AgentId, String> {
-        // Look for manifest at ~/.openparlant/agents/{name}/agent.toml
+        // Look for manifest at ~/.silicrew/agents/{name}/agent.toml
         let manifest_path = self
             .kernel
             .config
@@ -231,7 +231,7 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
         let contents = std::fs::read_to_string(&manifest_path)
             .map_err(|e| format!("Failed to read manifest: {e}"))?;
 
-        let manifest: openparlant_types::agent::AgentManifest =
+        let manifest: silicrew_types::agent::AgentManifest =
             toml::from_str(&contents).map_err(|e| format!("Invalid manifest TOML: {e}"))?;
 
         let agent_id = self
@@ -278,7 +278,7 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
         // Group by provider
         let mut by_provider: std::collections::HashMap<
             &str,
-            Vec<&openparlant_types::model_catalog::ModelCatalogEntry>,
+            Vec<&silicrew_types::model_catalog::ModelCatalogEntry>,
         > = std::collections::HashMap::new();
         for m in &available {
             by_provider.entry(m.provider.as_str()).or_default().push(m);
@@ -315,9 +315,9 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
         let mut msg = "Providers:\n".to_string();
         for p in catalog.list_providers() {
             let status = match p.auth_status {
-                openparlant_types::model_catalog::AuthStatus::Configured => "configured",
-                openparlant_types::model_catalog::AuthStatus::Missing => "not configured",
-                openparlant_types::model_catalog::AuthStatus::NotRequired => {
+                silicrew_types::model_catalog::AuthStatus::Configured => "configured",
+                silicrew_types::model_catalog::AuthStatus::Missing => "not configured",
+                silicrew_types::model_catalog::AuthStatus::NotRequired => {
                     "local (no key needed)"
                 }
             };
@@ -337,7 +337,7 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
             .unwrap_or_else(|e| e.into_inner());
         let skills = skills.list();
         if skills.is_empty() {
-            return "No skills installed. Place skills in ~/.openparlant/skills/ or install from the marketplace.".to_string();
+            return "No skills installed. Place skills in ~/.silicrew/skills/ or install from the marketplace.".to_string();
         }
         let mut msg = format!("Installed skills ({}):\n", skills.len());
         for skill in &skills {
@@ -433,12 +433,12 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
             .execute_run(
                 run_id,
                 |step_agent| match step_agent {
-                    openparlant_kernel::workflow::StepAgent::ById { id } => {
+                    silicrew_kernel::workflow::StepAgent::ById { id } => {
                         let aid: AgentId = id.parse().ok()?;
                         let entry = registry_ref.get(aid)?;
                         Some((aid, entry.name.clone()))
                     }
-                    openparlant_kernel::workflow::StepAgent::ByName { name } => {
+                    silicrew_kernel::workflow::StepAgent::ByName { name } => {
                         let entry = registry_ref.find_by_name(name)?;
                         Some((entry.id, entry.name.clone()))
                     }
@@ -563,11 +563,11 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
             let id_str = job.id.0.to_string();
             let id_short = safe_truncate_str(&id_str, 8);
             let sched = match &job.schedule {
-                openparlant_types::scheduler::CronSchedule::Cron { expr, .. } => expr.clone(),
-                openparlant_types::scheduler::CronSchedule::Every { every_secs } => {
+                silicrew_types::scheduler::CronSchedule::Cron { expr, .. } => expr.clone(),
+                silicrew_types::scheduler::CronSchedule::Every { every_secs } => {
                     format!("every {every_secs}s")
                 }
-                openparlant_types::scheduler::CronSchedule::At { at } => {
+                silicrew_types::scheduler::CronSchedule::At { at } => {
                     format!("at {}", at.format("%Y-%m-%d %H:%M"))
                 }
             };
@@ -600,21 +600,21 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
                 let cron_expr = args[1..6].join(" ");
                 let message = args[6..].join(" ");
 
-                let job = openparlant_types::scheduler::CronJob {
-                    id: openparlant_types::scheduler::CronJobId::new(),
+                let job = silicrew_types::scheduler::CronJob {
+                    id: silicrew_types::scheduler::CronJobId::new(),
                     agent_id: agent.id,
                     name: format!("chat-{}", &agent.name),
                     enabled: true,
-                    schedule: openparlant_types::scheduler::CronSchedule::Cron {
+                    schedule: silicrew_types::scheduler::CronSchedule::Cron {
                         expr: cron_expr.clone(),
                         tz: None,
                     },
-                    action: openparlant_types::scheduler::CronAction::AgentTurn {
+                    action: silicrew_types::scheduler::CronAction::AgentTurn {
                         message: message.clone(),
                         model_override: None,
                         timeout_secs: None,
                     },
-                    delivery: openparlant_types::scheduler::CronDelivery::None,
+                    delivery: silicrew_types::scheduler::CronDelivery::None,
                     created_at: chrono::Utc::now(),
                     last_run: None,
                     next_run: None,
@@ -673,13 +673,13 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
                     1 => {
                         let j = matched[0];
                         let message = match &j.action {
-                            openparlant_types::scheduler::CronAction::AgentTurn {
+                            silicrew_types::scheduler::CronAction::AgentTurn {
                                 message, ..
                             } => message.clone(),
-                            openparlant_types::scheduler::CronAction::SystemEvent { text } => {
+                            silicrew_types::scheduler::CronAction::SystemEvent { text } => {
                                 text.clone()
                             }
-                            openparlant_types::scheduler::CronAction::WorkflowRun {
+                            silicrew_types::scheduler::CronAction::WorkflowRun {
                                 workflow_id,
                                 input,
                                 ..
@@ -747,9 +747,9 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
             1 => {
                 let req = matched[0];
                 let decision = if approve {
-                    openparlant_types::approval::ApprovalDecision::Approved
+                    silicrew_types::approval::ApprovalDecision::Approved
                 } else {
-                    openparlant_types::approval::ApprovalDecision::Denied
+                    silicrew_types::approval::ApprovalDecision::Denied
                 };
                 match self.kernel.approval_manager.resolve(
                     req.id,
@@ -852,7 +852,7 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
     async fn channel_overrides(
         &self,
         channel_type: &str,
-    ) -> Option<openparlant_types::config::ChannelOverrides> {
+    ) -> Option<silicrew_types::config::ChannelOverrides> {
         let channels = &self.kernel.config.channels;
         match channel_type {
             "telegram" => channels.telegram.as_ref().map(|c| c.overrides.clone()),
@@ -924,11 +924,11 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
             .ok_or_else(|| "Unrecognized user. Contact an admin to get access.".to_string())?;
 
         let auth_action = match action {
-            "chat" => openparlant_kernel::auth::Action::ChatWithAgent,
-            "spawn" => openparlant_kernel::auth::Action::SpawnAgent,
-            "kill" => openparlant_kernel::auth::Action::KillAgent,
-            "install_skill" => openparlant_kernel::auth::Action::InstallSkill,
-            _ => openparlant_kernel::auth::Action::ChatWithAgent,
+            "chat" => silicrew_kernel::auth::Action::ChatWithAgent,
+            "spawn" => silicrew_kernel::auth::Action::SpawnAgent,
+            "kill" => silicrew_kernel::auth::Action::KillAgent,
+            "install_skill" => silicrew_kernel::auth::Action::InstallSkill,
+            _ => silicrew_kernel::auth::Action::ChatWithAgent,
         };
 
         self.kernel
@@ -947,9 +947,9 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
         thread_id: Option<&str>,
     ) {
         let receipt = if success {
-            openparlant_kernel::DeliveryTracker::sent_receipt(channel, recipient)
+            silicrew_kernel::DeliveryTracker::sent_receipt(channel, recipient)
         } else {
-            openparlant_kernel::DeliveryTracker::failed_receipt(
+            silicrew_kernel::DeliveryTracker::failed_receipt(
                 channel,
                 recipient,
                 error.unwrap_or("Unknown error"),
@@ -1068,7 +1068,7 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
             msg.push_str(&format!("  {} — {}\n", card.name, url));
             let desc = &card.description;
             if !desc.is_empty() {
-                let short = openparlant_types::truncate_str(desc, 60);
+                let short = silicrew_types::truncate_str(desc, 60);
                 msg.push_str(&format!("    {short}\n"));
             }
         }
@@ -1077,8 +1077,8 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
 }
 
 /// Parse a trigger pattern string from chat into a `TriggerPattern`.
-fn parse_trigger_pattern(s: &str) -> Option<openparlant_kernel::triggers::TriggerPattern> {
-    use openparlant_kernel::triggers::TriggerPattern;
+fn parse_trigger_pattern(s: &str) -> Option<silicrew_kernel::triggers::TriggerPattern> {
+    use silicrew_kernel::triggers::TriggerPattern;
     if let Some(rest) = s.strip_prefix("spawned:") {
         return Some(TriggerPattern::AgentSpawned {
             name_pattern: rest.to_string(),
@@ -1162,7 +1162,7 @@ pub async fn start_channel_bridge(kernel: Arc<SiliCrewKernel>) -> Option<BridgeM
 /// Returns `(Option<BridgeManager>, Vec<started_channel_names>)`.
 pub async fn start_channel_bridge_with_config(
     kernel: Arc<SiliCrewKernel>,
-    config: &openparlant_types::config::ChannelsConfig,
+    config: &silicrew_types::config::ChannelsConfig,
     control_bridge: Option<(Arc<ControlStore>, Option<String>)>,
 ) -> (Option<BridgeManager>, Vec<String>) {
     let has_any = config.telegram.is_some()
@@ -1527,7 +1527,7 @@ pub async fn start_channel_bridge_with_config(
     if let Some(ref fs_config) = config.feishu {
         if let Some(secret) = read_token(&fs_config.app_secret_env, "Feishu") {
             let region =
-                openparlant_channels::feishu::FeishuRegion::parse_region(&fs_config.region);
+                silicrew_channels::feishu::FeishuRegion::parse_region(&fs_config.region);
             let encrypt_key = fs_config
                 .encrypt_key_env
                 .as_ref()
@@ -1914,7 +1914,7 @@ pub async fn reload_channels_from_disk(
 
     // Re-read config from disk
     let config_path = state.kernel.config.home_dir.join("config.toml");
-    let fresh_config = openparlant_kernel::config::load_config(Some(&config_path));
+    let fresh_config = silicrew_kernel::config::load_config(Some(&config_path));
 
     // Update the live channels config so list_channels() reflects reality
     *state.channels_config.write().await = fresh_config.channels.clone();
@@ -1944,11 +1944,11 @@ pub async fn reload_channels_from_disk(
 
 #[cfg(test)]
 mod tests {
-    use openparlant_types::config::FeishuMode;
+    use silicrew_types::config::FeishuMode;
 
     #[tokio::test]
     async fn test_bridge_skips_when_no_config() {
-        let config = openparlant_types::config::KernelConfig::default();
+        let config = silicrew_types::config::KernelConfig::default();
         assert!(config.channels.telegram.is_none());
         assert!(config.channels.discord.is_none());
         assert!(config.channels.slack.is_none());
@@ -1996,7 +1996,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_feishu_bridge_mode_defaults_to_websocket() {
-        let config: openparlant_types::config::KernelConfig = toml::from_str(
+        let config: silicrew_types::config::KernelConfig = toml::from_str(
             r#"
             [channels.feishu]
             app_id = "cli_test"
@@ -2011,7 +2011,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_feishu_bridge_mode_supports_websocket() {
-        let config: openparlant_types::config::KernelConfig = toml::from_str(
+        let config: silicrew_types::config::KernelConfig = toml::from_str(
             r#"
             [channels.feishu]
             app_id = "cli_test"

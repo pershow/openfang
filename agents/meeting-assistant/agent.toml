@@ -1,7 +1,7 @@
 name = "meeting-assistant"
 version = "0.1.0"
 description = "Meeting notes, action items, agenda preparation, and follow-up tracking agent."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 tags = ["meetings", "notes", "action-items", "agenda", "follow-up", "productivity"]
 

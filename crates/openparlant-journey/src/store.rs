@@ -1,7 +1,7 @@
 use chrono::Utc;
-use openparlant_memory::db::{block_on, SharedDb};
-use openparlant_types::control::{JourneyDefinition, JourneyId, ScopeId};
-use openparlant_types::error::{SiliCrewError, SiliCrewResult};
+use silicrew_memory::db::{block_on, SharedDb};
+use silicrew_types::control::{JourneyDefinition, JourneyId, ScopeId};
+use silicrew_types::error::{SiliCrewError, SiliCrewResult};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
@@ -1054,7 +1054,7 @@ fn memory_parse_error<E: std::fmt::Display>(error: E) -> SiliCrewError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openparlant_memory::migration::run_migrations;
+    use silicrew_memory::migration::run_migrations;
     use rusqlite::Connection;
     use serde_json::json;
     use std::sync::{Arc, Mutex};

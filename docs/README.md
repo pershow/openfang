@@ -62,7 +62,7 @@ Welcome to the OpenParlant documentation. OpenParlant is the open-source Agent O
 
 ```bash
 export GROQ_API_KEY="your-key"
-openparlant init && openparlant start
+silicrew init && silicrew start
 # Open http://127.0.0.1:4200
 ```
 
@@ -86,10 +86,10 @@ openparlant init && openparlant start
 
 | Path | Description |
 |------|-------------|
-| `~/.openparlant/config.toml` | Main configuration file |
-| `~/.openparlant/data/openparlant.db` | SQLite database |
-| `~/.openparlant/skills/` | Installed skills |
-| `~/.openparlant/daemon.json` | Daemon PID and port info |
+| `~/.silicrew/config.toml` | Main configuration file |
+| `~/.silicrew/data/silicrew.db` | SQLite database |
+| `~/.silicrew/skills/` | Installed skills |
+| `~/.silicrew/daemon.json` | Daemon PID and port info |
 | `agents/` | Agent template manifests |
 
 ### Key Environment Variables

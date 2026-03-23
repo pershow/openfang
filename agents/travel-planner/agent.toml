@@ -1,7 +1,7 @@
 name = "travel-planner"
 version = "0.1.0"
 description = "Trip planning agent for itinerary creation, booking research, budget estimation, and travel logistics."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 tags = ["travel", "planning", "itinerary", "booking", "logistics", "vacation"]
 

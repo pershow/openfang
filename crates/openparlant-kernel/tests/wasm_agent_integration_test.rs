@@ -5,9 +5,9 @@
 //!
 //! These tests use real WASM execution — no mocks.
 
-use openparlant_kernel::SiliCrewKernel;
-use openparlant_types::agent::AgentManifest;
-use openparlant_types::config::{DefaultModelConfig, KernelConfig};
+use silicrew_kernel::SiliCrewKernel;
+use silicrew_types::agent::AgentManifest;
+use silicrew_types::config::{DefaultModelConfig, KernelConfig};
 use std::sync::Arc;
 
 /// Minimal echo module: returns input JSON wrapped as `{"response": "..."}`.
@@ -89,7 +89,7 @@ const INFINITE_LOOP_WAT: &str = r#"
 /// Host-call proxy: forwards input to host_call and returns the response.
 const HOST_CALL_PROXY_WAT: &str = r#"
     (module
-        (import "openparlant" "host_call" (func $host_call (param i32 i32) (result i64)))
+        (import "silicrew" "host_call" (func $host_call (param i32 i32) (result i64)))
         (memory (export "memory") 2)
         (global $bump (mut i32) (i32.const 1024))
 

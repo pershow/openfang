@@ -1,41 +1,41 @@
 # OpenParlant CLI Reference
 
-Complete command-line reference for `openparlant`, the CLI tool for the OpenParlant Agent OS.
+Complete command-line reference for `silicrew`, the CLI tool for the OpenParlant Agent OS.
 
 ## Overview
 
-The `openparlant` binary is the primary interface for managing the OpenParlant Agent OS. It supports two modes of operation:
+The `silicrew` binary is the primary interface for managing the OpenParlant Agent OS. It supports two modes of operation:
 
-- **Daemon mode** -- When a daemon is running (`openparlant start`), CLI commands communicate with it over HTTP. This is the recommended mode for production use.
+- **Daemon mode** -- When a daemon is running (`silicrew start`), CLI commands communicate with it over HTTP. This is the recommended mode for production use.
 - **In-process mode** -- When no daemon is detected, commands that support it will boot an ephemeral in-process kernel. Agents spawned in this mode are not persisted and will be lost when the process exits.
 
-Running `openparlant` with no subcommand launches the interactive TUI (terminal user interface) built with ratatui, which provides a full dashboard experience in the terminal.
+Running `silicrew` with no subcommand launches the interactive TUI (terminal user interface) built with ratatui, which provides a full dashboard experience in the terminal.
 
 ## Installation
 
 ### From source (cargo)
 
 ```bash
-cargo install --path crates/openparlant-cli
+cargo install --path crates/silicrew-cli
 ```
 
 ### Build from workspace
 
 ```bash
-cargo build --release -p openparlant-cli
-# Binary: target/release/openparlant (or openparlant.exe on Windows)
+cargo build --release -p silicrew-cli
+# Binary: target/release/silicrew (or silicrew.exe on Windows)
 ```
 
 ### Docker
 
 ```bash
-docker run -it openparlant/openparlant:latest
+docker run -it silicrew/silicrew:latest
 ```
 
 ### Shell installer
 
 ```bash
-curl -fsSL https://get.openparlant.ai | sh
+curl -fsSL https://get.silicrew.ai | sh
 ```
 
 ## Global Options
@@ -44,42 +44,42 @@ These options apply to all commands.
 
 | Option | Description |
 |---|---|
-| `--config <PATH>` | Path to a custom config file. Overrides the default `~/.openparlant/config.toml`. |
+| `--config <PATH>` | Path to a custom config file. Overrides the default `~/.silicrew/config.toml`. |
 | `--help` | Print help information for any command or subcommand. |
-| `--version` | Print the version of the `openparlant` binary. |
+| `--version` | Print the version of the `silicrew` binary. |
 
 **Environment variables:**
 
 | Variable | Description |
 |---|---|
-| `RUST_LOG` | Controls log verbosity (e.g. `info`, `debug`, `openparlant_kernel=trace`). |
+| `RUST_LOG` | Controls log verbosity (e.g. `info`, `debug`, `silicrew_kernel=trace`). |
 | `OPENFANG_AGENTS_DIR` | Override the agent templates directory. |
-| `EDITOR` / `VISUAL` | Editor used by `openparlant config edit`. Falls back to `notepad` (Windows) or `vi` (Unix). |
+| `EDITOR` / `VISUAL` | Editor used by `silicrew config edit`. Falls back to `notepad` (Windows) or `vi` (Unix). |
 
 ---
 
 ## Command Reference
 
-### openparlant (no subcommand)
+### silicrew (no subcommand)
 
 Launch the interactive TUI dashboard.
 
 ```
-openparlant [--config <PATH>]
+silicrew [--config <PATH>]
 ```
 
-The TUI provides a full-screen terminal interface with panels for agents, chat, workflows, channels, skills, settings, and more. Tracing output is redirected to `~/.openparlant/tui.log` to avoid corrupting the terminal display.
+The TUI provides a full-screen terminal interface with panels for agents, chat, workflows, channels, skills, settings, and more. Tracing output is redirected to `~/.silicrew/tui.log` to avoid corrupting the terminal display.
 
 Press `Ctrl+C` to exit. A second `Ctrl+C` force-exits the process.
 
 ---
 
-### openparlant init
+### silicrew init
 
-Initialize the OpenParlant workspace. Creates `~/.openparlant/` with subdirectories (`data/`, `agents/`) and a default `config.toml`.
+Initialize the OpenParlant workspace. Creates `~/.silicrew/` with subdirectories (`data/`, `agents/`) and a default `config.toml`.
 
 ```
-openparlant init [--quick]
+silicrew init [--quick]
 ```
 
 **Options:**
@@ -98,21 +98,21 @@ openparlant init [--quick]
 
 ```bash
 # Interactive setup
-openparlant init
+silicrew init
 
 # Non-interactive (CI/scripts)
 export GROQ_API_KEY="gsk_..."
-openparlant init --quick
+silicrew init --quick
 ```
 
 ---
 
-### openparlant start
+### silicrew start
 
 Start the OpenParlant daemon (kernel + API server).
 
 ```
-openparlant start [--config <PATH>]
+silicrew start [--config <PATH>]
 ```
 
 **Behavior:**
@@ -120,7 +120,7 @@ openparlant start [--config <PATH>]
 - Checks if a daemon is already running; exits with an error if so.
 - Boots the OpenParlant kernel (loads config, initializes SQLite database, loads agents, connects MCP servers, starts background tasks).
 - Starts the HTTP API server on the address specified in `config.toml` (default: `127.0.0.1:4200`).
-- Writes `daemon.json` to `~/.openparlant/` so other CLI commands can discover the running daemon.
+- Writes `daemon.json` to `~/.silicrew/` so other CLI commands can discover the running daemon.
 - Blocks until interrupted with `Ctrl+C`.
 
 **Output:**
@@ -139,7 +139,7 @@ openparlant start [--config <PATH>]
   Provider:   groq
   Model:      llama-3.3-70b-versatile
 
-  hint: Open the dashboard in your browser, or run `openparlant chat`
+  hint: Open the dashboard in your browser, or run `silicrew chat`
   hint: Press Ctrl+C to stop the daemon
 ```
 
@@ -147,20 +147,20 @@ openparlant start [--config <PATH>]
 
 ```bash
 # Start with default config
-openparlant start
+silicrew start
 
 # Start with custom config
-openparlant start --config /path/to/config.toml
+silicrew start --config /path/to/config.toml
 ```
 
 ---
 
-### openparlant status
+### silicrew status
 
 Show the current kernel/daemon status.
 
 ```
-openparlant status [--json]
+silicrew status [--json]
 ```
 
 **Options:**
@@ -177,19 +177,19 @@ openparlant status [--json]
 **Example:**
 
 ```bash
-openparlant status
+silicrew status
 
-openparlant status --json | jq '.agent_count'
+silicrew status --json | jq '.agent_count'
 ```
 
 ---
 
-### openparlant doctor
+### silicrew doctor
 
 Run diagnostic checks on the OpenParlant installation.
 
 ```
-openparlant doctor [--json] [--repair]
+silicrew doctor [--json] [--repair]
 ```
 
 **Options:**
@@ -201,7 +201,7 @@ openparlant doctor [--json] [--repair]
 
 **Checks performed:**
 
-1. **OpenParlant directory** -- `~/.openparlant/` exists
+1. **OpenParlant directory** -- `~/.silicrew/` exists
 2. **.env file** -- exists and has correct permissions (0600 on Unix)
 3. **Config TOML syntax** -- `config.toml` parses without errors
 4. **Daemon status** -- whether a daemon is running
@@ -209,7 +209,7 @@ openparlant doctor [--json] [--repair]
 6. **Stale daemon.json** -- leftover `daemon.json` from a crashed daemon
 7. **Database file** -- SQLite magic bytes validation
 8. **Disk space** -- warns if less than 100MB available (Unix only)
-9. **Agent manifests** -- validates all `.toml` files in `~/.openparlant/agents/`
+9. **Agent manifests** -- validates all `.toml` files in `~/.silicrew/agents/`
 10. **LLM provider keys** -- checks env vars for 10 providers (Groq, OpenRouter, Anthropic, OpenAI, DeepSeek, Gemini, Google, Together, Mistral, Fireworks), performs live validation (401/403 detection)
 11. **Channel tokens** -- format validation for Telegram, Discord, Slack tokens
 12. **Config consistency** -- checks that `api_key_env` references in config match actual environment variables
@@ -218,21 +218,21 @@ openparlant doctor [--json] [--repair]
 **Example:**
 
 ```bash
-openparlant doctor
+silicrew doctor
 
-openparlant doctor --repair
+silicrew doctor --repair
 
-openparlant doctor --json
+silicrew doctor --json
 ```
 
 ---
 
-### openparlant dashboard
+### silicrew dashboard
 
 Open the web dashboard in the default browser.
 
 ```
-openparlant dashboard
+silicrew dashboard
 ```
 
 **Behavior:**
@@ -244,17 +244,17 @@ openparlant dashboard
 **Example:**
 
 ```bash
-openparlant dashboard
+silicrew dashboard
 ```
 
 ---
 
-### openparlant completion
+### silicrew completion
 
 Generate shell completion scripts.
 
 ```
-openparlant completion <SHELL>
+silicrew completion <SHELL>
 ```
 
 **Arguments:**
@@ -267,28 +267,28 @@ openparlant completion <SHELL>
 
 ```bash
 # Bash
-openparlant completion bash > ~/.bash_completion.d/openparlant
+silicrew completion bash > ~/.bash_completion.d/silicrew
 
 # Zsh
-openparlant completion zsh > ~/.zfunc/_openparlant
+silicrew completion zsh > ~/.zfunc/_silicrew
 
 # Fish
-openparlant completion fish > ~/.config/fish/completions/openparlant.fish
+silicrew completion fish > ~/.config/fish/completions/silicrew.fish
 
 # PowerShell
-openparlant completion powershell > openparlant.ps1
+silicrew completion powershell > silicrew.ps1
 ```
 
 ---
 
 ## Agent Commands
 
-### openparlant agent new
+### silicrew agent new
 
 Spawn an agent from a built-in template.
 
 ```
-openparlant agent new [<TEMPLATE>]
+silicrew agent new [<TEMPLATE>]
 ```
 
 **Arguments:**
@@ -299,7 +299,7 @@ openparlant agent new [<TEMPLATE>]
 
 **Behavior:**
 
-- Templates are discovered from: the repo `agents/` directory (dev builds), `~/.openparlant/agents/` (installed), and `OPENFANG_AGENTS_DIR` (env override).
+- Templates are discovered from: the repo `agents/` directory (dev builds), `~/.silicrew/agents/` (installed), and `OPENFANG_AGENTS_DIR` (env override).
 - Each template is a directory containing an `agent.toml` manifest.
 - In daemon mode: sends `POST /api/agents` with the manifest. Agent is persistent.
 - In standalone mode: boots an in-process kernel. Agent is ephemeral.
@@ -308,23 +308,23 @@ openparlant agent new [<TEMPLATE>]
 
 ```bash
 # Interactive picker
-openparlant agent new
+silicrew agent new
 
 # Spawn by name
-openparlant agent new coder
+silicrew agent new coder
 
 # Spawn the assistant template
-openparlant agent new assistant
+silicrew agent new assistant
 ```
 
 ---
 
-### openparlant agent spawn
+### silicrew agent spawn
 
 Spawn an agent from a custom manifest file.
 
 ```
-openparlant agent spawn <MANIFEST>
+silicrew agent spawn <MANIFEST>
 ```
 
 **Arguments:**
@@ -342,17 +342,17 @@ openparlant agent spawn <MANIFEST>
 **Example:**
 
 ```bash
-openparlant agent spawn ./my-agent/agent.toml
+silicrew agent spawn ./my-agent/agent.toml
 ```
 
 ---
 
-### openparlant agent list
+### silicrew agent list
 
 List all running agents.
 
 ```
-openparlant agent list [--json]
+silicrew agent list [--json]
 ```
 
 **Options:**
@@ -366,26 +366,26 @@ openparlant agent list [--json]
 **Example:**
 
 ```bash
-openparlant agent list
+silicrew agent list
 
-openparlant agent list --json | jq '.[].name'
+silicrew agent list --json | jq '.[].name'
 ```
 
 ---
 
-### openparlant agent chat
+### silicrew agent chat
 
 Start an interactive chat session with a specific agent.
 
 ```
-openparlant agent chat <AGENT_ID>
+silicrew agent chat <AGENT_ID>
 ```
 
 **Arguments:**
 
 | Argument | Description |
 |---|---|
-| `<AGENT_ID>` | Agent UUID. Obtain from `openparlant agent list`. |
+| `<AGENT_ID>` | Agent UUID. Obtain from `silicrew agent list`. |
 
 **Behavior:**
 
@@ -397,17 +397,17 @@ openparlant agent chat <AGENT_ID>
 **Example:**
 
 ```bash
-openparlant agent chat a1b2c3d4-e5f6-7890-abcd-ef1234567890
+silicrew agent chat a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 
 ---
 
-### openparlant agent kill
+### silicrew agent kill
 
 Terminate a running agent.
 
 ```
-openparlant agent kill <AGENT_ID>
+silicrew agent kill <AGENT_ID>
 ```
 
 **Arguments:**
@@ -419,7 +419,7 @@ openparlant agent kill <AGENT_ID>
 **Example:**
 
 ```bash
-openparlant agent kill a1b2c3d4-e5f6-7890-abcd-ef1234567890
+silicrew agent kill a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 
 ---
@@ -428,24 +428,24 @@ openparlant agent kill a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
 All workflow commands require a running daemon.
 
-### openparlant workflow list
+### silicrew workflow list
 
 List all registered workflows.
 
 ```
-openparlant workflow list
+silicrew workflow list
 ```
 
 **Output columns:** ID, NAME, STEPS, CREATED.
 
 ---
 
-### openparlant workflow create
+### silicrew workflow create
 
 Create a workflow from a JSON definition file.
 
 ```
-openparlant workflow create <FILE>
+silicrew workflow create <FILE>
 ```
 
 **Arguments:**
@@ -457,30 +457,30 @@ openparlant workflow create <FILE>
 **Example:**
 
 ```bash
-openparlant workflow create ./my-workflow.json
+silicrew workflow create ./my-workflow.json
 ```
 
 ---
 
-### openparlant workflow run
+### silicrew workflow run
 
 Execute a workflow by ID.
 
 ```
-openparlant workflow run <WORKFLOW_ID> <INPUT>
+silicrew workflow run <WORKFLOW_ID> <INPUT>
 ```
 
 **Arguments:**
 
 | Argument | Description |
 |---|---|
-| `<WORKFLOW_ID>` | Workflow UUID. Obtain from `openparlant workflow list`. |
+| `<WORKFLOW_ID>` | Workflow UUID. Obtain from `silicrew workflow list`. |
 | `<INPUT>` | Input text to pass to the workflow. |
 
 **Example:**
 
 ```bash
-openparlant workflow run abc123 "Analyze this code for security issues"
+silicrew workflow run abc123 "Analyze this code for security issues"
 ```
 
 ---
@@ -489,12 +489,12 @@ openparlant workflow run abc123 "Analyze this code for security issues"
 
 All trigger commands require a running daemon.
 
-### openparlant trigger list
+### silicrew trigger list
 
 List all event triggers.
 
 ```
-openparlant trigger list [--agent-id <ID>]
+silicrew trigger list [--agent-id <ID>]
 ```
 
 **Options:**
@@ -507,12 +507,12 @@ openparlant trigger list [--agent-id <ID>]
 
 ---
 
-### openparlant trigger create
+### silicrew trigger create
 
 Create an event trigger for an agent.
 
 ```
-openparlant trigger create <AGENT_ID> <PATTERN_JSON> [--prompt <TEMPLATE>] [--max-fires <N>]
+silicrew trigger create <AGENT_ID> <PATTERN_JSON> [--prompt <TEMPLATE>] [--max-fires <N>]
 ```
 
 **Arguments:**
@@ -533,26 +533,26 @@ openparlant trigger create <AGENT_ID> <PATTERN_JSON> [--prompt <TEMPLATE>] [--ma
 
 ```bash
 # Fire on any lifecycle event
-openparlant trigger create <AGENT_ID> '{"lifecycle":{}}'
+silicrew trigger create <AGENT_ID> '{"lifecycle":{}}'
 
 # Fire when a specific agent is spawned
-openparlant trigger create <AGENT_ID> '{"agent_spawned":{"name_pattern":"*"}}'
+silicrew trigger create <AGENT_ID> '{"agent_spawned":{"name_pattern":"*"}}'
 
 # Fire on agent termination
-openparlant trigger create <AGENT_ID> '{"agent_terminated":{}}'
+silicrew trigger create <AGENT_ID> '{"agent_terminated":{}}'
 
 # Fire on all events (limited to 10 fires)
-openparlant trigger create <AGENT_ID> '{"all":{}}' --max-fires 10
+silicrew trigger create <AGENT_ID> '{"all":{}}' --max-fires 10
 ```
 
 ---
 
-### openparlant trigger delete
+### silicrew trigger delete
 
 Delete a trigger by ID.
 
 ```
-openparlant trigger delete <TRIGGER_ID>
+silicrew trigger delete <TRIGGER_ID>
 ```
 
 **Arguments:**
@@ -565,26 +565,26 @@ openparlant trigger delete <TRIGGER_ID>
 
 ## Skill Commands
 
-### openparlant skill list
+### silicrew skill list
 
 List all installed skills.
 
 ```
-openparlant skill list
+silicrew skill list
 ```
 
 **Output columns:** NAME, VERSION, TOOLS, DESCRIPTION.
 
-Loads skills from `~/.openparlant/skills/` plus bundled skills compiled into the binary.
+Loads skills from `~/.silicrew/skills/` plus bundled skills compiled into the binary.
 
 ---
 
-### openparlant skill install
+### silicrew skill install
 
 Install a skill from a local directory, git URL, or FangHub marketplace.
 
 ```
-openparlant skill install <SOURCE>
+silicrew skill install <SOURCE>
 ```
 
 **Arguments:**
@@ -602,23 +602,23 @@ openparlant skill install <SOURCE>
 
 ```bash
 # Install from local directory
-openparlant skill install ./my-skill/
+silicrew skill install ./my-skill/
 
 # Install from FangHub
-openparlant skill install web-search
+silicrew skill install web-search
 
 # Install an OpenClaw-format skill
-openparlant skill install ./openclaw-skill/
+silicrew skill install ./openclaw-skill/
 ```
 
 ---
 
-### openparlant skill remove
+### silicrew skill remove
 
 Remove an installed skill.
 
 ```
-openparlant skill remove <NAME>
+silicrew skill remove <NAME>
 ```
 
 **Arguments:**
@@ -630,17 +630,17 @@ openparlant skill remove <NAME>
 **Example:**
 
 ```bash
-openparlant skill remove web-search
+silicrew skill remove web-search
 ```
 
 ---
 
-### openparlant skill search
+### silicrew skill search
 
 Search the FangHub marketplace for skills.
 
 ```
-openparlant skill search <QUERY>
+silicrew skill search <QUERY>
 ```
 
 **Arguments:**
@@ -652,17 +652,17 @@ openparlant skill search <QUERY>
 **Example:**
 
 ```bash
-openparlant skill search "docker kubernetes"
+silicrew skill search "docker kubernetes"
 ```
 
 ---
 
-### openparlant skill create
+### silicrew skill create
 
 Interactively scaffold a new skill project.
 
 ```
-openparlant skill create
+silicrew skill create
 ```
 
 **Behavior:**
@@ -672,14 +672,14 @@ Prompts for:
 - Description
 - Runtime (`python`, `node`, or `wasm`; defaults to `python`)
 
-Creates a directory under `~/.openparlant/skills/<name>/` with:
+Creates a directory under `~/.silicrew/skills/<name>/` with:
 - `skill.toml` -- manifest file
 - `src/main.py` (or `src/index.js`) -- entry point with boilerplate
 
 **Example:**
 
 ```bash
-openparlant skill create
+silicrew skill create
 # Skill name: my-tool
 # Description: A custom analysis tool
 # Runtime (python/node/wasm) [python]: python
@@ -689,12 +689,12 @@ openparlant skill create
 
 ## Channel Commands
 
-### openparlant channel list
+### silicrew channel list
 
 List configured channels and their status.
 
 ```
-openparlant channel list
+silicrew channel list
 ```
 
 **Output columns:** CHANNEL, ENV VAR, STATUS.
@@ -705,12 +705,12 @@ Checks `config.toml` for channel configuration sections and environment variable
 
 ---
 
-### openparlant channel setup
+### silicrew channel setup
 
 Interactive setup wizard for a channel integration.
 
 ```
-openparlant channel setup [<CHANNEL>]
+silicrew channel setup [<CHANNEL>]
 ```
 
 **Arguments:**
@@ -724,7 +724,7 @@ openparlant channel setup [<CHANNEL>]
 Each wizard:
 1. Displays step-by-step instructions for obtaining credentials.
 2. Prompts for tokens/credentials.
-3. Saves tokens to `~/.openparlant/.env` with owner-only permissions.
+3. Saves tokens to `~/.silicrew/.env` with owner-only permissions.
 4. Appends the channel configuration block to `config.toml` (prompts for confirmation).
 5. Warns to restart the daemon if one is running.
 
@@ -732,22 +732,22 @@ Each wizard:
 
 ```bash
 # Interactive picker
-openparlant channel setup
+silicrew channel setup
 
 # Direct setup
-openparlant channel setup telegram
-openparlant channel setup discord
-openparlant channel setup slack
+silicrew channel setup telegram
+silicrew channel setup discord
+silicrew channel setup slack
 ```
 
 ---
 
-### openparlant channel test
+### silicrew channel test
 
 Send a test message through a configured channel.
 
 ```
-openparlant channel test <CHANNEL>
+silicrew channel test <CHANNEL>
 ```
 
 **Arguments:**
@@ -761,17 +761,17 @@ Requires a running daemon. Sends `POST /api/channels/<channel>/test`.
 **Example:**
 
 ```bash
-openparlant channel test telegram
+silicrew channel test telegram
 ```
 
 ---
 
-### openparlant channel enable
+### silicrew channel enable
 
 Enable a channel integration.
 
 ```
-openparlant channel enable <CHANNEL>
+silicrew channel enable <CHANNEL>
 ```
 
 **Arguments:**
@@ -784,12 +784,12 @@ In daemon mode: sends `POST /api/channels/<channel>/enable`. Without a daemon: p
 
 ---
 
-### openparlant channel disable
+### silicrew channel disable
 
 Disable a channel without removing its configuration.
 
 ```
-openparlant channel disable <CHANNEL>
+silicrew channel disable <CHANNEL>
 ```
 
 **Arguments:**
@@ -804,36 +804,36 @@ In daemon mode: sends `POST /api/channels/<channel>/disable`. Without a daemon: 
 
 ## Config Commands
 
-### openparlant config show
+### silicrew config show
 
 Display the current configuration file.
 
 ```
-openparlant config show
+silicrew config show
 ```
 
-Prints the contents of `~/.openparlant/config.toml` with the file path as a header comment.
+Prints the contents of `~/.silicrew/config.toml` with the file path as a header comment.
 
 ---
 
-### openparlant config edit
+### silicrew config edit
 
 Open the configuration file in your editor.
 
 ```
-openparlant config edit
+silicrew config edit
 ```
 
 Uses `$EDITOR`, then `$VISUAL`, then falls back to `notepad` (Windows) or `vi` (Unix).
 
 ---
 
-### openparlant config get
+### silicrew config get
 
 Get a single configuration value by dotted key path.
 
 ```
-openparlant config get <KEY>
+silicrew config get <KEY>
 ```
 
 **Arguments:**
@@ -845,24 +845,24 @@ openparlant config get <KEY>
 **Example:**
 
 ```bash
-openparlant config get default_model.provider
+silicrew config get default_model.provider
 # groq
 
-openparlant config get api_listen
+silicrew config get api_listen
 # 127.0.0.1:4200
 
-openparlant config get memory.decay_rate
+silicrew config get memory.decay_rate
 # 0.05
 ```
 
 ---
 
-### openparlant config set
+### silicrew config set
 
 Set a configuration value by dotted key path.
 
 ```
-openparlant config set <KEY> <VALUE>
+silicrew config set <KEY> <VALUE>
 ```
 
 **Arguments:**
@@ -877,19 +877,19 @@ openparlant config set <KEY> <VALUE>
 **Example:**
 
 ```bash
-openparlant config set default_model.provider anthropic
-openparlant config set default_model.model claude-sonnet-4-20250514
-openparlant config set api_listen "0.0.0.0:4200"
+silicrew config set default_model.provider anthropic
+silicrew config set default_model.model claude-sonnet-4-20250514
+silicrew config set api_listen "0.0.0.0:4200"
 ```
 
 ---
 
-### openparlant config set-key
+### silicrew config set-key
 
-Save an LLM provider API key to `~/.openparlant/.env`.
+Save an LLM provider API key to `~/.silicrew/.env`.
 
 ```
-openparlant config set-key <PROVIDER>
+silicrew config set-key <PROVIDER>
 ```
 
 **Arguments:**
@@ -901,27 +901,27 @@ openparlant config set-key <PROVIDER>
 **Behavior:**
 
 - Prompts interactively for the API key.
-- Saves to `~/.openparlant/.env` as `<PROVIDER_NAME>_API_KEY=<value>`.
+- Saves to `~/.silicrew/.env` as `<PROVIDER_NAME>_API_KEY=<value>`.
 - Runs a live validation test against the provider's API.
 - File permissions are restricted to owner-only on Unix.
 
 **Example:**
 
 ```bash
-openparlant config set-key groq
+silicrew config set-key groq
 # Paste your groq API key: gsk_...
-# [ok] Saved GROQ_API_KEY to ~/.openparlant/.env
+# [ok] Saved GROQ_API_KEY to ~/.silicrew/.env
 # Testing key... OK
 ```
 
 ---
 
-### openparlant config delete-key
+### silicrew config delete-key
 
-Remove an API key from `~/.openparlant/.env`.
+Remove an API key from `~/.silicrew/.env`.
 
 ```
-openparlant config delete-key <PROVIDER>
+silicrew config delete-key <PROVIDER>
 ```
 
 **Arguments:**
@@ -933,17 +933,17 @@ openparlant config delete-key <PROVIDER>
 **Example:**
 
 ```bash
-openparlant config delete-key openai
+silicrew config delete-key openai
 ```
 
 ---
 
-### openparlant config test-key
+### silicrew config test-key
 
 Test provider connectivity with the stored API key.
 
 ```
-openparlant config test-key <PROVIDER>
+silicrew config test-key <PROVIDER>
 ```
 
 **Arguments:**
@@ -954,7 +954,7 @@ openparlant config test-key <PROVIDER>
 
 **Behavior:**
 
-- Reads the API key from the environment (loaded from `~/.openparlant/.env`).
+- Reads the API key from the environment (loaded from `~/.silicrew/.env`).
 - Hits the provider's models/health endpoint.
 - Reports `OK` (key accepted) or `FAILED (401/403)` (key rejected).
 - Exits with code 1 on failure.
@@ -962,7 +962,7 @@ openparlant config test-key <PROVIDER>
 **Example:**
 
 ```bash
-openparlant config test-key groq
+silicrew config test-key groq
 # Testing groq (GROQ_API_KEY)... OK
 ```
 
@@ -970,12 +970,12 @@ openparlant config test-key groq
 
 ## Quick Chat
 
-### openparlant chat
+### silicrew chat
 
 Quick alias for starting a chat session.
 
 ```
-openparlant chat [<AGENT>]
+silicrew chat [<AGENT>]
 ```
 
 **Arguments:**
@@ -986,7 +986,7 @@ openparlant chat [<AGENT>]
 
 **Behavior:**
 
-- **Daemon mode:** Finds the agent by name or ID among running agents. If no agent name is given, uses the first available agent. If no agents exist, suggests `openparlant agent new`.
+- **Daemon mode:** Finds the agent by name or ID among running agents. If no agent name is given, uses the first available agent. If no agents exist, suggests `silicrew agent new`.
 - **Standalone mode (no daemon):** Boots an in-process kernel and auto-spawns an agent from templates. Searches for an agent matching the given name, then falls back to `assistant`, then to the first available template.
 
 This is the simplest way to start chatting -- it works with or without a daemon.
@@ -995,25 +995,25 @@ This is the simplest way to start chatting -- it works with or without a daemon.
 
 ```bash
 # Chat with the default agent
-openparlant chat
+silicrew chat
 
 # Chat with a specific agent by name
-openparlant chat coder
+silicrew chat coder
 
 # Chat with a specific agent by UUID
-openparlant chat a1b2c3d4-e5f6-7890-abcd-ef1234567890
+silicrew chat a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 
 ---
 
 ## Migration
 
-### openparlant migrate
+### silicrew migrate
 
 Migrate configuration and agents from another agent framework.
 
 ```
-openparlant migrate --from <FRAMEWORK> [--source-dir <PATH>] [--dry-run]
+silicrew migrate --from <FRAMEWORK> [--source-dir <PATH>] [--dry-run]
 ```
 
 **Options:**
@@ -1027,41 +1027,41 @@ openparlant migrate --from <FRAMEWORK> [--source-dir <PATH>] [--dry-run]
 **Behavior:**
 
 - Converts agent configurations, YAML manifests, and settings from the source framework into OpenParlant format.
-- Saves imported data to `~/.openparlant/`.
+- Saves imported data to `~/.silicrew/`.
 - Writes a `migration_report.md` summarizing what was imported.
 
 **Example:**
 
 ```bash
 # Dry run migration from OpenClaw
-openparlant migrate --from openclaw --dry-run
+silicrew migrate --from openclaw --dry-run
 
 # Migrate from OpenClaw (auto-detect source)
-openparlant migrate --from openclaw
+silicrew migrate --from openclaw
 
 # Migrate from LangChain with explicit source
-openparlant migrate --from langchain --source-dir /home/user/.langchain
+silicrew migrate --from langchain --source-dir /home/user/.langchain
 
 # Migrate from AutoGPT
-openparlant migrate --from autogpt
+silicrew migrate --from autogpt
 ```
 
 ---
 
 ## MCP Server
 
-### openparlant mcp
+### silicrew mcp
 
 Start an MCP (Model Context Protocol) server over stdio.
 
 ```
-openparlant mcp
+silicrew mcp
 ```
 
 **Behavior:**
 
 - Exposes running OpenParlant agents as MCP tools via JSON-RPC 2.0 over stdin/stdout with Content-Length framing.
-- Each agent becomes a callable tool named `openparlant_agent_<name>` (hyphens replaced with underscores).
+- Each agent becomes a callable tool named `silicrew_agent_<name>` (hyphens replaced with underscores).
 - Connects to a running daemon via HTTP if available; otherwise boots an in-process kernel.
 - Protocol version: `2024-11-05`.
 - Maximum message size: 10MB (security limit).
@@ -1085,8 +1085,8 @@ Add to your MCP client configuration:
 ```json
 {
   "mcpServers": {
-    "openparlant": {
-      "command": "openparlant",
+    "silicrew": {
+      "command": "silicrew",
       "args": ["mcp"]
     }
   }
@@ -1099,7 +1099,7 @@ Add to your MCP client configuration:
 
 The CLI uses a two-step mechanism to detect a running daemon:
 
-1. **Read `daemon.json`:** On startup, the daemon writes `~/.openparlant/daemon.json` containing the listen address (e.g. `127.0.0.1:4200`). The CLI reads this file to learn where the daemon is.
+1. **Read `daemon.json`:** On startup, the daemon writes `~/.silicrew/daemon.json` containing the listen address (e.g. `127.0.0.1:4200`). The CLI reads this file to learn where the daemon is.
 
 2. **Health check:** The CLI sends `GET http://<listen_addr>/api/health` with a 2-second timeout. If the health check succeeds, the daemon is considered running and the CLI uses HTTP to communicate with it.
 
@@ -1108,19 +1108,19 @@ If either step fails (no `daemon.json`, stale file, health check timeout), the C
 **Daemon lifecycle:**
 
 ```
-openparlant start          # Starts daemon, writes daemon.json
+silicrew start          # Starts daemon, writes daemon.json
                         # Other CLI instances detect daemon.json
-openparlant status         # Connects to daemon via HTTP
+silicrew status         # Connects to daemon via HTTP
 Ctrl+C                  # Daemon shuts down, daemon.json removed
 
-openparlant doctor --repair  # Cleans up stale daemon.json from crashes
+silicrew doctor --repair  # Cleans up stale daemon.json from crashes
 ```
 
 ---
 
 ## Environment File
 
-OpenParlant loads `~/.openparlant/.env` into the process environment on every CLI invocation. System environment variables take priority over `.env` values.
+OpenParlant loads `~/.silicrew/.env` into the process environment on every CLI invocation. System environment variables take priority over `.env` values.
 
 The `.env` file stores API keys and secrets:
 
@@ -1154,187 +1154,187 @@ Manage keys with the `config set-key` / `config delete-key` commands rather than
 export GROQ_API_KEY="gsk_your_key_here"
 
 # 2. Initialize OpenParlant
-openparlant init --quick
+silicrew init --quick
 
 # 3. Start the daemon
-openparlant start
+silicrew start
 ```
 
 ### Daily usage
 
 ```bash
 # Quick chat (auto-spawns agent if needed)
-openparlant chat
+silicrew chat
 
 # Chat with a specific agent
-openparlant chat coder
+silicrew chat coder
 
 # Check what's running
-openparlant status
+silicrew status
 
 # Open the web dashboard
-openparlant dashboard
+silicrew dashboard
 ```
 
 ### Agent management
 
 ```bash
 # Spawn from a template
-openparlant agent new assistant
+silicrew agent new assistant
 
 # Spawn from a custom manifest
-openparlant agent spawn ./agents/custom-agent/agent.toml
+silicrew agent spawn ./agents/custom-agent/agent.toml
 
 # List running agents
-openparlant agent list
+silicrew agent list
 
 # Chat with an agent by UUID
-openparlant agent chat <UUID>
+silicrew agent chat <UUID>
 
 # Kill an agent
-openparlant agent kill <UUID>
+silicrew agent kill <UUID>
 ```
 
 ### Workflow automation
 
 ```bash
 # Create a workflow
-openparlant workflow create ./review-pipeline.json
+silicrew workflow create ./review-pipeline.json
 
 # List workflows
-openparlant workflow list
+silicrew workflow list
 
 # Run a workflow
-openparlant workflow run <WORKFLOW_ID> "Review the latest PR"
+silicrew workflow run <WORKFLOW_ID> "Review the latest PR"
 ```
 
 ### Event triggers
 
 ```bash
 # Create a trigger that fires on agent spawn
-openparlant trigger create <AGENT_ID> '{"agent_spawned":{"name_pattern":"*"}}' \
+silicrew trigger create <AGENT_ID> '{"agent_spawned":{"name_pattern":"*"}}' \
   --prompt "New agent spawned: {{event}}" \
   --max-fires 100
 
 # List all triggers
-openparlant trigger list
+silicrew trigger list
 
 # List triggers for a specific agent
-openparlant trigger list --agent-id <AGENT_ID>
+silicrew trigger list --agent-id <AGENT_ID>
 
 # Delete a trigger
-openparlant trigger delete <TRIGGER_ID>
+silicrew trigger delete <TRIGGER_ID>
 ```
 
 ### Skill management
 
 ```bash
 # Search FangHub
-openparlant skill search "code review"
+silicrew skill search "code review"
 
 # Install a skill
-openparlant skill install code-reviewer
+silicrew skill install code-reviewer
 
 # List installed skills
-openparlant skill list
+silicrew skill list
 
 # Create a new skill
-openparlant skill create
+silicrew skill create
 
 # Remove a skill
-openparlant skill remove code-reviewer
+silicrew skill remove code-reviewer
 ```
 
 ### Channel setup
 
 ```bash
 # Interactive channel picker
-openparlant channel setup
+silicrew channel setup
 
 # Direct channel setup
-openparlant channel setup telegram
+silicrew channel setup telegram
 
 # Check channel status
-openparlant channel list
+silicrew channel list
 
 # Test a channel
-openparlant channel test telegram
+silicrew channel test telegram
 
 # Enable/disable channels
-openparlant channel enable discord
-openparlant channel disable slack
+silicrew channel enable discord
+silicrew channel disable slack
 ```
 
 ### Configuration
 
 ```bash
 # View config
-openparlant config show
+silicrew config show
 
 # Get a specific value
-openparlant config get default_model.provider
+silicrew config get default_model.provider
 
 # Change provider
-openparlant config set default_model.provider anthropic
-openparlant config set default_model.model claude-sonnet-4-20250514
-openparlant config set default_model.api_key_env ANTHROPIC_API_KEY
+silicrew config set default_model.provider anthropic
+silicrew config set default_model.model claude-sonnet-4-20250514
+silicrew config set default_model.api_key_env ANTHROPIC_API_KEY
 
 # Manage API keys
-openparlant config set-key anthropic
-openparlant config test-key anthropic
-openparlant config delete-key openai
+silicrew config set-key anthropic
+silicrew config test-key anthropic
+silicrew config delete-key openai
 
 # Open in editor
-openparlant config edit
+silicrew config edit
 ```
 
 ### Migration from other frameworks
 
 ```bash
 # Preview migration
-openparlant migrate --from openclaw --dry-run
+silicrew migrate --from openclaw --dry-run
 
 # Run migration
-openparlant migrate --from openclaw
+silicrew migrate --from openclaw
 
 # Migrate from LangChain
-openparlant migrate --from langchain --source-dir ~/.langchain
+silicrew migrate --from langchain --source-dir ~/.langchain
 ```
 
 ### MCP integration
 
 ```bash
 # Start MCP server for Claude Desktop or other MCP clients
-openparlant mcp
+silicrew mcp
 ```
 
 ### Diagnostics
 
 ```bash
 # Run all diagnostic checks
-openparlant doctor
+silicrew doctor
 
 # Auto-repair issues
-openparlant doctor --repair
+silicrew doctor --repair
 
 # Machine-readable diagnostics
-openparlant doctor --json
+silicrew doctor --json
 ```
 
 ### Shell completions
 
 ```bash
 # Generate and install completions for your shell
-openparlant completion bash >> ~/.bashrc
-openparlant completion zsh > "${fpath[1]}/_openparlant"
-openparlant completion fish > ~/.config/fish/completions/openparlant.fish
+silicrew completion bash >> ~/.bashrc
+silicrew completion zsh > "${fpath[1]}/_silicrew"
+silicrew completion fish > ~/.config/fish/completions/silicrew.fish
 ```
 
 ---
 
 ## Supported LLM Providers
 
-The following providers are recognized by `openparlant config set-key` and `openparlant doctor`:
+The following providers are recognized by `silicrew config set-key` and `silicrew doctor`:
 
 | Provider | Environment Variable | Default Model |
 |---|---|---|

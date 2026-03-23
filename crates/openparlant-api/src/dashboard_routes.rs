@@ -3,8 +3,8 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::Json;
-use openparlant_control::{DashboardTenant, DashboardUser, InvitationCodeRecord};
-use openparlant_types::error::SiliCrewError;
+use silicrew_control::{DashboardTenant, DashboardUser, InvitationCodeRecord};
+use silicrew_types::error::SiliCrewError;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
@@ -41,7 +41,7 @@ fn session_token_from_headers(headers: &HeaderMap) -> Option<String> {
                 .and_then(|cookies| {
                     cookies.split(';').find_map(|c| {
                         c.trim()
-                            .strip_prefix("openparlant_session=")
+                            .strip_prefix("silicrew_session=")
                             .map(|v| v.to_string())
                     })
                 })
@@ -145,7 +145,7 @@ pub(crate) fn resolve_tenant_scope(
     }
 }
 
-pub(crate) fn agent_tenant_id(entry: &openparlant_types::agent::AgentEntry) -> Option<String> {
+pub(crate) fn agent_tenant_id(entry: &silicrew_types::agent::AgentEntry) -> Option<String> {
     entry
         .manifest
         .metadata
@@ -2373,9 +2373,9 @@ pub async fn enterprise_approvals(
             continue;
         };
         let status = match record.decision {
-            openparlant_types::approval::ApprovalDecision::Approved => "approved",
-            openparlant_types::approval::ApprovalDecision::Denied => "rejected",
-            openparlant_types::approval::ApprovalDecision::TimedOut => "expired",
+            silicrew_types::approval::ApprovalDecision::Approved => "approved",
+            silicrew_types::approval::ApprovalDecision::Denied => "rejected",
+            silicrew_types::approval::ApprovalDecision::TimedOut => "expired",
         };
         items.push(serde_json::json!({
             "id": record.request.id,
@@ -2413,8 +2413,8 @@ pub async fn enterprise_resolve_approval(
         Err(_) => return api_error(StatusCode::BAD_REQUEST, "Invalid approval ID"),
     };
     let decision = match req.action.as_str() {
-        "approve" => openparlant_types::approval::ApprovalDecision::Approved,
-        "reject" => openparlant_types::approval::ApprovalDecision::Denied,
+        "approve" => silicrew_types::approval::ApprovalDecision::Approved,
+        "reject" => silicrew_types::approval::ApprovalDecision::Denied,
         _ => return api_error(StatusCode::BAD_REQUEST, "Invalid action"),
     };
     match state
@@ -2748,7 +2748,7 @@ fn send_social_notification(
 ) {
     let _ = crate::notification_routes::create_notification(
         state,
-        openparlant_control::NotificationRecord {
+        silicrew_control::NotificationRecord {
             id: uuid::Uuid::new_v4().to_string(),
             tenant_id,
             user_id: user_id.to_string(),
@@ -2903,7 +2903,7 @@ pub async fn plaza_create_post(
         Ok(tenant_id) => tenant_id,
         Err(error) => return error,
     };
-    let post = openparlant_control::PlazaPostRecord {
+    let post = silicrew_control::PlazaPostRecord {
         id: uuid::Uuid::new_v4().to_string(),
         author_id: user.user_id.clone(),
         author_type: req.author_type.unwrap_or_else(|| "human".to_string()),
@@ -2966,7 +2966,7 @@ pub async fn plaza_add_comment(
         Ok(None) => return api_error(StatusCode::NOT_FOUND, "Post not found"),
         Err(error) => return internal_error(error),
     }
-    let comment = openparlant_control::PlazaCommentRecord {
+    let comment = silicrew_control::PlazaCommentRecord {
         id: uuid::Uuid::new_v4().to_string(),
         post_id: post_id.clone(),
         author_id: user.user_id.clone(),

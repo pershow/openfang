@@ -1,7 +1,7 @@
 name = "code-reviewer"
 version = "0.1.0"
 description = "Senior code reviewer. Reviews PRs, identifies issues, suggests improvements with production standards."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 tags = ["review", "code-quality", "best-practices"]
 

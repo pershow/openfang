@@ -1,13 +1,13 @@
 [package]
-name = "openparlant-policy"
+name = "silicrew-policy"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Policy matching and guideline resolution for the OpenParlant control plane"
 
 [dependencies]
-openparlant-memory = { path = "../openparlant-memory" }
-openparlant-types = { path = "../openparlant-types" }
+silicrew-memory = { path = "../silicrew-memory" }
+silicrew-types = { path = "../silicrew-types" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 rusqlite = { workspace = true }

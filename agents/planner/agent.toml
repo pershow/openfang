@@ -1,7 +1,7 @@
 name = "planner"
 version = "0.1.0"
 description = "Project planner. Creates project plans, breaks down epics, estimates effort, identifies risks and dependencies."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 
 [model]

@@ -187,7 +187,7 @@ function logsPage() {
       var url = URL.createObjectURL(blob);
       var a = document.createElement('a');
       a.href = url;
-      a.download = 'openparlant-logs-' + new Date().toISOString().slice(0, 10) + '.txt';
+      a.download = 'silicrew-logs-' + new Date().toISOString().slice(0, 10) + '.txt';
       a.click();
       URL.revokeObjectURL(url);
     },

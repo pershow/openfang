@@ -5,7 +5,7 @@
 //! model that can handle the task.
 
 use crate::llm_driver::CompletionRequest;
-use openparlant_types::agent::ModelRoutingConfig;
+use silicrew_types::agent::ModelRoutingConfig;
 
 /// Task complexity tier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,8 +166,8 @@ impl ModelRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openparlant_types::message::{Message, MessageContent, Role};
-    use openparlant_types::tool::ToolDefinition;
+    use silicrew_types::message::{Message, MessageContent, Role};
+    use silicrew_types::tool::ToolDefinition;
 
     fn default_config() -> ModelRoutingConfig {
         ModelRoutingConfig {

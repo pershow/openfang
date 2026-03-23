@@ -3,9 +3,9 @@ use crate::store::{
     SystemSettingRecord,
 };
 use chrono::{DateTime, Utc};
-use openparlant_memory::db::{block_on, SharedDb};
-use openparlant_types::control::{ControlScope, ScopeId};
-use openparlant_types::error::{SiliCrewError, SiliCrewResult};
+use silicrew_memory::db::{block_on, SharedDb};
+use silicrew_types::control::{ControlScope, ScopeId};
+use silicrew_types::error::{SiliCrewError, SiliCrewResult};
 use rusqlite::params;
 use sqlx::Row;
 use std::collections::HashMap;
@@ -25,6 +25,18 @@ fn now_rfc3339() -> String {
 
 fn memory_error<E: std::fmt::Display>(error: E) -> SiliCrewError {
     SiliCrewError::Memory(error.to_string())
+}
+
+fn is_missing_agent_stats_relation(error: &str) -> bool {
+    let message = error.to_lowercase();
+    message.contains("no such table: agents")
+        || message.contains("no such table: usage_events")
+        || message.contains("relation \"agents\" does not exist")
+        || message.contains("relation \"usage_events\" does not exist")
+        || message.contains("no such column: state")
+        || message.contains("column \"state\" does not exist")
+        || message.contains("no such column: manifest")
+        || message.contains("column \"manifest\" does not exist")
 }
 
 fn tenant_from_sqlite_row(
@@ -149,7 +161,7 @@ impl ControlStore {
                 let user = DashboardUser {
                     user_id: uuid::Uuid::new_v4().to_string(),
                     username: username.to_string(),
-                    email: format!("{username}@local.openparlant"),
+                    email: format!("{username}@local.silicrew"),
                     password_hash: password_hash.to_string(),
                     display_name: username.to_string(),
                     role: "platform_admin".to_string(),
@@ -938,7 +950,7 @@ fn setting_from_postgres_row(row: sqlx::postgres::PgRow) -> SiliCrewResult<Syste
 }
 
 fn manifest_metadata_string(
-    manifest: &openparlant_types::agent::AgentManifest,
+    manifest: &silicrew_types::agent::AgentManifest,
     key: &str,
 ) -> Option<String> {
     manifest
@@ -948,7 +960,7 @@ fn manifest_metadata_string(
         .map(|value| value.to_string())
 }
 
-fn manifest_tenant_id(manifest: &openparlant_types::agent::AgentManifest) -> Option<String> {
+fn manifest_tenant_id(manifest: &silicrew_types::agent::AgentManifest) -> Option<String> {
     manifest_metadata_string(manifest, "tenant_id")
         .or_else(|| manifest_metadata_string(manifest, "control_scope_id"))
 }
@@ -1449,15 +1461,23 @@ impl ControlStore {
 
     fn load_agent_manifest_rows(
         &self,
-    ) -> SiliCrewResult<Vec<(String, String, openparlant_types::agent::AgentManifest)>> {
+    ) -> SiliCrewResult<Vec<(String, String, silicrew_types::agent::AgentManifest)>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
                     .lock()
                     .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
-                let mut stmt = conn
-                    .prepare("SELECT id, state, manifest FROM agents")
-                    .map_err(memory_error)?;
+                let mut stmt = match conn.prepare("SELECT id, state, manifest FROM agents") {
+                    Ok(stmt) => stmt,
+                    Err(error) if is_missing_agent_stats_relation(&error.to_string()) => {
+                        tracing::warn!(
+                            error = %error,
+                            "Agent table unavailable while computing dashboard stats; using empty agent rows",
+                        );
+                        return Ok(Vec::new());
+                    }
+                    Err(error) => return Err(memory_error(error)),
+                };
                 let rows = stmt
                     .query_map([], |row| {
                         Ok((
@@ -1470,7 +1490,7 @@ impl ControlStore {
                 rows.map(|row| {
                     let (agent_id, state, manifest_blob) = row.map_err(memory_error)?;
                     let manifest =
-                        rmp_serde::from_slice::<openparlant_types::agent::AgentManifest>(
+                        rmp_serde::from_slice::<silicrew_types::agent::AgentManifest>(
                             &manifest_blob,
                         )
                         .map_err(memory_error)?;
@@ -1480,18 +1500,27 @@ impl ControlStore {
             }
             SharedDb::Postgres(pool) => {
                 let pool = pool.clone();
-                let rows = block_on(async move {
+                let rows = match block_on(async move {
                     sqlx::query("SELECT id, state, manifest FROM agents")
                         .fetch_all(&*pool)
                         .await
-                })
-                .map_err(memory_error)?;
+                }) {
+                    Ok(rows) => rows,
+                    Err(error) if is_missing_agent_stats_relation(&error.to_string()) => {
+                        tracing::warn!(
+                            error = %error,
+                            "Agent table unavailable while computing dashboard stats; using empty agent rows",
+                        );
+                        return Ok(Vec::new());
+                    }
+                    Err(error) => return Err(memory_error(error)),
+                };
                 rows.into_iter()
                     .map(|row| {
                         let manifest_blob: Vec<u8> =
                             row.try_get("manifest").map_err(memory_error)?;
                         let manifest = rmp_serde::from_slice::<
-                            openparlant_types::agent::AgentManifest,
+                            silicrew_types::agent::AgentManifest,
                         >(&manifest_blob)
                         .map_err(memory_error)?;
                         Ok((
@@ -1511,9 +1540,19 @@ impl ControlStore {
                 let conn = conn
                     .lock()
                     .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
-                let mut stmt = conn
-                    .prepare("SELECT agent_id, COALESCE(SUM(input_tokens + output_tokens), 0) FROM usage_events GROUP BY agent_id")
-                    .map_err(memory_error)?;
+                let mut stmt = match conn.prepare(
+                    "SELECT agent_id, COALESCE(SUM(input_tokens + output_tokens), 0) FROM usage_events GROUP BY agent_id",
+                ) {
+                    Ok(stmt) => stmt,
+                    Err(error) if is_missing_agent_stats_relation(&error.to_string()) => {
+                        tracing::warn!(
+                            error = %error,
+                            "Usage events table unavailable while computing dashboard stats; using empty usage totals",
+                        );
+                        return Ok(HashMap::new());
+                    }
+                    Err(error) => return Err(memory_error(error)),
+                };
                 let rows = stmt
                     .query_map([], |row| {
                         Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
@@ -1523,15 +1562,24 @@ impl ControlStore {
             }
             SharedDb::Postgres(pool) => {
                 let pool = pool.clone();
-                let rows = block_on(async move {
+                let rows = match block_on(async move {
                     sqlx::query(
                         "SELECT agent_id, COALESCE(SUM(input_tokens + output_tokens), 0) AS total_tokens
                          FROM usage_events GROUP BY agent_id",
                     )
                     .fetch_all(&*pool)
                     .await
-                })
-                .map_err(memory_error)?;
+                }) {
+                    Ok(rows) => rows,
+                    Err(error) if is_missing_agent_stats_relation(&error.to_string()) => {
+                        tracing::warn!(
+                            error = %error,
+                            "Usage events table unavailable while computing dashboard stats; using empty usage totals",
+                        );
+                        return Ok(HashMap::new());
+                    }
+                    Err(error) => return Err(memory_error(error)),
+                };
                 rows.into_iter()
                     .map(|row| {
                         Ok((

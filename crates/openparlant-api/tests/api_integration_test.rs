@@ -5,18 +5,18 @@
 //!
 //! Tests that require an LLM API call are gated behind GROQ_API_KEY.
 //!
-//! Run: cargo test -p openparlant-api --test api_integration_test -- --nocapture
+//! Run: cargo test -p silicrew-api --test api_integration_test -- --nocapture
 
 use axum::Router;
-use openparlant_api::middleware;
-use openparlant_api::routes::{self, AppState};
-use openparlant_api::ws;
-use openparlant_control::{ControlStore, DefaultTurnControlCoordinator};
-use openparlant_journey::{JourneyStore, StoreJourneyRuntime};
-use openparlant_kernel::SiliCrewKernel;
-use openparlant_memory::migration::run_migrations;
-use openparlant_policy::{PolicyStore, StoreObservationMatcher, StorePolicyResolver};
-use openparlant_types::config::{DefaultModelConfig, KernelConfig};
+use silicrew_api::middleware;
+use silicrew_api::routes::{self, AppState};
+use silicrew_api::ws;
+use silicrew_control::{ControlStore, DefaultTurnControlCoordinator};
+use silicrew_journey::{JourneyStore, StoreJourneyRuntime};
+use silicrew_kernel::SiliCrewKernel;
+use silicrew_memory::migration::run_migrations;
+use silicrew_policy::{PolicyStore, StoreObservationMatcher, StorePolicyResolver};
+use silicrew_types::config::{DefaultModelConfig, KernelConfig};
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -82,7 +82,7 @@ async fn start_test_server_with_provider(
         channels_config: tokio::sync::RwLock::new(Default::default()),
         shutdown_notify: Arc::new(tokio::sync::Notify::new()),
         clawhub_cache: dashmap::DashMap::new(),
-        provider_probe_cache: openparlant_runtime::provider_health::ProbeCache::new(),
+        provider_probe_cache: silicrew_runtime::provider_health::ProbeCache::new(),
         control_coordinator: {
             let c2 = Connection::open_in_memory().expect("test coordinator db");
             run_migrations(&c2).ok();
@@ -91,7 +91,7 @@ async fn start_test_server_with_provider(
                 StoreObservationMatcher::new(c2.clone()),
                 StorePolicyResolver::new(c2.clone()),
                 StoreJourneyRuntime::new(c2.clone()),
-                openparlant_context::NoopKnowledgeCompiler,
+                silicrew_context::NoopKnowledgeCompiler,
             ))
         },
         control_store: {
@@ -737,7 +737,7 @@ async fn start_test_server_with_auth(api_key: &str) -> TestServer {
         channels_config: tokio::sync::RwLock::new(Default::default()),
         shutdown_notify: Arc::new(tokio::sync::Notify::new()),
         clawhub_cache: dashmap::DashMap::new(),
-        provider_probe_cache: openparlant_runtime::provider_health::ProbeCache::new(),
+        provider_probe_cache: silicrew_runtime::provider_health::ProbeCache::new(),
         control_coordinator: {
             let c2 = Connection::open_in_memory().expect("test coordinator db");
             run_migrations(&c2).ok();
@@ -746,7 +746,7 @@ async fn start_test_server_with_auth(api_key: &str) -> TestServer {
                 StoreObservationMatcher::new(c2.clone()),
                 StorePolicyResolver::new(c2.clone()),
                 StoreJourneyRuntime::new(c2.clone()),
-                openparlant_context::NoopKnowledgeCompiler,
+                silicrew_context::NoopKnowledgeCompiler,
             ))
         },
         control_store: {

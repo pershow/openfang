@@ -665,12 +665,12 @@ fn find_config_file(dir: &Path) -> Option<PathBuf> {
 }
 
 // Tool name mapping and recognition are shared with the skill system.
-use openparlant_types::tool_compat::{is_known_openparlant_tool, map_tool_name};
+use silicrew_types::tool_compat::{is_known_silicrew_tool, map_tool_name};
 
 /// Map OpenClaw tool profile to OpenParlant capability tool list.
 /// Delegates to `ToolProfile` so the migration and kernel use identical definitions.
 fn tools_for_profile(profile: &str) -> Vec<String> {
-    use openparlant_types::agent::ToolProfile;
+    use silicrew_types::agent::ToolProfile;
     let p = match profile {
         "minimal" => ToolProfile::Minimal,
         "coding" => ToolProfile::Coding,
@@ -754,7 +754,7 @@ fn default_api_key_env(provider: &str) -> String {
     }
 }
 
-fn is_known_openparlant_provider_id(provider: &str) -> bool {
+fn is_known_silicrew_provider_id(provider: &str) -> bool {
     matches!(
         provider,
         "anthropic"
@@ -845,8 +845,8 @@ fn resolve_provider_with_models_context(
         .unwrap_or_default()
         .to_lowercase();
 
-    let raw_is_known = is_known_openparlant_provider_id(&raw);
-    let mapped_is_known = is_known_openparlant_provider_id(&mapped);
+    let raw_is_known = is_known_silicrew_provider_id(&raw);
+    let mapped_is_known = is_known_silicrew_provider_id(&mapped);
 
     let provider = if api_hint.contains("anthropic") {
         "anthropic".to_string()
@@ -2002,7 +2002,7 @@ fn convert_agent_from_json(
             let allow = extract_string_list(allow_val);
             let mut mapped = Vec::new();
             for t in &allow {
-                if is_known_openparlant_tool(t) {
+                if is_known_silicrew_tool(t) {
                     mapped.push(t.clone());
                 } else if let Some(of_name) = map_tool_name(t) {
                     mapped.push(of_name.to_string());
@@ -2014,7 +2014,7 @@ fn convert_agent_from_json(
             if let Some(ref also_val) = agent_tools.also_allow {
                 let also = extract_string_list(also_val);
                 for t in &also {
-                    if is_known_openparlant_tool(t) {
+                    if is_known_silicrew_tool(t) {
                         mapped.push(t.clone());
                     } else if let Some(of_name) = map_tool_name(t) {
                         mapped.push(of_name.to_string());
@@ -2070,7 +2070,7 @@ fn convert_agent_from_json(
     toml_str.push_str(&format!(
         "description = \"Migrated from OpenClaw agent '{id}'\"\n"
     ));
-    toml_str.push_str("author = \"openparlant\"\n");
+    toml_str.push_str("author = \"silicrew\"\n");
     toml_str.push_str("module = \"builtin:chat\"\n");
 
     toml_str.push_str("\n[model]\n");
@@ -2155,7 +2155,7 @@ fn resolve_default_tools(defaults: Option<&OpenClawAgentDefaults>) -> Vec<String
                 let allow = extract_string_list(allow_val);
                 let mut mapped = Vec::new();
                 for t in &allow {
-                    if is_known_openparlant_tool(t) {
+                    if is_known_silicrew_tool(t) {
                         mapped.push(t.clone());
                     } else if let Some(of_name) = map_tool_name(t) {
                         mapped.push(of_name.to_string());
@@ -2496,7 +2496,7 @@ fn report_skipped_features(root: &OpenClawRoot, source: &Path, report: &mut Migr
                 report.skipped.push(SkippedItem {
                     kind: ItemKind::Skill,
                     name: format!("{} skill entries", entries.len()),
-                    reason: "Skills must be reinstalled via `openparlant skill install`"
+                    reason: "Skills must be reinstalled via `silicrew skill install`"
                         .to_string(),
                 });
             }
@@ -2998,7 +2998,7 @@ fn convert_legacy_agent(
     let tools: Vec<String> = if !oc.tools.is_empty() {
         let mut mapped = Vec::new();
         for t in &oc.tools {
-            if is_known_openparlant_tool(t) {
+            if is_known_silicrew_tool(t) {
                 mapped.push(t.clone());
             } else if let Some(of_name) = map_tool_name(t) {
                 mapped.push(of_name.to_string());
@@ -3056,7 +3056,7 @@ fn convert_legacy_agent(
         "description = \"{}\"\n",
         oc.description.replace('"', "\\\"")
     ));
-    toml_str.push_str("author = \"openparlant\"\n");
+    toml_str.push_str("author = \"silicrew\"\n");
     toml_str.push_str("module = \"builtin:chat\"\n");
 
     if !oc.tags.is_empty() {
@@ -3240,7 +3240,7 @@ fn scan_legacy_skills(source: &Path, report: &mut MigrationReport) {
                         kind: ItemKind::Skill,
                         name: name.clone(),
                         reason:
-                            "Node.js skill — run with `openparlant skill install` after migration"
+                            "Node.js skill — run with `silicrew skill install` after migration"
                                 .to_string(),
                     });
                 } else {
@@ -3385,7 +3385,7 @@ mod tests {
       host: "irc.libera.chat",
       port: 6697,
       tls: true,
-      nick: "openparlant-bot",
+      nick: "silicrew-bot",
       password: "irc-secret-pw",
       channels: ["#dev", "#general"]
     },
@@ -4413,12 +4413,12 @@ mod tests {
     }
 
     #[test]
-    fn test_is_known_openparlant_tool() {
-        assert!(is_known_openparlant_tool("file_read"));
-        assert!(is_known_openparlant_tool("shell_exec"));
-        assert!(is_known_openparlant_tool("web_fetch"));
-        assert!(!is_known_openparlant_tool("Read"));
-        assert!(!is_known_openparlant_tool("unknown"));
+    fn test_is_known_silicrew_tool() {
+        assert!(is_known_silicrew_tool("file_read"));
+        assert!(is_known_silicrew_tool("shell_exec"));
+        assert!(is_known_silicrew_tool("web_fetch"));
+        assert!(!is_known_silicrew_tool("Read"));
+        assert!(!is_known_silicrew_tool("unknown"));
     }
 
     #[test]

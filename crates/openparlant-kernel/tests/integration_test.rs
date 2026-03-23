@@ -1,13 +1,13 @@
 //! Integration test: boot kernel -> spawn agent -> send message via Groq API.
 //!
-//! Run with: GROQ_API_KEY=gsk_... cargo test -p openparlant-kernel --test integration_test -- --nocapture
+//! Run with: GROQ_API_KEY=gsk_... cargo test -p silicrew-kernel --test integration_test -- --nocapture
 
-use openparlant_kernel::SiliCrewKernel;
-use openparlant_types::agent::AgentManifest;
-use openparlant_types::config::{DefaultModelConfig, KernelConfig};
+use silicrew_kernel::SiliCrewKernel;
+use silicrew_types::agent::AgentManifest;
+use silicrew_types::config::{DefaultModelConfig, KernelConfig};
 
 fn test_config() -> KernelConfig {
-    let tmp = std::env::temp_dir().join("openparlant-integration-test");
+    let tmp = std::env::temp_dir().join("silicrew-integration-test");
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
 

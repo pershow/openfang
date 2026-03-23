@@ -36,7 +36,7 @@ const MAX_MESSAGE_LEN: usize = 10000;
 const TOKEN_REFRESH_BUFFER_SECS: u64 = 300;
 
 /// Custom User-Agent required by Reddit API guidelines.
-const USER_AGENT: &str = "openparlant:v1.0.0 (by /u/openparlant-bot)";
+const USER_AGENT: &str = "silicrew:v1.0.0 (by /u/silicrew-bot)";
 
 /// Reddit OAuth2 API adapter.
 ///
@@ -295,7 +295,7 @@ fn parse_reddit_comment(comment: &serde_json::Value, own_username: &str) -> Opti
         sender: ChannelUser {
             platform_id: author.to_string(),
             display_name: author.to_string(),
-            openparlant_user: None,
+            silicrew_user: None,
         },
         content,
         target_agent: None,
@@ -558,13 +558,13 @@ mod tests {
             vec![
                 "rust".to_string(),
                 "programming".to_string(),
-                "r/openparlant".to_string(),
+                "r/silicrew".to_string(),
             ],
         );
         assert_eq!(adapter.subreddits.len(), 3);
         assert!(adapter.is_monitored_subreddit("rust"));
         assert!(adapter.is_monitored_subreddit("programming"));
-        assert!(adapter.is_monitored_subreddit("openparlant"));
+        assert!(adapter.is_monitored_subreddit("silicrew"));
         assert!(!adapter.is_monitored_subreddit("news"));
     }
 

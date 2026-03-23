@@ -1,7 +1,7 @@
 name = "ops"
 version = "0.1.0"
 description = "DevOps agent. Monitors systems, runs diagnostics, manages deployments."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 
 [model]

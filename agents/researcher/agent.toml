@@ -1,7 +1,7 @@
 name = "researcher"
 version = "0.1.0"
 description = "Research agent. Fetches web content and synthesizes information."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 tags = ["research", "analysis", "web"]
 

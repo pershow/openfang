@@ -252,7 +252,7 @@ impl ChannelAdapter for WebhookAdapter {
                                     sender: ChannelUser {
                                         platform_id: sender_id,
                                         display_name: sender_name,
-                                        openparlant_user: None,
+                                        silicrew_user: None,
                                     },
                                     content,
                                     target_agent: None,
@@ -321,7 +321,7 @@ impl ChannelAdapter for WebhookAdapter {
 
         for chunk in chunks {
             let body = serde_json::json!({
-                "sender_id": "openparlant",
+                "sender_id": "silicrew",
                 "sender_name": "OpenParlant",
                 "recipient_id": user.platform_id,
                 "recipient_name": user.display_name,

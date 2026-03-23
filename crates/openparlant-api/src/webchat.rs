@@ -10,7 +10,7 @@ use axum::response::IntoResponse;
 use include_dir::{include_dir, Dir};
 
 /// Compile-time ETag based on the crate version.
-const ETAG: &str = concat!("\"openparlant-", env!("CARGO_PKG_VERSION"), "\"");
+const ETAG: &str = concat!("\"silicrew-", env!("CARGO_PKG_VERSION"), "\"");
 
 /// Embedded Vite build output.
 static FRONTEND_DIST: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../frontend/dist");

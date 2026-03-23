@@ -4,9 +4,9 @@
 //! to OpenParlant users with roles, then enforces permission checks on actions.
 
 use dashmap::DashMap;
-use openparlant_types::agent::UserId;
-use openparlant_types::config::UserConfig;
-use openparlant_types::error::{SiliCrewError, SiliCrewResult};
+use silicrew_types::agent::UserId;
+use silicrew_types::config::UserConfig;
+use silicrew_types::error::{SiliCrewError, SiliCrewResult};
 use std::fmt;
 use tracing::info;
 

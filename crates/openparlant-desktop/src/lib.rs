@@ -10,8 +10,8 @@ mod shortcuts;
 mod tray;
 mod updater;
 
-use openparlant_kernel::SiliCrewKernel;
-use openparlant_types::event::{EventPayload, LifecycleEvent, SystemEvent};
+use silicrew_kernel::SiliCrewKernel;
+use silicrew_types::event::{EventPayload, LifecycleEvent, SystemEvent};
 use std::sync::Arc;
 use std::time::Instant;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
@@ -34,7 +34,7 @@ pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "openparlant=info,tauri=info".into()),
+                .unwrap_or_else(|_| "silicrew=info,tauri=info".into()),
         )
         .init();
 

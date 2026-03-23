@@ -118,7 +118,7 @@ impl LlmDriver for FallbackDriver {
 mod tests {
     use super::*;
     use crate::llm_driver::CompletionResponse;
-    use openparlant_types::message::{ContentBlock, StopReason, TokenUsage};
+    use silicrew_types::message::{ContentBlock, StopReason, TokenUsage};
 
     struct FailDriver;
 

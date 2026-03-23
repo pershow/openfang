@@ -58,7 +58,7 @@ impl NonceTracker {
         if self.seen.contains_key(nonce) {
             return Err(format!(
                 "Nonce replay detected: {}",
-                openparlant_types::truncate_str(nonce, 16)
+                silicrew_types::truncate_str(nonce, 16)
             ));
         }
 
@@ -126,7 +126,7 @@ impl Default for PeerConfig {
         Self {
             listen_addr: "127.0.0.1:0".parse().unwrap(),
             node_id: uuid::Uuid::new_v4().to_string(),
-            node_name: "openparlant-node".to_string(),
+            node_name: "silicrew-node".to_string(),
             shared_secret: String::new(),
         }
     }
@@ -1227,7 +1227,7 @@ mod tests {
     #[test]
     fn test_peer_config_default() {
         let config = PeerConfig::default();
-        assert_eq!(config.node_name, "openparlant-node");
+        assert_eq!(config.node_name, "silicrew-node");
         assert!(!config.node_id.is_empty());
     }
 

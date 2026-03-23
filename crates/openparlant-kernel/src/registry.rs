@@ -1,8 +1,8 @@
 //! Agent registry — tracks all agents, their state, and indexes.
 
 use dashmap::DashMap;
-use openparlant_types::agent::{AgentEntry, AgentId, AgentMode, AgentState};
-use openparlant_types::error::{SiliCrewError, SiliCrewResult};
+use silicrew_types::agent::{AgentEntry, AgentId, AgentMode, AgentState};
+use silicrew_types::error::{SiliCrewError, SiliCrewResult};
 use serde_json::json;
 
 /// Registry of all agents in the kernel.
@@ -109,7 +109,7 @@ impl AgentRegistry {
     pub fn update_session_id(
         &self,
         id: AgentId,
-        new_session_id: openparlant_types::agent::SessionId,
+        new_session_id: silicrew_types::agent::SessionId,
     ) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
@@ -139,7 +139,7 @@ impl AgentRegistry {
     pub fn update_identity(
         &self,
         id: AgentId,
-        identity: openparlant_types::agent::AgentIdentity,
+        identity: silicrew_types::agent::AgentIdentity,
     ) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
@@ -203,7 +203,7 @@ impl AgentRegistry {
     pub fn update_fallback_models(
         &self,
         id: AgentId,
-        fallback_models: Vec<openparlant_types::agent::FallbackModel>,
+        fallback_models: Vec<silicrew_types::agent::FallbackModel>,
     ) -> SiliCrewResult<()> {
         let mut entry = self
             .agents
@@ -383,7 +383,7 @@ impl Default for AgentRegistry {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use openparlant_types::agent::*;
+    use silicrew_types::agent::*;
     use std::collections::HashMap;
 
     fn test_entry(name: &str) -> AgentEntry {

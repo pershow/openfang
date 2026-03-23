@@ -2,8 +2,8 @@
 
 The OpenParlant Desktop App is a native desktop wrapper built with [Tauri 2.0](https://v2.tauri.app/) that packages the entire OpenParlant Agent OS into a single, installable application. Instead of running a CLI daemon and opening a browser, users get a native window with system tray integration, OS notifications, and single-instance enforcement -- all powered by the same kernel and API server that the headless deployment uses.
 
-**Crate:** `openparlant-desktop`
-**Identifier:** `ai.openparlant.desktop`
+**Crate:** `silicrew-desktop`
+**Identifier:** `ai.silicrew.desktop`
 **Product name:** OpenParlant
 
 ---
@@ -18,7 +18,7 @@ The desktop app follows a straightforward embedded-server pattern:
 |                                           |
 |  +-----------+    +--------------------+  |
 |  |  Main     |    | Background Thread  |  |
-|  |  Thread   |    | ("openparlant-server")|  |
+|  |  Thread   |    | ("silicrew-server")|  |
 |  |           |    |                    |  |
 |  | WebView   |    | tokio runtime      |  |
 |  | Window    |--->| axum API server    |  |
@@ -35,12 +35,12 @@ The desktop app follows a straightforward embedded-server pattern:
 
 ### Startup Sequence
 
-1. **Tracing init** -- `tracing_subscriber` is configured with `RUST_LOG` env, defaulting to `openparlant=info,tauri=info`.
+1. **Tracing init** -- `tracing_subscriber` is configured with `RUST_LOG` env, defaulting to `silicrew=info,tauri=info`.
 2. **Kernel boot** -- `SiliCrewKernel::boot(None)` loads the default configuration (from `config.toml` or defaults), wrapped in `Arc`. `set_self_handle()` is called to enable self-referencing kernel operations.
 3. **Port binding** -- A `std::net::TcpListener` binds to `127.0.0.1:0` on the main thread, which lets the OS assign a random free port. This ensures the port number is known before any window is created.
-4. **Server thread** -- A dedicated OS thread named `"openparlant-server"` is spawned. It creates its own `tokio::runtime::Builder::new_multi_thread()` runtime and runs:
+4. **Server thread** -- A dedicated OS thread named `"silicrew-server"` is spawned. It creates its own `tokio::runtime::Builder::new_multi_thread()` runtime and runs:
    - `kernel.start_background_agents()` -- heartbeat monitor, autonomous agents, etc.
-   - `run_embedded_server()` -- builds the axum router via `openparlant_api::server::build_router()`, converts the `std::net::TcpListener` to a `tokio::net::TcpListener`, and serves with graceful shutdown.
+   - `run_embedded_server()` -- builds the axum router via `silicrew_api::server::build_router()`, converts the `std::net::TcpListener` to a `tokio::net::TcpListener`, and serves with graceful shutdown.
 5. **Tauri app** -- The Tauri builder is assembled with plugins, managed state, IPC commands, system tray, and a WebView window pointing at `http://127.0.0.1:{port}`.
 6. **Event loop** -- Tauri runs its native event loop. On exit, `server_handle.shutdown()` is called to stop the embedded server and kernel.
 
@@ -93,7 +93,7 @@ The system tray (defined in `src/tray.rs`) provides quick access without bringin
 | **Status: Running (uptime)** | Disabled (info only) — shows uptime in human-readable format |
 | **Launch at Login** | Checkbox — toggles OS-level auto-start via `tauri-plugin-autostart` |
 | **Check for Updates...** | Checks for updates, downloads, installs, and restarts if available. Shows notifications for progress/success/failure |
-| **Open Config Directory** | Opens `~/.openparlant/` in the OS file manager |
+| **Open Config Directory** | Opens `~/.silicrew/` in the OS file manager |
 | **Quit OpenParlant** | Logs the quit event and calls `app.exit(0)` |
 
 The tray tooltip reads **"OpenParlant Agent OS"**.
@@ -188,11 +188,11 @@ const count: number = await invoke("get_agent_count");
 
 ### `import_agent_toml`
 
-Opens a native file picker for `.toml` files. Validates the selected file as an `AgentManifest`, copies it to `~/.openparlant/agents/{name}/agent.toml`, and spawns the agent. Returns the agent name on success.
+Opens a native file picker for `.toml` files. Validates the selected file as an `AgentManifest`, copies it to `~/.silicrew/agents/{name}/agent.toml`, and spawns the agent. Returns the agent name on success.
 
 ### `import_skill_file`
 
-Opens a native file picker for skill files (`.md`, `.toml`, `.py`, `.js`, `.wasm`). Copies the file to `~/.openparlant/skills/` and triggers a hot-reload of the skill registry.
+Opens a native file picker for skill files (`.md`, `.toml`, `.py`, `.js`, `.wasm`). Copies the file to `~/.silicrew/skills/` and triggers a hot-reload of the skill registry.
 
 ### `get_autostart` / `set_autostart`
 
@@ -216,7 +216,7 @@ await invoke("install_update"); // App restarts if update succeeds
 
 ### `open_config_dir` / `open_logs_dir`
 
-Opens `~/.openparlant/` or `~/.openparlant/logs/` in the OS file manager.
+Opens `~/.silicrew/` or `~/.silicrew/logs/` in the OS file manager.
 
 ---
 
@@ -281,7 +281,7 @@ This permits the WebView to load content from the localhost API server while blo
 ### Development
 
 ```bash
-cd crates/openparlant-desktop
+cd crates/silicrew-desktop
 cargo tauri dev
 ```
 
@@ -290,7 +290,7 @@ This launches the app with hot-reload support. The console window is visible in 
 ### Production Build
 
 ```bash
-cd crates/openparlant-desktop
+cd crates/silicrew-desktop
 cargo tauri build
 ```
 
@@ -379,7 +379,7 @@ The codebase includes conditional compilation guards for mobile platform support
 ## File Structure
 
 ```
-crates/openparlant-desktop/
+crates/silicrew-desktop/
   build.rs                 # tauri_build::build()
   Cargo.toml               # Crate dependencies and metadata
   tauri.conf.json           # Tauri app configuration
@@ -407,6 +407,6 @@ crates/openparlant-desktop/
 
 | Variable | Effect |
 |----------|--------|
-| `RUST_LOG` | Controls tracing verbosity. Defaults to `openparlant=info,tauri=info` if unset. |
+| `RUST_LOG` | Controls tracing verbosity. Defaults to `silicrew=info,tauri=info` if unset. |
 
 All other OpenParlant environment variables (API keys, configuration) apply as normal since the desktop app boots the same kernel as the headless daemon.

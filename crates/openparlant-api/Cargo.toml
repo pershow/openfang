@@ -1,5 +1,5 @@
 [package]
-name = "openparlant-api"
+name = "silicrew-api"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,20 +7,20 @@ description = "HTTP/WebSocket API server for the OpenParlant Agent OS daemon"
 build = "build.rs"
 
 [dependencies]
-openparlant-types = { path = "../openparlant-types" }
-openparlant-kernel = { path = "../openparlant-kernel" }
-openparlant-runtime = { path = "../openparlant-runtime" }
-openparlant-memory = { path = "../openparlant-memory" }
-openparlant-channels = { path = "../openparlant-channels" }
-openparlant-wire = { path = "../openparlant-wire" }
-openparlant-skills = { path = "../openparlant-skills" }
-openparlant-hands = { path = "../openparlant-hands" }
-openparlant-extensions = { path = "../openparlant-extensions" }
-openparlant-migrate = { path = "../openparlant-migrate" }
-openparlant-control = { path = "../openparlant-control" }
-openparlant-policy = { path = "../openparlant-policy" }
-openparlant-journey = { path = "../openparlant-journey" }
-openparlant-context = { path = "../openparlant-context" }
+silicrew-types = { path = "../silicrew-types" }
+silicrew-kernel = { path = "../silicrew-kernel" }
+silicrew-runtime = { path = "../silicrew-runtime" }
+silicrew-memory = { path = "../silicrew-memory" }
+silicrew-channels = { path = "../silicrew-channels" }
+silicrew-wire = { path = "../silicrew-wire" }
+silicrew-skills = { path = "../silicrew-skills" }
+silicrew-hands = { path = "../silicrew-hands" }
+silicrew-extensions = { path = "../silicrew-extensions" }
+silicrew-migrate = { path = "../silicrew-migrate" }
+silicrew-control = { path = "../silicrew-control" }
+silicrew-policy = { path = "../silicrew-policy" }
+silicrew-journey = { path = "../silicrew-journey" }
+silicrew-context = { path = "../silicrew-context" }
 rusqlite = { workspace = true }
 sqlx = { workspace = true }
 dashmap = { workspace = true }

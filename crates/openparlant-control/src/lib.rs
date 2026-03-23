@@ -8,14 +8,14 @@ mod store;
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Utc;
-use openparlant_context::{KnowledgeBundle, KnowledgeCompiler, NoopKnowledgeCompiler};
-use openparlant_journey::{JourneyRuntime, NoopJourneyRuntime};
-use openparlant_policy::{
+use silicrew_context::{KnowledgeBundle, KnowledgeCompiler, NoopKnowledgeCompiler};
+use silicrew_journey::{JourneyRuntime, NoopJourneyRuntime};
+use silicrew_policy::{
     NoopObservationMatcher, NoopPolicyResolver, NoopToolGate, ObservationMatcher, PolicyResolver,
     ToolGate,
 };
-use openparlant_types::agent::SessionId;
-use openparlant_types::control::{
+use silicrew_types::agent::SessionId;
+use silicrew_types::control::{
     AuditMeta, CompiledTurnContext, GuidelineActivation, KnowledgeCompileContext,
     PolicyMatchRecord, ResponseMode, SessionBindingFlags, ToolAuthorization,
     ToolAuthorizationRecord, TurnControlCoordinator, TurnInput, TurnOutcome,
@@ -40,7 +40,7 @@ pub struct DefaultTurnControlCoordinator<OM, PR, JR, KC, TG = NoopToolGate> {
     store: Option<ControlStore>,
     /// Optional LLM caller for semantic matching (passed through to matchers/resolvers if needed).
     #[allow(dead_code)]
-    llm_caller: Option<std::sync::Arc<dyn openparlant_types::control::ControlLlmCaller>>,
+    llm_caller: Option<std::sync::Arc<dyn silicrew_types::control::ControlLlmCaller>>,
 }
 
 impl<OM, PR, JR, KC, TG> DefaultTurnControlCoordinator<OM, PR, JR, KC, TG> {
@@ -71,7 +71,7 @@ impl<OM, PR, JR, KC, TG> DefaultTurnControlCoordinator<OM, PR, JR, KC, TG> {
     /// Attach an LLM caller for semantic matching / embedding.
     pub fn with_llm_caller(
         mut self,
-        caller: std::sync::Arc<dyn openparlant_types::control::ControlLlmCaller>,
+        caller: std::sync::Arc<dyn silicrew_types::control::ControlLlmCaller>,
     ) -> Self {
         self.llm_caller = Some(caller);
         self
@@ -151,7 +151,7 @@ where
 
         // Persist explainability sub-records (best-effort)
         if let Some(store) = &self.store {
-            use openparlant_types::control::{JourneyTransitionRecord, TraceId};
+            use silicrew_types::control::{JourneyTransitionRecord, TraceId};
 
             // ── Journey transition record ──────────────────────────────────────
             if let Some(ref update) = journey_update {
@@ -173,7 +173,7 @@ where
             }
 
             // ── Policy match record (from compile_turn snapshot) ─────────────────
-            let rec_id = openparlant_types::control::TraceId::new();
+            let rec_id = silicrew_types::control::TraceId::new();
             let (obs_j, g_hit_j, g_excl_j) = outcome
                 .explainability
                 .as_ref()
@@ -219,7 +219,7 @@ where
                 })
                 .unwrap_or_else(|| ("[]".into(), "{}".into()));
             let tar = ToolAuthorizationRecord {
-                record_id: openparlant_types::control::TraceId::new(),
+                record_id: silicrew_types::control::TraceId::new(),
                 trace_id: outcome.trace_id,
                 allowed_tools_json: allowed_j,
                 authorization_reasons_json: auth_json.to_string(),
@@ -417,7 +417,7 @@ where
         let authorized_candidates = if input.candidate_tools.is_empty() {
             allowed_tools
                 .iter()
-                .map(|tool_name| openparlant_types::control::ToolCandidate {
+                .map(|tool_name| silicrew_types::control::ToolCandidate {
                     tool_name: tool_name.clone(),
                     skill_ref: None,
                 })
@@ -538,7 +538,7 @@ where
         // Persist turn trace (best-effort – failure is logged, not propagated)
         if persist_trace {
             if let Some(store) = &self.store {
-                use openparlant_types::control::TurnTraceRecord;
+                use silicrew_types::control::TurnTraceRecord;
                 let trace = TurnTraceRecord {
                     trace_id: audit_meta.trace_id,
                     scope_id: input.scope_id.clone(),
@@ -633,8 +633,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openparlant_types::agent::{AgentId, SessionId};
-    use openparlant_types::control::{CanonicalMessage, ScopeId, TurnInput};
+    use silicrew_types::agent::{AgentId, SessionId};
+    use silicrew_types::control::{CanonicalMessage, ScopeId, TurnInput};
 
     #[tokio::test]
     async fn noop_coordinator_compiles_empty_context() {
@@ -657,7 +657,7 @@ mod tests {
     #[test]
     fn composition_mode_override_respects_strict_and_canned_modes() {
         let strict = GuidelineActivation {
-            guideline_id: openparlant_types::control::GuidelineId::new(),
+            guideline_id: silicrew_types::control::GuidelineId::new(),
             name: "strict".to_string(),
             action_text: "Stay within strict wording.".to_string(),
             composition_mode: Some("strict".to_string()),
@@ -665,7 +665,7 @@ mod tests {
             source_observations: Vec::new(),
         };
         let canned = GuidelineActivation {
-            guideline_id: openparlant_types::control::GuidelineId::new(),
+            guideline_id: silicrew_types::control::GuidelineId::new(),
             name: "canned".to_string(),
             action_text: "Use approved templates.".to_string(),
             composition_mode: Some("canned_strict".to_string()),
@@ -673,7 +673,7 @@ mod tests {
             source_observations: Vec::new(),
         };
         let guided = GuidelineActivation {
-            guideline_id: openparlant_types::control::GuidelineId::new(),
+            guideline_id: silicrew_types::control::GuidelineId::new(),
             name: "guided".to_string(),
             action_text: "Keep a guided tone.".to_string(),
             composition_mode: Some("guided".to_string()),

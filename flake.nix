@@ -27,7 +27,7 @@
           openssl
           pkg-config
         ];
-        rust-project.crates.openparlant-desktop.crane.args.buildInputs = with pkgs; [
+        rust-project.crates.silicrew-desktop.crane.args.buildInputs = with pkgs; [
           atk
           glib
           gtk3
@@ -36,17 +36,17 @@
           webkitgtk_4_1
         ];
 
-        packages.default = self'.packages.openparlant-cli;
+        packages.default = self'.packages.silicrew-cli;
         apps = {
-          openparlant-cli = {
-            program = "${self'.packages.openparlant-cli}/bin/openparlant";
+          silicrew-cli = {
+            program = "${self'.packages.silicrew-cli}/bin/silicrew";
             meta.description = "CLI tool for the OpenParlant Agent OS";
           };
-          openparlant-desktop = {
-            program = "${self'.packages.openparlant-desktop}/bin/openparlant-desktop";
+          silicrew-desktop = {
+            program = "${self'.packages.silicrew-desktop}/bin/silicrew-desktop";
             meta.description = "Native desktop application for the OpenParlant Agent OS (Tauri 2.0)";
           };
-          default = self'.apps.openparlant-cli;
+          default = self'.apps.silicrew-cli;
         };
       };
       flake = {

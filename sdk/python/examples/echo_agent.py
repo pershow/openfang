@@ -4,9 +4,9 @@
 import sys
 import os
 
-# Add parent directory to path for openparlant_sdk import
+# Add parent directory to path for silicrew_sdk import
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from openparlant_sdk import Agent
+from silicrew_sdk import Agent
 
 agent = Agent()
 

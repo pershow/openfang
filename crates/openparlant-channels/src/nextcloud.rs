@@ -363,7 +363,7 @@ impl ChannelAdapter for NextcloudAdapter {
                             sender: ChannelUser {
                                 platform_id: room_token.clone(),
                                 display_name: actor_display.to_string(),
-                                openparlant_user: None,
+                                silicrew_user: None,
                             },
                             content: msg_content,
                             target_agent: None,

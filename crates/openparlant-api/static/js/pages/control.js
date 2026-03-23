@@ -156,7 +156,7 @@ function controlPage() {
 
     async onScopeChange() {
       if (!this.selectedScope) return;
-      window.__openparlantControlScope = this.selectedScope || '';
+      window.__silicrewControlScope = this.selectedScope || '';
       window.dispatchEvent(new CustomEvent('control-scope-changed', {
         detail: { scopeId: this.selectedScope || '' }
       }));

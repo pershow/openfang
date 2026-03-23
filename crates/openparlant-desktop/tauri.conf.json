@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "OpenParlant",
   "version": "0.1.0",
-  "identifier": "ai.openparlant.desktop",
+  "identifier": "ai.silicrew.desktop",
   "build": {},
   "app": {
     "windows": [],
@@ -14,7 +14,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJDOTE5MDhCRDNGMTUyMEQKUldRTlV2SFRpNUNSdkZRZDcvektwZkN6bUsyM0NJZC9OeXhHRU5id1FnZWllQmNlZGRoSGRQOHkK",
       "endpoints": [
-        "https://github.com/RightNow-AI/openparlant/releases/latest/download/latest.json"
+        "https://github.com/RightNow-AI/silicrew/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"

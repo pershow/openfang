@@ -156,7 +156,7 @@ impl SkillRegistry {
                                 skill = %converted.manifest.skill.name,
                                 "Auto-converting SKILL.md to OpenParlant format"
                             );
-                            if let Err(e) = openclaw_compat::write_openparlant_manifest(
+                            if let Err(e) = openclaw_compat::write_silicrew_manifest(
                                 &path,
                                 &converted.manifest,
                             ) {
@@ -335,7 +335,7 @@ impl SkillRegistry {
                                 continue;
                             }
 
-                            if let Err(e) = openclaw_compat::write_openparlant_manifest(
+                            if let Err(e) = openclaw_compat::write_silicrew_manifest(
                                 &path,
                                 &converted.manifest,
                             ) {

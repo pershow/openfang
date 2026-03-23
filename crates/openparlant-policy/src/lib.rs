@@ -4,8 +4,8 @@ mod store;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use openparlant_memory::db::SharedDb;
-use openparlant_types::control::{
+use silicrew_memory::db::SharedDb;
+use silicrew_types::control::{
     CanonicalMessage, ExcludedGuideline, GuidelineActivation, ObservationDefinition,
     ObservationHit, ScopeId, ToolAuthorization, ToolCandidate, ToolExposurePolicy,
 };
@@ -218,7 +218,7 @@ fn match_observation_deterministic(
 #[cfg(test)]
 mod observation_deterministic_tests {
     use super::match_observation_deterministic;
-    use openparlant_types::control::{ObservationDefinition, ObservationId, ScopeId};
+    use silicrew_types::control::{ObservationDefinition, ObservationId, ScopeId};
     use serde_json::json;
 
     fn obs(name: &str, matcher_type: &str, config: serde_json::Value) -> ObservationDefinition {
@@ -364,8 +364,8 @@ fn build_tool_authorizations(
                 reasons: vec![tool_policy_reason(policy)],
                 requires_approval: matches!(
                     policy.approval_mode,
-                    openparlant_types::control::ApprovalMode::Required
-                        | openparlant_types::control::ApprovalMode::Conditional
+                    silicrew_types::control::ApprovalMode::Required
+                        | silicrew_types::control::ApprovalMode::Conditional
                 ),
             })
             .collect();
@@ -398,8 +398,8 @@ fn build_tool_authorizations(
             requires_approval: matching.iter().any(|policy| {
                 matches!(
                     policy.approval_mode,
-                    openparlant_types::control::ApprovalMode::Required
-                        | openparlant_types::control::ApprovalMode::Conditional
+                    silicrew_types::control::ApprovalMode::Required
+                        | silicrew_types::control::ApprovalMode::Conditional
                 )
             }),
         });
@@ -623,7 +623,7 @@ impl PolicyResolver for NoopPolicyResolver {
 
 // ─── Tool Gate ────────────────────────────────────────────────────────────────
 
-use openparlant_types::control::{ApprovalMode, ToolGateDecision};
+use silicrew_types::control::{ApprovalMode, ToolGateDecision};
 
 /// Trait for resolving which tools are visible and whether they need approval.
 #[async_trait]
@@ -763,7 +763,7 @@ impl ToolGate for NoopToolGate {
 
 // ─── LLM-based semantic matchers ──────────────────────────────────────────────
 
-use openparlant_types::control::ControlLlmCaller;
+use silicrew_types::control::ControlLlmCaller;
 
 /// Observation matcher that handles `matcher_type = "semantic"` via an LLM call.
 ///
@@ -905,7 +905,7 @@ impl PolicyResolver for LlmPolicyResolver {
 
         // Separate into deterministic (have condition_ref) and semantic (empty condition_ref).
         let mut deterministic_active: Vec<GuidelineActivation> = Vec::new();
-        let mut semantic_candidates: Vec<&openparlant_types::control::GuidelineDefinition> =
+        let mut semantic_candidates: Vec<&silicrew_types::control::GuidelineDefinition> =
             Vec::new();
 
         for guideline in &guidelines {
@@ -1134,7 +1134,7 @@ impl PolicyResolver for LlmPolicyResolver {
 #[cfg(test)]
 mod tool_policy_skill_tests {
     use super::*;
-    use openparlant_types::control::{ApprovalMode, GuidelineId, ObservationId};
+    use silicrew_types::control::{ApprovalMode, GuidelineId, ObservationId};
 
     fn setup_conn() -> Arc<Mutex<Connection>> {
         let conn = Connection::open_in_memory().unwrap();
@@ -1209,7 +1209,7 @@ mod tool_policy_skill_tests {
         priority: i32,
     ) {
         store
-            .upsert_guideline(&openparlant_types::control::GuidelineDefinition {
+            .upsert_guideline(&silicrew_types::control::GuidelineDefinition {
                 guideline_id: id,
                 scope_id: ScopeId::default(),
                 name: name.to_string(),

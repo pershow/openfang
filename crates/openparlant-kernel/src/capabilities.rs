@@ -1,8 +1,8 @@
 //! Capability manager — enforces capability-based security.
 
 use dashmap::DashMap;
-use openparlant_types::agent::AgentId;
-use openparlant_types::capability::{capability_matches, Capability, CapabilityCheck};
+use silicrew_types::agent::AgentId;
+use silicrew_types::capability::{capability_matches, Capability, CapabilityCheck};
 use tracing::debug;
 
 /// Manages capability grants for all agents.

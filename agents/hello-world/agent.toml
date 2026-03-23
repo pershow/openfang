@@ -1,7 +1,7 @@
 name = "hello-world"
 version = "0.1.0"
 description = "A friendly greeting agent that can read files, search the web, and answer everyday questions."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 
 [model]

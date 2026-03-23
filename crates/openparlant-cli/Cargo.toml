@@ -1,21 +1,21 @@
 [package]
-name = "openparlant-cli"
+name = "silicrew-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "CLI tool for the OpenParlant Agent OS"
 
 [[bin]]
-name = "openparlant"
+name = "silicrew"
 path = "src/main.rs"
 
 [dependencies]
-openparlant-types = { path = "../openparlant-types" }
-openparlant-kernel = { path = "../openparlant-kernel" }
-openparlant-api = { path = "../openparlant-api" }
-openparlant-migrate = { path = "../openparlant-migrate" }
-openparlant-skills = { path = "../openparlant-skills" }
-openparlant-extensions = { path = "../openparlant-extensions" }
+silicrew-types = { path = "../silicrew-types" }
+silicrew-kernel = { path = "../silicrew-kernel" }
+silicrew-api = { path = "../silicrew-api" }
+silicrew-migrate = { path = "../silicrew-migrate" }
+silicrew-skills = { path = "../silicrew-skills" }
+silicrew-extensions = { path = "../silicrew-extensions" }
 zeroize = { workspace = true }
 tokio = { workspace = true }
 clap = { workspace = true }
@@ -27,7 +27,7 @@ serde_json = { workspace = true }
 toml = { workspace = true }
 dirs = { workspace = true }
 reqwest = { workspace = true, features = ["blocking"] }
-openparlant-runtime = { path = "../openparlant-runtime" }
+silicrew-runtime = { path = "../silicrew-runtime" }
 uuid = { workspace = true }
 ratatui = { workspace = true }
 colored = { workspace = true }

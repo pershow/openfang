@@ -12,9 +12,9 @@
 
 use crate::llm_driver::{CompletionRequest, LlmDriver};
 use crate::str_utils::safe_truncate_str;
-use openparlant_memory::session::Session;
-use openparlant_types::message::{ContentBlock, Message, MessageContent, Role};
-use openparlant_types::tool::ToolDefinition;
+use silicrew_memory::session::Session;
+use silicrew_types::message::{ContentBlock, Message, MessageContent, Role};
+use silicrew_types::tool::ToolDefinition;
 use serde::Serialize;
 use std::sync::Arc;
 use tracing::{info, warn};
@@ -90,7 +90,7 @@ pub fn needs_compaction(session: &Session, config: &CompactionConfig) -> bool {
 pub fn estimate_token_count(
     messages: &[Message],
     system_prompt: Option<&str>,
-    tools: Option<&[openparlant_types::tool::ToolDefinition]>,
+    tools: Option<&[silicrew_types::tool::ToolDefinition]>,
 ) -> usize {
     let mut chars: usize = 0;
 
@@ -721,13 +721,13 @@ pub async fn compact_session(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openparlant_types::message::TokenUsage;
+    use silicrew_types::message::TokenUsage;
 
     #[test]
     fn test_needs_compaction_below_threshold() {
         let session = Session {
-            id: openparlant_types::agent::SessionId::new(),
-            agent_id: openparlant_types::agent::AgentId::new(),
+            id: silicrew_types::agent::SessionId::new(),
+            agent_id: silicrew_types::agent::AgentId::new(),
             messages: vec![Message::user("hello")],
             context_window_tokens: 0,
             label: None,
@@ -742,8 +742,8 @@ mod tests {
             .map(|i| Message::user(format!("msg {i}")))
             .collect();
         let session = Session {
-            id: openparlant_types::agent::SessionId::new(),
-            agent_id: openparlant_types::agent::AgentId::new(),
+            id: silicrew_types::agent::SessionId::new(),
+            agent_id: silicrew_types::agent::AgentId::new(),
             messages,
             context_window_tokens: 0,
             label: None,
@@ -780,7 +780,7 @@ mod tests {
                         text: "Summary of conversation".to_string(),
                         provider_metadata: None,
                     }],
-                    stop_reason: openparlant_types::message::StopReason::EndTurn,
+                    stop_reason: silicrew_types::message::StopReason::EndTurn,
                     tool_calls: vec![],
                     usage: TokenUsage {
                         input_tokens: 100,
@@ -791,8 +791,8 @@ mod tests {
         }
 
         let session = Session {
-            id: openparlant_types::agent::SessionId::new(),
-            agent_id: openparlant_types::agent::AgentId::new(),
+            id: silicrew_types::agent::SessionId::new(),
+            agent_id: silicrew_types::agent::AgentId::new(),
             messages: vec![Message::user("hello"), Message::assistant("hi")],
             context_window_tokens: 0,
             label: None,
@@ -842,7 +842,7 @@ mod tests {
                         text: "Summary with tools".to_string(),
                         provider_metadata: None,
                     }],
-                    stop_reason: openparlant_types::message::StopReason::EndTurn,
+                    stop_reason: silicrew_types::message::StopReason::EndTurn,
                     tool_calls: vec![],
                     usage: TokenUsage {
                         input_tokens: 100,
@@ -878,8 +878,8 @@ mod tests {
         };
 
         let session = Session {
-            id: openparlant_types::agent::SessionId::new(),
-            agent_id: openparlant_types::agent::AgentId::new(),
+            id: silicrew_types::agent::SessionId::new(),
+            agent_id: silicrew_types::agent::AgentId::new(),
             messages,
             context_window_tokens: 0,
             label: None,
@@ -935,7 +935,7 @@ mod tests {
                         text: "Summary: discussed topics 0 through 79".to_string(),
                         provider_metadata: None,
                     }],
-                    stop_reason: openparlant_types::message::StopReason::EndTurn,
+                    stop_reason: silicrew_types::message::StopReason::EndTurn,
                     tool_calls: vec![],
                     usage: TokenUsage {
                         input_tokens: 500,
@@ -949,8 +949,8 @@ mod tests {
             .map(|i| Message::user(format!("Message about topic {i}")))
             .collect();
         let session = Session {
-            id: openparlant_types::agent::SessionId::new(),
-            agent_id: openparlant_types::agent::AgentId::new(),
+            id: silicrew_types::agent::SessionId::new(),
+            agent_id: silicrew_types::agent::AgentId::new(),
             messages,
             context_window_tokens: 0,
             label: None,
@@ -1076,8 +1076,8 @@ mod tests {
             .map(|i| Message::user(format!("Message {i}")))
             .collect();
         let session = Session {
-            id: openparlant_types::agent::SessionId::new(),
-            agent_id: openparlant_types::agent::AgentId::new(),
+            id: silicrew_types::agent::SessionId::new(),
+            agent_id: silicrew_types::agent::AgentId::new(),
             messages,
             context_window_tokens: 0,
             label: None,
@@ -1131,7 +1131,7 @@ mod tests {
                         text: format!("Chunk summary {n}"),
                         provider_metadata: None,
                     }],
-                    stop_reason: openparlant_types::message::StopReason::EndTurn,
+                    stop_reason: silicrew_types::message::StopReason::EndTurn,
                     tool_calls: vec![],
                     usage: TokenUsage {
                         input_tokens: 50,
@@ -1273,7 +1273,7 @@ mod tests {
 
     #[test]
     fn test_estimate_token_count_with_tools() {
-        use openparlant_types::tool::ToolDefinition;
+        use silicrew_types::tool::ToolDefinition;
         let messages = vec![Message::user("hi")];
         let tools = vec![ToolDefinition {
             name: "web_search".into(),

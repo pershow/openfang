@@ -1,5 +1,5 @@
 # OpenParlant Agent OS — Example Configuration
-# Copy to ~/.openparlant/config.toml and customize.
+# Copy to ~/.silicrew/config.toml and customize.
 
 # API server settings
 # api_key = ""                               # Set to enable Bearer auth (recommended)
@@ -10,16 +10,16 @@
 # After enabling, restart the daemon once so the platform admin row is synced to the DB.
 #
 # Option A — CLI writes [auth] for you (recommended):
-#   openparlant auth bootstrap-admin --username admin
+#   silicrew auth bootstrap-admin --username admin
 #
 # Option B — set hash manually:
-#   openparlant auth hash-password --password "YourSecurePassword"
+#   silicrew auth hash-password --password "YourSecurePassword"
 #   # paste the printed hex into password_hash below
 #
 # [auth]
 # enabled = true
 # username = "admin"
-# password_hash = ""                      # Paste hex from `openparlant auth hash-password` (required when enabled is true)
+# password_hash = ""                      # Paste hex from `silicrew auth hash-password` (required when enabled is true)
 # session_ttl_hours = 168                 # Session lifetime in hours (default 7 days)
 
 
@@ -31,17 +31,17 @@ api_key_env = "ANTHROPIC_API_KEY"         # Environment variable holding API key
 
 [memory]
 decay_rate = 0.05                         # Memory confidence decay rate
-# sqlite_path = "~/.openparlant/data/openparlant.db"   # Optional: custom DB path (SQLite when no Postgres URL)
+# sqlite_path = "~/.silicrew/data/silicrew.db"   # Optional: custom DB path (SQLite when no Postgres URL)
 
 # PostgreSQL — shared store for runtime + control plane (optional; defaults to SQLite).
 # Prefer split fields so passwords may contain "@" without breaking the URI.
 # [database]
 # host = "127.0.0.1"
 # port = 5432
-# user = "openparlant"
+# user = "silicrew"
 # password = "OPENFANG_PG_PASSWORD"   # Env var name; value from secrets.env then environment
 #                                      # Preferred key; do not also set password_env
-# dbname = "openparlant"               # Must be this key (alias: database = "...")
+# dbname = "silicrew"               # Must be this key (alias: database = "...")
 # ssl_mode = "disable"                  # Appended as ?sslmode=...
 # Or a single URI (split fields ignored when non-empty):
 # url = "postgresql://user:pass@host:5432/dbname"

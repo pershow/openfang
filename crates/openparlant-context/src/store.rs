@@ -1,7 +1,7 @@
 use anyhow::Result;
-use openparlant_memory::db::SharedDb;
-use openparlant_types::agent::{AgentId, SessionId};
-use openparlant_types::control::{
+use silicrew_memory::db::SharedDb;
+use silicrew_types::agent::{AgentId, SessionId};
+use silicrew_types::control::{
     CannedResponseCandidate, ControlEmbedder, GlossaryEntry, ResolvedVariable, RetrievedChunk,
     ScopeId,
 };
@@ -924,9 +924,9 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 mod tests {
     use super::cosine_similarity;
     use super::ContextStore;
-    use openparlant_memory::migration::run_migrations;
-    use openparlant_types::agent::{AgentId, SessionId};
-    use openparlant_types::control::ScopeId;
+    use silicrew_memory::migration::run_migrations;
+    use silicrew_types::agent::{AgentId, SessionId};
+    use silicrew_types::control::ScopeId;
     use rusqlite::{params, Connection};
     use std::sync::{Arc, Mutex};
 
@@ -984,7 +984,7 @@ mod tests {
         .unwrap();
 
         let store = ContextStore::new(Arc::new(Mutex::new(conn)));
-        let vars = openparlant_memory::db::block_on(store.load_context_variables(
+        let vars = silicrew_memory::db::block_on(store.load_context_variables(
             &ScopeId::default(),
             "hello",
             None,

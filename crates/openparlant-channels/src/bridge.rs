@@ -1,6 +1,6 @@
 //! Channel bridge — connects channel adapters to the OpenParlant kernel.
 //!
-//! Defines `ChannelBridgeHandle` (implemented by openparlant-api on the kernel) and
+//! Defines `ChannelBridgeHandle` (implemented by silicrew-api on the kernel) and
 //! `BridgeManager` which owns running adapters and dispatches messages.
 
 use crate::formatter;
@@ -12,9 +12,9 @@ use crate::types::{
 use async_trait::async_trait;
 use dashmap::DashMap;
 use futures::StreamExt;
-use openparlant_types::agent::AgentId;
-use openparlant_types::config::{ChannelOverrides, DmPolicy, GroupPolicy, OutputFormat};
-use openparlant_types::message::ContentBlock;
+use silicrew_types::agent::AgentId;
+use silicrew_types::config::{ChannelOverrides, DmPolicy, GroupPolicy, OutputFormat};
+use silicrew_types::message::ContentBlock;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
@@ -22,8 +22,8 @@ use tracing::{debug, error, info, warn};
 
 /// Kernel operations needed by channel adapters.
 ///
-/// Defined here to avoid circular deps (openparlant-channels can't depend on openparlant-kernel).
-/// Implemented in openparlant-api on the actual kernel.
+/// Defined here to avoid circular deps (silicrew-channels can't depend on silicrew-kernel).
+/// Implemented in silicrew-api on the actual kernel.
 #[async_trait]
 pub trait ChannelBridgeHandle: Send + Sync {
     /// Send a message to an agent and get the text response.
@@ -791,7 +791,7 @@ async fn dispatch_message(
             let mut responses = Vec::new();
 
             match strategy {
-                openparlant_types::config::BroadcastStrategy::Parallel => {
+                silicrew_types::config::BroadcastStrategy::Parallel => {
                     let mut handles_vec = Vec::new();
                     for (name, maybe_id) in &targets {
                         if let Some(aid) = maybe_id {
@@ -814,7 +814,7 @@ async fn dispatch_message(
                         }
                     }
                 }
-                openparlant_types::config::BroadcastStrategy::Sequential => {
+                silicrew_types::config::BroadcastStrategy::Sequential => {
                     for (name, maybe_id) in &targets {
                         if let Some(aid) = maybe_id {
                             match handle.send_message(*aid, &text).await {
@@ -841,7 +841,7 @@ async fn dispatch_message(
     let agent_id = router.resolve(
         &message.channel,
         &message.sender.platform_id,
-        message.sender.openparlant_user.as_deref(),
+        message.sender.silicrew_user.as_deref(),
     );
 
     let agent_id = match agent_id {
@@ -1320,7 +1320,7 @@ async fn dispatch_with_blocks(
     let agent_id = router.resolve(
         &message.channel,
         &message.sender.platform_id,
-        message.sender.openparlant_user.as_deref(),
+        message.sender.silicrew_user.as_deref(),
     );
 
     let agent_id = match agent_id {
@@ -1670,7 +1670,7 @@ async fn handle_command(
             let agent_id = router.resolve(
                 &crate::types::ChannelType::CLI,
                 &sender.platform_id,
-                sender.openparlant_user.as_deref(),
+                sender.silicrew_user.as_deref(),
             );
             match agent_id {
                 Some(aid) => handle
@@ -1684,7 +1684,7 @@ async fn handle_command(
             let agent_id = router.resolve(
                 &crate::types::ChannelType::CLI,
                 &sender.platform_id,
-                sender.openparlant_user.as_deref(),
+                sender.silicrew_user.as_deref(),
             );
             match agent_id {
                 Some(aid) => handle
@@ -1698,7 +1698,7 @@ async fn handle_command(
             let agent_id = router.resolve(
                 &crate::types::ChannelType::CLI,
                 &sender.platform_id,
-                sender.openparlant_user.as_deref(),
+                sender.silicrew_user.as_deref(),
             );
             match agent_id {
                 Some(aid) => {
@@ -1722,7 +1722,7 @@ async fn handle_command(
             let agent_id = router.resolve(
                 &crate::types::ChannelType::CLI,
                 &sender.platform_id,
-                sender.openparlant_user.as_deref(),
+                sender.silicrew_user.as_deref(),
             );
             match agent_id {
                 Some(aid) => handle
@@ -1736,7 +1736,7 @@ async fn handle_command(
             let agent_id = router.resolve(
                 &crate::types::ChannelType::CLI,
                 &sender.platform_id,
-                sender.openparlant_user.as_deref(),
+                sender.silicrew_user.as_deref(),
             );
             match agent_id {
                 Some(aid) => handle
@@ -1750,7 +1750,7 @@ async fn handle_command(
             let agent_id = router.resolve(
                 &crate::types::ChannelType::CLI,
                 &sender.platform_id,
-                sender.openparlant_user.as_deref(),
+                sender.silicrew_user.as_deref(),
             );
             match agent_id {
                 Some(aid) => {
@@ -1912,7 +1912,7 @@ mod tests {
         let sender = ChannelUser {
             platform_id: "user1".to_string(),
             display_name: "Test".to_string(),
-            openparlant_user: None,
+            silicrew_user: None,
         };
 
         let result = handle_command("agents", &[], &handle, &router, &sender).await;
@@ -1932,7 +1932,7 @@ mod tests {
         let sender = ChannelUser {
             platform_id: "user1".to_string(),
             display_name: "Test".to_string(),
-            openparlant_user: None,
+            silicrew_user: None,
         };
 
         // Select existing agent

@@ -15,7 +15,7 @@
 //! {"type": "response", "text": "...", "tool_calls": [...]}
 //! ```
 //!
-//! The Python SDK (`openparlant_sdk.py`) provides a helper to handle this protocol.
+//! The Python SDK (`silicrew_sdk.py`) provides a helper to handle this protocol.
 
 use std::path::Path;
 use std::process::Stdio;

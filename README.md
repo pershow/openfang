@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/assets/openparlant-logo.png" width="160" alt="OpenParlant Logo" />
+  <img src="public/assets/silicrew-logo.png" width="160" alt="OpenParlant Logo" />
 </p>
 
 <h1 align="center">OpenParlant</h1>
@@ -11,9 +11,9 @@
 </p>
 
 <p align="center">
-  <a href="https://openparlant.sh/docs">Documentation</a> &bull;
-  <a href="https://openparlant.sh/docs/getting-started">Quick Start</a> &bull;
-  <a href="https://x.com/openparlantg">Twitter / X</a>
+  <a href="https://silicrew.sh/docs">Documentation</a> &bull;
+  <a href="https://silicrew.sh/docs/getting-started">Quick Start</a> &bull;
+  <a href="https://x.com/silicrewg">Twitter / X</a>
 </p>
 
 <p align="center">
@@ -22,14 +22,14 @@
   <img src="https://img.shields.io/badge/version-0.3.30-green?style=flat-square" alt="v0.3.30" />
   <img src="https://img.shields.io/badge/tests-1,767%2B%20passing-brightgreen?style=flat-square" alt="Tests" />
   <img src="https://img.shields.io/badge/clippy-0%20warnings-brightgreen?style=flat-square" alt="Clippy" />
-  <a href="https://www.buymeacoffee.com/openparlant" target="_blank"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=flat-square&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me A Coffee" /></a>
+  <a href="https://www.buymeacoffee.com/silicrew" target="_blank"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=flat-square&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me A Coffee" /></a>
 </p>
 
 ---
 
 > **v0.3.30 — Security Hardening Release (March 2026)**
 >
-> OpenParlant is feature-complete but still pre-1.0. You may encounter rough edges or breaking changes between minor versions. We ship fast and fix fast. Pin to a specific commit for production use until v1.0. [Report issues here.](https://github.com/RightNow-AI/openparlant/issues)
+> OpenParlant is feature-complete but still pre-1.0. You may encounter rough edges or breaking changes between minor versions. We ship fast and fix fast. Pin to a specific commit for production use until v1.0. [Report issues here.](https://github.com/RightNow-AI/silicrew/issues)
 
 ---
 
@@ -42,9 +42,9 @@ Traditional agent frameworks wait for you to type something. OpenParlant runs **
 The entire system compiles to a **single ~32MB binary**. One install, one command, your agents are live.
 
 ```bash
-curl -fsSL https://openparlant.sh/install | sh
-openparlant init
-openparlant start
+curl -fsSL https://silicrew.sh/install | sh
+silicrew init
+silicrew start
 # Dashboard live at http://localhost:4200
 ```
 
@@ -52,9 +52,9 @@ openparlant start
 <summary><strong>Windows</strong></summary>
 
 ```powershell
-irm https://openparlant.sh/install.ps1 | iex
-openparlant init
-openparlant start
+irm https://silicrew.sh/install.ps1 | iex
+silicrew init
+silicrew start
 ```
 
 </details>
@@ -89,19 +89,19 @@ All compiled into the binary. No downloading, no pip install, no Docker pull.
 
 ```bash
 # Activate the Researcher Hand — it starts working immediately
-openparlant hand activate researcher
+silicrew hand activate researcher
 
 # Check its progress anytime
-openparlant hand status researcher
+silicrew hand status researcher
 
 # Activate lead generation on a daily schedule
-openparlant hand activate lead
+silicrew hand activate lead
 
 # Pause without losing state
-openparlant hand pause lead
+silicrew hand pause lead
 
 # See all available Hands
-openparlant hand list
+silicrew hand list
 ```
 
 **Build your own.** Define a `HAND.toml` with tools, settings, and a system prompt. Publish to FangHub.
@@ -111,7 +111,7 @@ openparlant hand list
 ## OpenParlant vs The Landscape
 
 <p align="center">
-  <img src="public/assets/openparlant-vs-claws.png" width="600" alt="OpenParlant vs OpenClaw vs ZeroClaw" />
+  <img src="public/assets/silicrew-vs-claws.png" width="600" alt="OpenParlant vs OpenClaw vs ZeroClaw" />
 </p>
 
 ### Benchmarks: Measured, Not Marketed
@@ -233,19 +233,19 @@ OpenParlant doesn't bolt security on after the fact. Every layer is independentl
 14 Rust crates. 137,728 lines of code. Modular kernel design.
 
 ```
-openparlant-kernel      Orchestration, workflows, metering, RBAC, scheduler, budget tracking
-openparlant-runtime     Agent loop, 3 LLM drivers, 53 tools, WASM sandbox, MCP, A2A
-openparlant-api         140+ REST/WS/SSE endpoints, OpenAI-compatible API, dashboard
-openparlant-channels    40 messaging adapters with rate limiting, DM/group policies
-openparlant-memory      SQLite persistence, vector embeddings, canonical sessions, compaction
-openparlant-types       Core types, taint tracking, Ed25519 manifest signing, model catalog
-openparlant-skills      60 bundled skills, SKILL.md parser, FangHub marketplace
-openparlant-hands       7 autonomous Hands, HAND.toml parser, lifecycle management
-openparlant-extensions  25 MCP templates, AES-256-GCM credential vault, OAuth2 PKCE
-openparlant-wire        OFP P2P protocol with HMAC-SHA256 mutual authentication
-openparlant-cli         CLI with daemon management, TUI dashboard, MCP server mode
-openparlant-desktop     Tauri 2.0 native app (system tray, notifications, global shortcuts)
-openparlant-migrate     OpenClaw, LangChain, AutoGPT migration engine
+silicrew-kernel      Orchestration, workflows, metering, RBAC, scheduler, budget tracking
+silicrew-runtime     Agent loop, 3 LLM drivers, 53 tools, WASM sandbox, MCP, A2A
+silicrew-api         140+ REST/WS/SSE endpoints, OpenAI-compatible API, dashboard
+silicrew-channels    40 messaging adapters with rate limiting, DM/group policies
+silicrew-memory      SQLite persistence, vector embeddings, canonical sessions, compaction
+silicrew-types       Core types, taint tracking, Ed25519 manifest signing, model catalog
+silicrew-skills      60 bundled skills, SKILL.md parser, FangHub marketplace
+silicrew-hands       7 autonomous Hands, HAND.toml parser, lifecycle management
+silicrew-extensions  25 MCP templates, AES-256-GCM credential vault, OAuth2 PKCE
+silicrew-wire        OFP P2P protocol with HMAC-SHA256 mutual authentication
+silicrew-cli         CLI with daemon management, TUI dashboard, MCP server mode
+silicrew-desktop     Tauri 2.0 native app (system tray, notifications, global shortcuts)
+silicrew-migrate     OpenClaw, LangChain, AutoGPT migration engine
 xtask                Build automation
 ```
 
@@ -319,7 +319,7 @@ The gateway listens on port `3009` by default. Override with `WHATSAPP_GATEWAY_P
 **5. Start OpenParlant:**
 
 ```bash
-openparlant start
+silicrew start
 # Dashboard at http://localhost:4200
 ```
 
@@ -351,7 +351,7 @@ Once scanned, the status changes to `connected` and incoming messages are routed
 
 ### Alternative: WhatsApp Cloud API
 
-For production workloads, use the [WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api) with a Meta Business account. See the [Cloud API configuration docs](https://openparlant.sh/docs/channels/whatsapp).
+For production workloads, use the [WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api) with a Meta Business account. See the [Cloud API configuration docs](https://silicrew.sh/docs/channels/whatsapp).
 
 
 
@@ -373,13 +373,13 @@ Already running OpenClaw? One command:
 
 ```bash
 # Migrate everything — agents, memory, skills, configs
-openparlant migrate --from openclaw
+silicrew migrate --from openclaw
 
 # Migrate from a specific path
-openparlant migrate --from openclaw --path ~/.openclaw
+silicrew migrate --from openclaw --path ~/.openclaw
 
 # Dry run first to see what would change
-openparlant migrate --from openclaw --dry-run
+silicrew migrate --from openclaw --dry-run
 ```
 
 The migration engine imports your agents, conversation history, skills, and configuration. OpenParlant reads SKILL.md natively and is compatible with the ClawHub marketplace.
@@ -408,34 +408,34 @@ curl -X POST localhost:4200/v1/chat/completions \
 
 ```bash
 # 1. Install (macOS/Linux)
-curl -fsSL https://openparlant.sh/install | sh
+curl -fsSL https://silicrew.sh/install | sh
 
 # 2. Initialize — walks you through provider setup
-openparlant init
+silicrew init
 
 # 3. Start the daemon
-openparlant start
+silicrew start
 
 # 4. Dashboard is live at http://localhost:4200
 
 # 5. Activate a Hand — it starts working for you
-openparlant hand activate researcher
+silicrew hand activate researcher
 
 # 6. Chat with an agent
-openparlant chat researcher
+silicrew chat researcher
 > "What are the emerging trends in AI agent frameworks?"
 
 # 7. Spawn a pre-built agent
-openparlant agent spawn coder
+silicrew agent spawn coder
 ```
 
 <details>
 <summary><strong>Windows (PowerShell)</strong></summary>
 
 ```powershell
-irm https://openparlant.sh/install.ps1 | iex
-openparlant init
-openparlant start
+irm https://silicrew.sh/install.ps1 | iex
+silicrew init
+silicrew start
 ```
 
 </details>
@@ -466,7 +466,7 @@ OpenParlant v0.3.30 is pre-1.0. The architecture is solid, the test suite is com
 
 - **Breaking changes** may occur between minor versions until v1.0
 - **Some Hands** are more mature than others (Browser and Researcher are the most battle-tested)
-- **Edge cases** exist — if you find one, [open an issue](https://github.com/RightNow-AI/openparlant/issues)
+- **Edge cases** exist — if you find one, [open an issue](https://github.com/RightNow-AI/silicrew/issues)
 - **Pin to a specific commit** for production deployments until v1.0
 
 We ship fast and fix fast. The goal is a rock-solid v1.0 by mid-2026.
@@ -487,11 +487,11 @@ MIT — use it however you want.
 
 ## Links
 
-- [Website & Documentation](https://openparlant.sh)
-- [Quick Start Guide](https://openparlant.sh/docs/getting-started)
-- [GitHub](https://github.com/RightNow-AI/openparlant)
+- [Website & Documentation](https://silicrew.sh)
+- [Quick Start Guide](https://silicrew.sh/docs/getting-started)
+- [GitHub](https://github.com/RightNow-AI/silicrew)
 - [Discord](https://discord.gg/sSJqgNnq6X)
-- [Twitter / X](https://x.com/openparlantg)
+- [Twitter / X](https://x.com/silicrewg)
 
 ---
 
@@ -510,7 +510,7 @@ MIT — use it however you want.
 <p align="center">
   <a href="https://www.rightnowai.co/">Website</a> &bull;
   <a href="https://x.com/Akashi203">Twitter / X</a> &bull;
-  <a href="https://www.buymeacoffee.com/openparlant" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+  <a href="https://www.buymeacoffee.com/silicrew" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 </p>
 
 ---

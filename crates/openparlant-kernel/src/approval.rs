@@ -2,7 +2,7 @@
 
 use chrono::Utc;
 use dashmap::DashMap;
-use openparlant_types::approval::{
+use silicrew_types::approval::{
     ApprovalDecision, ApprovalPolicy, ApprovalRequest, ApprovalResponse, RiskLevel,
 };
 use std::collections::VecDeque;
@@ -194,7 +194,7 @@ impl ApprovalManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openparlant_types::approval::ApprovalPolicy;
+    use silicrew_types::approval::ApprovalPolicy;
     use std::sync::Arc;
 
     fn default_manager() -> ApprovalManager {

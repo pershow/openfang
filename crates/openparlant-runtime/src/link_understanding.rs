@@ -3,7 +3,7 @@
 use tracing::warn;
 
 /// Configuration for link understanding (re-exported from types).
-pub use openparlant_types::media::LinkConfig;
+pub use silicrew_types::media::LinkConfig;
 
 /// Summary of a fetched link.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

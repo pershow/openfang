@@ -1,6 +1,6 @@
 //! Kernel-specific error types.
 
-use openparlant_types::error::SiliCrewError;
+use silicrew_types::error::SiliCrewError;
 use thiserror::Error;
 
 /// Kernel error type wrapping SiliCrewError with kernel-specific context.

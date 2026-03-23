@@ -1,7 +1,7 @@
 name = "legal-assistant"
 version = "0.1.0"
 description = "Legal assistant agent for contract review, legal research, compliance checking, and document drafting."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 tags = ["legal", "contracts", "compliance", "research", "review", "documents"]
 

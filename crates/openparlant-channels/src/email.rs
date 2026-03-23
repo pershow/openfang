@@ -405,7 +405,7 @@ impl ChannelAdapter for EmailAdapter {
                         sender: ChannelUser {
                             platform_id: from_addr.clone(),
                             display_name: from_addr.clone(),
-                            openparlant_user: None,
+                            silicrew_user: None,
                         },
                         content: ChannelContent::Text(text),
                         target_agent: None, // Routing handled by bridge AgentRouter

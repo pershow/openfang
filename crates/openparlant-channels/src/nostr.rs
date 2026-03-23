@@ -73,7 +73,7 @@ impl NostrAdapter {
     fn build_subscription(&self, pubkey: &str) -> String {
         let filter = serde_json::json!([
             "REQ",
-            "openparlant-sub",
+            "silicrew-sub",
             {
                 "kinds": [4],
                 "#p": [pubkey],
@@ -167,7 +167,7 @@ impl ChannelAdapter for NostrAdapter {
         let pubkey = self.derive_pubkey();
         info!(
             "Nostr adapter starting (pubkey: {}...)",
-            openparlant_types::truncate_str(&pubkey, 16)
+            silicrew_types::truncate_str(&pubkey, 16)
         );
 
         if self.relays.is_empty() {
@@ -219,7 +219,7 @@ impl ChannelAdapter for NostrAdapter {
                     let sub_msg = {
                         let filter = serde_json::json!([
                             "REQ",
-                            "openparlant-sub",
+                            "silicrew-sub",
                             {
                                 "kinds": [4],
                                 "#p": [&own_pubkey],
@@ -246,7 +246,7 @@ impl ChannelAdapter for NostrAdapter {
                             _ = relay_shutdown_rx.changed() => {
                                 info!("Nostr: relay {relay_url} shutting down");
                                 // Send CLOSE
-                                let close_msg = serde_json::json!(["CLOSE", "openparlant-sub"]);
+                                let close_msg = serde_json::json!(["CLOSE", "silicrew-sub"]);
                                 let _ = write.send(
                                     tokio_tungstenite::tungstenite::Message::Text(
                                         serde_json::to_string(&close_msg).unwrap_or_default()
@@ -342,9 +342,9 @@ impl ChannelAdapter for NostrAdapter {
                                 platform_id: sender_pubkey.clone(),
                                 display_name: format!(
                                     "{}...",
-                                    openparlant_types::truncate_str(&sender_pubkey, 8)
+                                    silicrew_types::truncate_str(&sender_pubkey, 8)
                                 ),
-                                openparlant_user: None,
+                                silicrew_user: None,
                             },
                             content: msg_content,
                             target_agent: None,
@@ -464,7 +464,7 @@ mod tests {
         let pubkey = adapter.derive_pubkey();
         let sub = adapter.build_subscription(&pubkey);
         assert!(sub.contains("REQ"));
-        assert!(sub.contains("openparlant-sub"));
+        assert!(sub.contains("silicrew-sub"));
         assert!(sub.contains(&pubkey));
     }
 

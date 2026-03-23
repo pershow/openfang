@@ -9,13 +9,13 @@ use crate::routes::{self, AppState};
 use crate::webchat;
 use crate::ws;
 use axum::Router;
-use openparlant_context::StoreKnowledgeCompiler;
-use openparlant_control::{ControlStore, DefaultTurnControlCoordinator};
-use openparlant_journey::{JourneyStore, StoreJourneyRuntime};
-use openparlant_kernel::SiliCrewKernel;
-use openparlant_memory::db::SharedDb;
-use openparlant_memory::migration::{run_migrations, run_postgres_migrations};
-use openparlant_policy::{
+use silicrew_context::StoreKnowledgeCompiler;
+use silicrew_control::{ControlStore, DefaultTurnControlCoordinator};
+use silicrew_journey::{JourneyStore, StoreJourneyRuntime};
+use silicrew_kernel::SiliCrewKernel;
+use silicrew_memory::db::SharedDb;
+use silicrew_memory::migration::{run_migrations, run_postgres_migrations};
+use silicrew_policy::{
     LlmObservationMatcher, LlmPolicyResolver, PolicyStore, StoreObservationMatcher,
     StorePolicyResolver, StoreToolGate,
 };
@@ -32,15 +32,15 @@ use tracing::info;
 
 /// Bridges an `LlmDriver` to the control-plane `ControlLlmCaller` trait.
 struct KernelLlmCaller {
-    driver: Arc<dyn openparlant_runtime::llm_driver::LlmDriver>,
+    driver: Arc<dyn silicrew_runtime::llm_driver::LlmDriver>,
     model: String,
 }
 
 #[async_trait::async_trait]
-impl openparlant_types::control::ControlLlmCaller for KernelLlmCaller {
+impl silicrew_types::control::ControlLlmCaller for KernelLlmCaller {
     async fn call(&self, prompt: &str) -> anyhow::Result<String> {
-        use openparlant_runtime::llm_driver::CompletionRequest;
-        use openparlant_types::message::{Message, MessageContent, Role};
+        use silicrew_runtime::llm_driver::CompletionRequest;
+        use silicrew_types::message::{Message, MessageContent, Role};
 
         let user_msg = Message {
             role: Role::User,
@@ -65,13 +65,13 @@ impl openparlant_types::control::ControlLlmCaller for KernelLlmCaller {
             .driver
             .complete(req)
             .await
-            .map_err(|e: openparlant_runtime::llm_driver::LlmError| anyhow::anyhow!("{e}"))?;
+            .map_err(|e: silicrew_runtime::llm_driver::LlmError| anyhow::anyhow!("{e}"))?;
 
         Ok(resp.text())
     }
 }
 
-/// Daemon info written to `~/.openparlant/daemon.json` so the CLI can find us.
+/// Daemon info written to `~/.silicrew/daemon.json` so the CLI can find us.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct DaemonInfo {
     pub pid: u32,
@@ -85,7 +85,7 @@ pub struct DaemonInfo {
 
 /// Bridges the kernel's `EmbeddingDriver` to the `ControlEmbedder` trait.
 struct KernelEmbedder {
-    driver: Arc<dyn openparlant_runtime::embedding::EmbeddingDriver + Send + Sync>,
+    driver: Arc<dyn silicrew_runtime::embedding::EmbeddingDriver + Send + Sync>,
 }
 
 fn tenant_model_env_var(model_id: &str) -> String {
@@ -130,7 +130,7 @@ fn hydrate_tenant_model_api_keys(control_store: &ControlStore) {
 }
 
 #[async_trait::async_trait]
-impl openparlant_types::control::ControlEmbedder for KernelEmbedder {
+impl silicrew_types::control::ControlEmbedder for KernelEmbedder {
     async fn embed(&self, text: &str) -> anyhow::Result<Vec<f32>> {
         self.driver
             .embed_one(text)
@@ -141,7 +141,7 @@ impl openparlant_types::control::ControlEmbedder for KernelEmbedder {
 
 /// Build the full API router with all routes, middleware, and state.
 ///
-/// This is extracted from `run_daemon()` so that embedders (e.g. openparlant-desktop)
+/// This is extracted from `run_daemon()` so that embedders (e.g. silicrew-desktop)
 /// can create the router without starting the full daemon lifecycle.
 ///
 /// Returns `(router, shared_state)`. The caller can use `state.bridge_manager`
@@ -152,13 +152,13 @@ pub async fn build_router(
 ) -> (Router<()>, Arc<AppState>) {
     let channels_config = kernel.config.channels.clone();
     // ── Control plane bootstrap ───────────────────────────────────────────────
-    // Reuse the same on-disk database that openparlant-memory manages.
+    // Reuse the same on-disk database that silicrew-memory manages.
     let db_path = kernel
         .config
         .memory
         .sqlite_path
         .clone()
-        .unwrap_or_else(|| kernel.config.data_dir.join("openparlant.db"));
+        .unwrap_or_else(|| kernel.config.data_dir.join("silicrew.db"));
     let control_db = if let Some(database_url) = kernel.config.resolved_postgres_url() {
         info!("Using PostgreSQL shared database backend for control plane");
         let db = SharedDb::open_postgres(&database_url)
@@ -202,7 +202,7 @@ pub async fn build_router(
         .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
         .unwrap_or(false);
 
-    let llm_caller: Arc<dyn openparlant_types::control::ControlLlmCaller> =
+    let llm_caller: Arc<dyn silicrew_types::control::ControlLlmCaller> =
         Arc::new(KernelLlmCaller {
             driver: kernel.default_llm_driver(),
             model: kernel.config.default_model.model.clone(),
@@ -218,7 +218,7 @@ pub async fn build_router(
         }
     };
 
-    let coordinator: Arc<dyn openparlant_types::control::TurnControlCoordinator> = if use_semantic {
+    let coordinator: Arc<dyn silicrew_types::control::TurnControlCoordinator> = if use_semantic {
         Arc::new(
             DefaultTurnControlCoordinator::new_with_gate(
                 LlmObservationMatcher::new(control_db.clone(), llm_caller.clone()),
@@ -264,7 +264,7 @@ pub async fn build_router(
         channels_config: tokio::sync::RwLock::new(channels_config),
         shutdown_notify: Arc::new(tokio::sync::Notify::new()),
         clawhub_cache: dashmap::DashMap::new(),
-        provider_probe_cache: openparlant_runtime::provider_health::ProbeCache::new(),
+        provider_probe_cache: silicrew_runtime::provider_health::ProbeCache::new(),
         control_coordinator: coordinator,
         control_store,
         policy_store,
@@ -1303,6 +1303,10 @@ pub async fn build_router(
             axum::routing::post(control_routes::create_guideline_relationship),
         )
         .route(
+            "/api/control/guideline-relationships/{relationship_id}",
+            axum::routing::delete(control_routes::delete_guideline_relationship),
+        )
+        .route(
             "/api/control/scopes/{scope_id}/guideline-relationships",
             axum::routing::get(control_routes::list_guideline_relationships),
         )
@@ -1355,7 +1359,9 @@ pub async fn build_router(
         )
         .route(
             "/api/control/tool-policies/{policy_id}",
-            axum::routing::get(control_routes::get_tool_policy),
+            axum::routing::get(control_routes::get_tool_policy)
+                .put(control_routes::update_tool_policy)
+                .delete(control_routes::delete_tool_policy),
         )
         .route(
             "/api/control/scopes/{scope_id}/tool-policies",
@@ -1393,6 +1399,12 @@ pub async fn build_router(
         .route(
             "/api/control/retrievers",
             axum::routing::post(control_routes::create_retriever),
+        )
+        .route(
+            "/api/control/retrievers/{retriever_id}",
+            axum::routing::get(control_routes::get_retriever)
+                .put(control_routes::update_retriever)
+                .delete(control_routes::delete_retriever),
         )
         .route(
             "/api/control/scopes/{scope_id}/retrievers",

@@ -4,6 +4,76 @@ import type { Agent, TokenResponse, User, Task, ChatMessage } from '../types';
 
 const API_BASE = '/api';
 
+type RawAgent = Partial<Agent> & Record<string, any>;
+
+function buildPath(path: string, params?: Record<string, string | null | undefined>): string {
+    if (!params) return path;
+    const search = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+        if (value != null && value !== '') {
+            search.set(key, value);
+        }
+    }
+    const query = search.toString();
+    return query ? `${path}?${query}` : path;
+}
+
+function normalizeAgentStatus(status: unknown): Agent['status'] {
+    const value = String(status || '').trim().toLowerCase();
+    if (value === 'running' || value === 'idle' || value === 'stopped' || value === 'error' || value === 'creating') {
+        return value;
+    }
+    if (value === 'failed' || value === 'crashed') {
+        return 'error';
+    }
+    return 'stopped';
+}
+
+function normalizeAgent(agent: RawAgent): Agent & Record<string, any> {
+    const roleDescription =
+        typeof agent.role_description === 'string' ? agent.role_description :
+            typeof agent.description === 'string' ? agent.description :
+                typeof agent.profile?.description === 'string' ? agent.profile.description :
+                    '';
+
+    const heartbeatIntervalMinutes =
+        typeof agent.heartbeat_interval_minutes === 'number' ? agent.heartbeat_interval_minutes :
+            typeof agent.heartbeat_interval_secs === 'number' ? Math.max(1, Math.round(agent.heartbeat_interval_secs / 60)) :
+                0;
+
+    return {
+        ...agent,
+        id: String(agent.id || ''),
+        name: agent.name || 'Untitled Agent',
+        avatar_url: agent.avatar_url || agent.identity?.avatar_url,
+        role_description: roleDescription,
+        bio: typeof agent.bio === 'string' ? agent.bio : '',
+        status: normalizeAgentStatus(agent.status ?? agent.state),
+        creator_id: agent.creator_id || agent.creator_user_id || '',
+        primary_model_id: agent.primary_model_id,
+        fallback_model_id: agent.fallback_model_id,
+        autonomy_policy: agent.autonomy_policy || {},
+        tokens_used_today: Number(agent.tokens_used_today || 0),
+        tokens_used_month: Number(agent.tokens_used_month || 0),
+        max_tokens_per_day: agent.max_tokens_per_day,
+        max_tokens_per_month: agent.max_tokens_per_month,
+        heartbeat_enabled: Boolean(agent.heartbeat_enabled),
+        heartbeat_interval_minutes: heartbeatIntervalMinutes,
+        heartbeat_active_hours: typeof agent.heartbeat_active_hours === 'string' ? agent.heartbeat_active_hours : '',
+        last_heartbeat_at: agent.last_heartbeat_at,
+        timezone: agent.timezone || agent.effective_timezone,
+        context_window_size: typeof agent.context_window_size === 'number' ? agent.context_window_size : undefined,
+        agent_type: agent.agent_type,
+        openclaw_last_seen: agent.openclaw_last_seen,
+        created_at: agent.created_at || '',
+        last_active_at: agent.last_active_at || agent.last_active,
+        state: agent.state || normalizeAgentStatus(agent.status ?? agent.state),
+        description: agent.description || roleDescription,
+        creator_user_id: agent.creator_user_id || agent.creator_id || '',
+        access_level: agent.access_level,
+    };
+}
+
 export async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
     const token = localStorage.getItem('token');
     const headers: Record<string, string> = {
@@ -230,15 +300,19 @@ export const adminApi = {
 
 // ─── Agents ───────────────────────────────────────────
 export const agentApi = {
-    list: (tenantId?: string) => request<Agent[]>(`/agents/${tenantId ? `?tenant_id=${tenantId}` : ''}`),
+    list: (tenantId?: string) =>
+        request<RawAgent[]>(buildPath('/agents', { tenant_id: tenantId }))
+            .then(items => Array.isArray(items) ? items.map(normalizeAgent) : []),
 
-    get: (id: string) => request<Agent>(`/agents/${id}`),
+    get: (id: string) =>
+        request<RawAgent>(`/agents/${id}`).then(normalizeAgent),
 
     create: (data: any) =>
         request<any>('/agents', { method: 'POST', body: JSON.stringify(data) }),
 
     update: (id: string, data: Partial<Agent>) =>
-        request<Agent>(`/agents/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+        request<any>(`/agents/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
+            .then((result) => result && typeof result === 'object' && 'id' in result ? normalizeAgent(result as RawAgent) : result),
 
     delete: (id: string) =>
         request<void>(`/agents/${id}`, { method: 'DELETE' }),
@@ -253,39 +327,39 @@ export const agentApi = {
         request<any>(`/agents/${id}/metrics`),
 
     collaborators: (id: string) =>
-        request<any[]>(`/agents/${id}/collaborators`),
+        Promise.reject(new Error('Current backend does not expose agent collaborator APIs yet.')),
 
     templates: () =>
         request<any>('/templates').then(r => r.templates || []),
 
     // OpenClaw gateway
     generateApiKey: (id: string) =>
-        request<{ api_key: string; message: string }>(`/agents/${id}/api-key`, { method: 'POST' }),
+        Promise.reject(new Error('Current backend does not expose OpenClaw gateway APIs yet.')),
 
     gatewayMessages: (id: string) =>
-        request<any[]>(`/agents/${id}/gateway-messages`),
+        Promise.reject(new Error('Current backend does not expose OpenClaw gateway APIs yet.')),
 };
 
 // ─── Tasks ────────────────────────────────────────────
+function unsupportedTaskApiError(): Error {
+    return new Error('Current backend does not expose agent task APIs yet.');
+}
+
 export const taskApi = {
-    list: (agentId: string, status?: string, type?: string) => {
-        const params = new URLSearchParams();
-        if (status) params.set('status_filter', status);
-        if (type) params.set('type_filter', type);
-        return request<Task[]>(`/agents/${agentId}/tasks/?${params}`);
-    },
+    list: (agentId: string, status?: string, type?: string) =>
+        Promise.resolve([] as Task[]),
 
     create: (agentId: string, data: any) =>
-        request<Task>(`/agents/${agentId}/tasks/`, { method: 'POST', body: JSON.stringify(data) }),
+        Promise.reject(unsupportedTaskApiError()),
 
     update: (agentId: string, taskId: string, data: Partial<Task>) =>
-        request<Task>(`/agents/${agentId}/tasks/${taskId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+        Promise.reject(unsupportedTaskApiError()),
 
     getLogs: (agentId: string, taskId: string) =>
-        request<{ id: string; task_id: string; content: string; created_at: string }[]>(`/agents/${agentId}/tasks/${taskId}/logs`),
+        Promise.resolve([] as { id: string; task_id: string; content: string; created_at: string }[]),
 
     trigger: (agentId: string, taskId: string) =>
-        request<any>(`/agents/${agentId}/tasks/${taskId}/trigger`, { method: 'POST' }),
+        Promise.reject(unsupportedTaskApiError()),
 };
 
 // ─── Files ────────────────────────────────────────────
@@ -339,7 +413,7 @@ export const channelApi = {
         request<void>('/channels/feishu/configure', { method: 'DELETE' }),
 
     webhookUrl: (agentId: string) =>
-        Promise.resolve({ webhook_url: `${window.location.origin}/api/channel/feishu/${agentId}/webhook` }),
+        Promise.resolve({ webhook_url: '' }),
 };
 
 // ─── Enterprise ───────────────────────────────────────
@@ -352,24 +426,19 @@ export const enterpriseApi = {
 
     // Enterprise Knowledge Base
     kbFiles: (path: string = '') =>
-        request<any[]>(`/enterprise/knowledge-base/files?path=${encodeURIComponent(path)}`),
+        Promise.reject(new Error('Current backend does not expose enterprise knowledge base APIs yet.')),
 
     kbUpload: (file: File, subPath: string = '') =>
-        uploadFile(`/enterprise/knowledge-base/upload?sub_path=${encodeURIComponent(subPath)}`, file),
+        Promise.reject(new Error('Current backend does not expose enterprise knowledge base APIs yet.')),
 
     kbRead: (path: string) =>
-        request<{ path: string; content: string }>(`/enterprise/knowledge-base/content?path=${encodeURIComponent(path)}`),
+        Promise.reject(new Error('Current backend does not expose enterprise knowledge base APIs yet.')),
 
     kbWrite: (path: string, content: string) =>
-        request(`/enterprise/knowledge-base/content?path=${encodeURIComponent(path)}`, {
-            method: 'PUT',
-            body: JSON.stringify({ content }),
-        }),
+        Promise.reject(new Error('Current backend does not expose enterprise knowledge base APIs yet.')),
 
     kbDelete: (path: string) =>
-        request(`/enterprise/knowledge-base/content?path=${encodeURIComponent(path)}`, {
-            method: 'DELETE',
-        }),
+        Promise.reject(new Error('Current backend does not expose enterprise knowledge base APIs yet.')),
 };
 
 // ─── Activity Logs ────────────────────────────────────

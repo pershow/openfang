@@ -198,7 +198,7 @@ mod tests {
 name = "web-summarizer"
 version = "0.1.0"
 description = "Summarizes any web page into bullet points"
-author = "openparlant-community"
+author = "silicrew-community"
 license = "MIT"
 tags = ["web", "summarizer", "research"]
 

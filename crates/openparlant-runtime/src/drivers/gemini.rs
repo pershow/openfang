@@ -11,10 +11,10 @@
 use crate::llm_driver::{CompletionRequest, CompletionResponse, LlmDriver, LlmError, StreamEvent};
 use async_trait::async_trait;
 use futures::StreamExt;
-use openparlant_types::message::{
+use silicrew_types::message::{
     ContentBlock, Message, MessageContent, Role, StopReason, TokenUsage,
 };
-use openparlant_types::tool::ToolCall;
+use silicrew_types::tool::ToolCall;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 use zeroize::Zeroizing;
@@ -375,7 +375,7 @@ fn convert_tools(request: &CompletionRequest) -> Vec<GeminiToolConfig> {
         .map(|t| {
             // Normalize schema for Gemini (strips $schema, flattens anyOf)
             let normalized =
-                openparlant_types::tool::normalize_schema_for_provider(&t.input_schema, "gemini");
+                silicrew_types::tool::normalize_schema_for_provider(&t.input_schema, "gemini");
             GeminiFunctionDeclaration {
                 name: t.name.clone(),
                 description: t.description.clone(),
@@ -834,7 +834,7 @@ impl LlmDriver for GeminiDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openparlant_types::tool::ToolDefinition;
+    use silicrew_types::tool::ToolDefinition;
 
     #[test]
     fn test_gemini_driver_creation() {

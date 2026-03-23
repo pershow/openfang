@@ -887,7 +887,7 @@ async fn parse_telegram_update(
         sender: ChannelUser {
             platform_id: chat_id.to_string(),
             display_name,
-            openparlant_user: None,
+            silicrew_user: None,
         },
         content,
         target_agent: None,
@@ -1187,7 +1187,7 @@ mod tests {
                 "from": { "id": 123, "first_name": "X" },
                 "chat": { "id": 123, "type": "private" },
                 "date": 1700000000,
-                "text": "/agents@myopenparlantbot",
+                "text": "/agents@mysilicrewbot",
                 "entities": [{ "type": "bot_command", "offset": 0, "length": 17 }]
             }
         });

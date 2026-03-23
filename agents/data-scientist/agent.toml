@@ -1,7 +1,7 @@
 name = "data-scientist"
 version = "0.1.0"
 description = "Data scientist. Analyzes datasets, builds models, creates visualizations, performs statistical analysis."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 
 [model]

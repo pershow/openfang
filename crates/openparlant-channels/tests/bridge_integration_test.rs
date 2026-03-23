@@ -9,12 +9,12 @@
 
 use async_trait::async_trait;
 use futures::Stream;
-use openparlant_channels::bridge::{BridgeManager, ChannelBridgeHandle};
-use openparlant_channels::router::AgentRouter;
-use openparlant_channels::types::{
+use silicrew_channels::bridge::{BridgeManager, ChannelBridgeHandle};
+use silicrew_channels::router::AgentRouter;
+use silicrew_channels::types::{
     ChannelAdapter, ChannelContent, ChannelMessage, ChannelType, ChannelUser,
 };
-use openparlant_types::agent::AgentId;
+use silicrew_types::agent::AgentId;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -155,7 +155,7 @@ fn make_text_msg(channel: ChannelType, user_id: &str, text: &str) -> ChannelMess
         sender: ChannelUser {
             platform_id: user_id.to_string(),
             display_name: "TestUser".to_string(),
-            openparlant_user: None,
+            silicrew_user: None,
         },
         content: ChannelContent::Text(text.to_string()),
         target_agent: None,
@@ -178,7 +178,7 @@ fn make_command_msg(
         sender: ChannelUser {
             platform_id: user_id.to_string(),
             display_name: "TestUser".to_string(),
-            openparlant_user: None,
+            silicrew_user: None,
         },
         content: ChannelContent::Command {
             name: cmd.to_string(),

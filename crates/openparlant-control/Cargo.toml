@@ -1,16 +1,16 @@
 [package]
-name = "openparlant-control"
+name = "silicrew-control"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Turn control coordinator for the OpenParlant conversational control layer"
 
 [dependencies]
-openparlant-types = { path = "../openparlant-types" }
-openparlant-policy = { path = "../openparlant-policy" }
-openparlant-journey = { path = "../openparlant-journey" }
-openparlant-context = { path = "../openparlant-context" }
-openparlant-memory = { path = "../openparlant-memory" }
+silicrew-types = { path = "../silicrew-types" }
+silicrew-policy = { path = "../silicrew-policy" }
+silicrew-journey = { path = "../silicrew-journey" }
+silicrew-context = { path = "../silicrew-context" }
+silicrew-memory = { path = "../silicrew-memory" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }

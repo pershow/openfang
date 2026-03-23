@@ -1,7 +1,7 @@
 //! Process supervision — graceful shutdown, signal handling, and health monitoring.
 
 use dashmap::DashMap;
-use openparlant_types::agent::AgentId;
+use silicrew_types::agent::AgentId;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::watch;
 use tracing::{info, warn};

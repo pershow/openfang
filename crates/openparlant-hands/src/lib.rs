@@ -8,7 +8,7 @@ pub mod bundled;
 pub mod registry;
 
 use chrono::{DateTime, Utc};
-use openparlant_types::agent::AgentId;
+use silicrew_types::agent::AgentId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;

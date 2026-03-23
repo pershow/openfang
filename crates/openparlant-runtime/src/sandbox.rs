@@ -16,7 +16,7 @@
 //!
 //! # Host ABI
 //!
-//! The host provides (in the `"openparlant"` import module):
+//! The host provides (in the `"silicrew"` import module):
 //! - `host_call(request_ptr: i32, request_len: i32) -> i64` — RPC dispatch
 //! - `host_log(level: i32, msg_ptr: i32, msg_len: i32)` — logging
 //!
@@ -25,7 +25,7 @@
 
 use crate::host_functions;
 use crate::kernel_handle::KernelHandle;
-use openparlant_types::capability::Capability;
+use silicrew_types::capability::Capability;
 use std::sync::Arc;
 use tracing::debug;
 use wasmtime::*;
@@ -274,14 +274,14 @@ impl WasmSandbox {
         })
     }
 
-    /// Register host function imports in the linker ("openparlant" module).
+    /// Register host function imports in the linker ("silicrew" module).
     fn register_host_functions(linker: &mut Linker<GuestState>) -> Result<(), SandboxError> {
         // host_call: single dispatch for all capability-checked operations.
         // Request: JSON bytes in guest memory → {"method": "...", "params": {...}}
         // Response: packed (ptr, len) pointing to JSON in guest memory.
         linker
             .func_wrap(
-                "openparlant",
+                "silicrew",
                 "host_call",
                 |mut caller: Caller<'_, GuestState>,
                  request_ptr: i32,
@@ -350,7 +350,7 @@ impl WasmSandbox {
         // host_log: lightweight logging — no capability check required.
         linker
             .func_wrap(
-                "openparlant",
+                "silicrew",
                 "host_log",
                 |mut caller: Caller<'_, GuestState>,
                  level: i32,
@@ -442,7 +442,7 @@ mod tests {
     /// Proxy module: forwards input to host_call and returns the response.
     const HOST_CALL_PROXY_WAT: &str = r#"
         (module
-            (import "openparlant" "host_call" (func $host_call (param i32 i32) (result i64)))
+            (import "silicrew" "host_call" (func $host_call (param i32 i32) (result i64)))
             (memory (export "memory") 2)
             (global $bump (mut i32) (i32.const 1024))
 

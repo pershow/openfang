@@ -2,8 +2,8 @@
 
 use crate::db::{block_on, SharedDb};
 use chrono::Utc;
-use openparlant_types::agent::{AgentEntry, AgentId, AgentIdentity, SessionId};
-use openparlant_types::error::{SiliCrewError, SiliCrewResult};
+use silicrew_types::agent::{AgentEntry, AgentId, AgentIdentity, SessionId};
+use silicrew_types::error::{SiliCrewError, SiliCrewResult};
 use sqlx::Row;
 use std::sync::Arc;
 

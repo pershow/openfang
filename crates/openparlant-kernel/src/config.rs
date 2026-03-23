@@ -1,9 +1,9 @@
-//! Configuration loading from `~/.openparlant/config.toml` with defaults.
+//! Configuration loading from `~/.silicrew/config.toml` with defaults.
 //!
 //! Supports config includes: the `include` field specifies additional TOML files
 //! to load and deep-merge before the root config (root overrides includes).
 
-use openparlant_types::config::KernelConfig;
+use silicrew_types::config::KernelConfig;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use tracing::info;
@@ -244,21 +244,21 @@ pub fn deep_merge_toml(base: &mut toml::Value, overlay: &toml::Value) {
 
 /// Get the default config file path.
 ///
-/// Respects `OPENFANG_HOME` env var (e.g. `OPENFANG_HOME=/opt/openparlant`).
+/// Respects `OPENFANG_HOME` env var (e.g. `OPENFANG_HOME=/opt/silicrew`).
 pub fn default_config_path() -> PathBuf {
-    openparlant_home().join("config.toml")
+    silicrew_home().join("config.toml")
 }
 
 /// Get the OpenParlant home directory.
 ///
-/// Priority: `OPENFANG_HOME` env var > `~/.openparlant`.
-pub fn openparlant_home() -> PathBuf {
+/// Priority: `OPENFANG_HOME` env var > `~/.silicrew`.
+pub fn silicrew_home() -> PathBuf {
     if let Ok(home) = std::env::var("OPENFANG_HOME") {
         return PathBuf::from(home);
     }
     dirs::home_dir()
         .unwrap_or_else(std::env::temp_dir)
-        .join(".openparlant")
+        .join(".silicrew")
 }
 
 #[cfg(test)]

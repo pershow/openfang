@@ -5,7 +5,7 @@
 //! - **Credential Vault**: AES-256-GCM encrypted storage with OS keyring support
 //! - **OAuth2 PKCE**: Localhost callback flows for Google/GitHub/Microsoft/Slack
 //! - **Health Monitor**: Auto-reconnect with exponential backoff
-//! - **Installer**: One-click `openparlant add <name>` flow
+//! - **Installer**: One-click `silicrew add <name>` flow
 
 pub mod bundled;
 pub mod credentials;
@@ -222,7 +222,7 @@ pub struct InstalledIntegration {
     pub config: HashMap<String, String>,
 }
 
-/// Top-level structure for `~/.openparlant/integrations.toml`.
+/// Top-level structure for `~/.silicrew/integrations.toml`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct IntegrationsFile {
     #[serde(default)]

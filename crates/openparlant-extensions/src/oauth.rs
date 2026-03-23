@@ -19,16 +19,16 @@ use zeroize::Zeroizing;
 pub fn default_client_ids() -> HashMap<&'static str, &'static str> {
     let mut m = HashMap::new();
     // Placeholder IDs — users should configure their own via config
-    m.insert("google", "openparlant-google-client-id");
-    m.insert("github", "openparlant-github-client-id");
-    m.insert("microsoft", "openparlant-microsoft-client-id");
-    m.insert("slack", "openparlant-slack-client-id");
+    m.insert("google", "silicrew-google-client-id");
+    m.insert("github", "silicrew-github-client-id");
+    m.insert("microsoft", "silicrew-microsoft-client-id");
+    m.insert("slack", "silicrew-slack-client-id");
     m
 }
 
 /// Resolve OAuth client IDs with config overrides applied on top of defaults.
 pub fn resolve_client_ids(
-    config: &openparlant_types::config::OAuthConfig,
+    config: &silicrew_types::config::OAuthConfig,
 ) -> HashMap<String, String> {
     let defaults = default_client_ids();
     let mut resolved: HashMap<String, String> = defaults
@@ -362,15 +362,15 @@ mod tests {
 
     #[test]
     fn resolve_client_ids_uses_defaults() {
-        let config = openparlant_types::config::OAuthConfig::default();
+        let config = silicrew_types::config::OAuthConfig::default();
         let ids = resolve_client_ids(&config);
-        assert_eq!(ids["google"], "openparlant-google-client-id");
-        assert_eq!(ids["github"], "openparlant-github-client-id");
+        assert_eq!(ids["google"], "silicrew-google-client-id");
+        assert_eq!(ids["github"], "silicrew-github-client-id");
     }
 
     #[test]
     fn resolve_client_ids_applies_overrides() {
-        let config = openparlant_types::config::OAuthConfig {
+        let config = silicrew_types::config::OAuthConfig {
             google_client_id: Some("my-real-google-id".into()),
             github_client_id: None,
             microsoft_client_id: Some("my-msft-id".into()),
@@ -378,8 +378,8 @@ mod tests {
         };
         let ids = resolve_client_ids(&config);
         assert_eq!(ids["google"], "my-real-google-id");
-        assert_eq!(ids["github"], "openparlant-github-client-id"); // default
+        assert_eq!(ids["github"], "silicrew-github-client-id"); // default
         assert_eq!(ids["microsoft"], "my-msft-id");
-        assert_eq!(ids["slack"], "openparlant-slack-client-id"); // default
+        assert_eq!(ids["slack"], "silicrew-slack-client-id"); // default
     }
 }

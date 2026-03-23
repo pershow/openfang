@@ -1,6 +1,6 @@
 //! Trait abstraction for kernel operations needed by the agent runtime.
 //!
-//! This trait allows `openparlant-runtime` to call back into the kernel for
+//! This trait allows `silicrew-runtime` to call back into the kernel for
 //! inter-agent operations (spawn, send, list, kill) without creating
 //! a circular dependency. The kernel implements this trait and passes
 //! it into the agent loop.
@@ -80,20 +80,20 @@ pub trait KernelHandle: Send + Sync {
     /// Add an entity to the knowledge graph.
     async fn knowledge_add_entity(
         &self,
-        entity: openparlant_types::memory::Entity,
+        entity: silicrew_types::memory::Entity,
     ) -> Result<String, String>;
 
     /// Add a relation to the knowledge graph.
     async fn knowledge_add_relation(
         &self,
-        relation: openparlant_types::memory::Relation,
+        relation: silicrew_types::memory::Relation,
     ) -> Result<String, String>;
 
     /// Query the knowledge graph with a pattern.
     async fn knowledge_query(
         &self,
-        pattern: openparlant_types::memory::GraphPattern,
-    ) -> Result<Vec<openparlant_types::memory::GraphMatch>, String>;
+        pattern: silicrew_types::memory::GraphPattern,
+    ) -> Result<Vec<silicrew_types::memory::GraphMatch>, String>;
 
     /// Create a cron job for the calling agent.
     async fn cron_create(
@@ -127,7 +127,7 @@ pub trait KernelHandle: Send + Sync {
     fn requires_approval_for_tool(
         &self,
         tool_name: &str,
-        manifest: &openparlant_types::agent::AgentManifest,
+        manifest: &silicrew_types::agent::AgentManifest,
     ) -> bool {
         let _ = manifest;
         self.requires_approval(tool_name)
@@ -255,7 +255,7 @@ pub trait KernelHandle: Send + Sync {
         &self,
         manifest_toml: &str,
         parent_id: Option<&str>,
-        parent_caps: &[openparlant_types::capability::Capability],
+        parent_caps: &[silicrew_types::capability::Capability],
     ) -> Result<(String, String), String> {
         // Default: delegate to spawn_agent (no enforcement)
         // The kernel MUST override this with real enforcement

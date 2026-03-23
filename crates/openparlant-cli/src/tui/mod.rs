@@ -8,9 +8,9 @@ pub mod screens;
 pub mod theme;
 
 use event::{AppEvent, BackendRef};
-use openparlant_kernel::SiliCrewKernel;
-use openparlant_runtime::llm_driver::StreamEvent;
-use openparlant_types::agent::AgentId;
+use silicrew_kernel::SiliCrewKernel;
+use silicrew_runtime::llm_driver::StreamEvent;
+use silicrew_types::agent::AgentId;
 use screens::{
     agents, audit, channels, chat, comms, dashboard, extensions, hands, logs, memory, peers,
     security, sessions, settings, skills, templates, triggers, usage, welcome, wizard, workflows,
@@ -1191,7 +1191,7 @@ impl App {
 
     fn handle_stream_done(
         &mut self,
-        result: Result<openparlant_runtime::agent_loop::AgentLoopResult, String>,
+        result: Result<silicrew_runtime::agent_loop::AgentLoopResult, String>,
     ) {
         self.chat.finalize_stream();
         match result {
@@ -1824,7 +1824,7 @@ impl App {
                 event::spawn_daemon_agent(base_url.clone(), toml_content, self.event_tx.clone());
             }
             Backend::InProcess { kernel } => {
-                let manifest: openparlant_types::agent::AgentManifest =
+                let manifest: silicrew_types::agent::AgentManifest =
                     match toml::from_str(&toml_content) {
                         Ok(m) => m,
                         Err(e) => {

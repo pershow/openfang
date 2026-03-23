@@ -6,7 +6,7 @@
 //! This module provides a reusable handler function — the CLI team
 //! wires it into a stdio transport.
 
-use openparlant_types::tool::ToolDefinition;
+use silicrew_types::tool::ToolDefinition;
 use serde_json::json;
 
 /// MCP protocol version supported by this server.
@@ -32,7 +32,7 @@ pub async fn handle_mcp_request(
                     "tools": {}
                 },
                 "serverInfo": {
-                    "name": "openparlant",
+                    "name": "silicrew",
                     "version": env!("CARGO_PKG_VERSION")
                 }
             }),
@@ -181,6 +181,6 @@ mod tests {
         assert!(response["result"]["serverInfo"]["name"]
             .as_str()
             .unwrap()
-            .contains("openparlant"));
+            .contains("silicrew"));
     }
 }

@@ -32,7 +32,7 @@ function ensureKatexLoaded() {
   if (katexLoadPromise) return katexLoadPromise;
 
   katexLoadPromise = new Promise(function (resolve) {
-    var cssId = 'openparlant-katex-css';
+    var cssId = 'silicrew-katex-css';
     if (!document.getElementById(cssId)) {
       var link = document.createElement('link');
       link.id = cssId;

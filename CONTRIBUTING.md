@@ -28,8 +28,8 @@ Thank you for your interest in contributing to OpenParlant. This guide covers ev
 ### Clone and Build
 
 ```bash
-git clone https://github.com/RightNow-AI/openparlant.git
-cd openparlant
+git clone https://github.com/RightNow-AI/silicrew.git
+cd silicrew
 cargo build
 ```
 
@@ -61,7 +61,7 @@ cargo build --workspace
 The default `--release` profile uses full LTO and single-codegen-unit, which produces the smallest/fastest binary but is slow to compile. For iterating locally, use the `release-fast` profile instead:
 
 ```bash
-cargo build --profile release-fast -p openparlant-cli
+cargo build --profile release-fast -p silicrew-cli
 ```
 
 This cuts link time significantly (thin LTO, 8 codegen units, `opt-level=2`) while still producing a binary fast enough to run integration tests against. Use `--release` only for final binaries or CI.
@@ -77,9 +77,9 @@ The test suite is currently 1,744+ tests. All must pass before merging.
 ### Run Tests for a Single Crate
 
 ```bash
-cargo test -p openparlant-kernel
-cargo test -p openparlant-runtime
-cargo test -p openparlant-memory
+cargo test -p silicrew-kernel
+cargo test -p silicrew-runtime
+cargo test -p silicrew-memory
 ```
 
 ### Check for Clippy Warnings
@@ -118,7 +118,7 @@ cargo run -- doctor
   - Types: `PascalCase` (e.g., `SiliCrewKernel`, `AgentManifest`)
   - Functions/methods: `snake_case`
   - Constants: `SCREAMING_SNAKE_CASE`
-  - Crate names: `openparlant-{name}` (kebab-case)
+  - Crate names: `silicrew-{name}` (kebab-case)
 - **Dependencies**: Workspace dependencies are declared in the root `Cargo.toml`. Prefer reusing workspace deps over adding new ones. If you need a new dependency, justify it in the PR.
 - **Testing**: Every new feature must include tests. Use `tempfile::TempDir` for filesystem isolation and random port binding for network tests.
 - **Serde**: All config structs use `#[serde(default)]` for forward compatibility with partial TOML.
@@ -131,26 +131,26 @@ OpenParlant is organized as a Cargo workspace with 14 crates:
 
 | Crate | Role |
 |-------|------|
-| `openparlant-types` | Shared type definitions, taint tracking, manifest signing (Ed25519), model catalog, MCP/A2A config types |
-| `openparlant-memory` | SQLite-backed memory substrate with vector embeddings, usage tracking, canonical sessions, JSONL mirroring |
-| `openparlant-runtime` | Agent loop, 3 LLM drivers (Anthropic/Gemini/OpenAI-compat), 38 built-in tools, WASM sandbox, MCP client/server, A2A protocol |
-| `openparlant-hands` | Hands system (curated autonomous capability packages), 7 bundled hands |
-| `openparlant-extensions` | Integration registry (25 bundled MCP templates), AES-256-GCM credential vault, OAuth2 PKCE |
-| `openparlant-kernel` | Assembles all subsystems: workflow engine, RBAC auth, heartbeat monitor, cron scheduler, config hot-reload |
-| `openparlant-api` | REST/WS/SSE API (Axum 0.8), 76 endpoints, 14-page SPA dashboard, OpenAI-compatible `/v1/chat/completions` |
-| `openparlant-channels` | 40 channel adapters (Telegram, Discord, Slack, WhatsApp, and 36 more), formatter, rate limiter |
-| `openparlant-wire` | OFP (OpenParlant Protocol): TCP P2P networking with HMAC-SHA256 mutual authentication |
-| `openparlant-cli` | Clap CLI with daemon auto-detect (HTTP mode vs. in-process fallback), MCP server |
-| `openparlant-migrate` | Migration engine for importing from OpenClaw (and future frameworks) |
-| `openparlant-skills` | Skill system: 60 bundled skills, FangHub marketplace, OpenClaw compatibility, prompt injection scanning |
-| `openparlant-desktop` | Tauri 2.0 native desktop app (WebView + system tray + single-instance + notifications) |
+| `silicrew-types` | Shared type definitions, taint tracking, manifest signing (Ed25519), model catalog, MCP/A2A config types |
+| `silicrew-memory` | SQLite-backed memory substrate with vector embeddings, usage tracking, canonical sessions, JSONL mirroring |
+| `silicrew-runtime` | Agent loop, 3 LLM drivers (Anthropic/Gemini/OpenAI-compat), 38 built-in tools, WASM sandbox, MCP client/server, A2A protocol |
+| `silicrew-hands` | Hands system (curated autonomous capability packages), 7 bundled hands |
+| `silicrew-extensions` | Integration registry (25 bundled MCP templates), AES-256-GCM credential vault, OAuth2 PKCE |
+| `silicrew-kernel` | Assembles all subsystems: workflow engine, RBAC auth, heartbeat monitor, cron scheduler, config hot-reload |
+| `silicrew-api` | REST/WS/SSE API (Axum 0.8), 76 endpoints, 14-page SPA dashboard, OpenAI-compatible `/v1/chat/completions` |
+| `silicrew-channels` | 40 channel adapters (Telegram, Discord, Slack, WhatsApp, and 36 more), formatter, rate limiter |
+| `silicrew-wire` | OFP (OpenParlant Protocol): TCP P2P networking with HMAC-SHA256 mutual authentication |
+| `silicrew-cli` | Clap CLI with daemon auto-detect (HTTP mode vs. in-process fallback), MCP server |
+| `silicrew-migrate` | Migration engine for importing from OpenClaw (and future frameworks) |
+| `silicrew-skills` | Skill system: 60 bundled skills, FangHub marketplace, OpenClaw compatibility, prompt injection scanning |
+| `silicrew-desktop` | Tauri 2.0 native desktop app (WebView + system tray + single-instance + notifications) |
 | `xtask` | Build automation tasks |
 
 ### Key Architectural Patterns
 
-- **`KernelHandle` trait**: Defined in `openparlant-runtime`, implemented on `SiliCrewKernel` in `openparlant-kernel`. This avoids circular crate dependencies while enabling inter-agent tools.
+- **`KernelHandle` trait**: Defined in `silicrew-runtime`, implemented on `SiliCrewKernel` in `silicrew-kernel`. This avoids circular crate dependencies while enabling inter-agent tools.
 - **Shared memory**: A fixed UUID (`AgentId(Uuid::from_bytes([0..0, 0x01]))`) provides a cross-agent KV namespace.
-- **Daemon detection**: The CLI checks `~/.openparlant/daemon.json` and pings the health endpoint. If a daemon is running, commands use HTTP; otherwise, they boot an in-process kernel.
+- **Daemon detection**: The CLI checks `~/.silicrew/daemon.json` and pings the health endpoint. If a daemon is running, commands use HTTP; otherwise, they boot an in-process kernel.
 - **Capability-based security**: Every agent operation is checked against the agent's granted capabilities before execution.
 
 ---
@@ -173,7 +173,7 @@ agents/my-agent/agent.toml
 name = "my-agent"
 version = "0.1.0"
 description = "A brief description of what this agent does."
-author = "openparlant"
+author = "silicrew"
 module = "builtin:chat"
 tags = ["category"]
 
@@ -205,7 +205,7 @@ You are a specialized agent that...
 4. Test by spawning:
 
 ```bash
-openparlant agent spawn agents/my-agent/agent.toml
+silicrew agent spawn agents/my-agent/agent.toml
 ```
 
 5. Submit a PR with the new template.
@@ -214,11 +214,11 @@ openparlant agent spawn agents/my-agent/agent.toml
 
 ## How to Add a New Channel Adapter
 
-Channel adapters live in `crates/openparlant-channels/src/`. Each adapter implements the `ChannelAdapter` trait.
+Channel adapters live in `crates/silicrew-channels/src/`. Each adapter implements the `ChannelAdapter` trait.
 
 ### Steps
 
-1. Create a new file: `crates/openparlant-channels/src/myplatform.rs`
+1. Create a new file: `crates/silicrew-channels/src/myplatform.rs`
 
 2. Implement the `ChannelAdapter` trait (defined in `types.rs`):
 
@@ -252,17 +252,17 @@ impl ChannelAdapter for MyPlatformAdapter {
 }
 ```
 
-3. Register the module in `crates/openparlant-channels/src/lib.rs`:
+3. Register the module in `crates/silicrew-channels/src/lib.rs`:
 
 ```rust
 pub mod myplatform;
 ```
 
-4. Wire it up in the channel bridge (`crates/openparlant-api/src/channel_bridge.rs`) so the daemon starts it alongside other adapters.
+4. Wire it up in the channel bridge (`crates/silicrew-api/src/channel_bridge.rs`) so the daemon starts it alongside other adapters.
 
-5. Add configuration support in `openparlant-types` config structs (add a `[channels.myplatform]` section).
+5. Add configuration support in `silicrew-types` config structs (add a `[channels.myplatform]` section).
 
-6. Add CLI setup wizard instructions in `crates/openparlant-cli/src/main.rs` under `cmd_channel_setup`.
+6. Add CLI setup wizard instructions in `crates/silicrew-cli/src/main.rs` under `cmd_channel_setup`.
 
 7. Write tests and submit a PR.
 
@@ -270,7 +270,7 @@ pub mod myplatform;
 
 ## How to Add a New Tool
 
-Built-in tools are defined in `crates/openparlant-runtime/src/tool_runner.rs`.
+Built-in tools are defined in `crates/silicrew-runtime/src/tool_runner.rs`.
 
 ### Steps
 
@@ -366,6 +366,6 @@ Please report unacceptable behavior to the maintainers.
 
 ## Questions?
 
-- Open a [GitHub Discussion](https://github.com/RightNow-AI/openparlant/discussions) for questions.
-- Open a [GitHub Issue](https://github.com/RightNow-AI/openparlant/issues) for bugs or feature requests.
+- Open a [GitHub Discussion](https://github.com/RightNow-AI/silicrew/discussions) for questions.
+- Open a [GitHub Issue](https://github.com/RightNow-AI/silicrew/issues) for bugs or feature requests.
 - Check the [docs/](docs/) directory for detailed guides on specific topics.

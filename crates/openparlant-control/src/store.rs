@@ -1,11 +1,11 @@
 use chrono::{DateTime, Utc};
-use openparlant_memory::db::{block_on, SharedDb};
-use openparlant_types::agent::{AgentId, SessionId};
-use openparlant_types::control::{
+use silicrew_memory::db::{block_on, SharedDb};
+use silicrew_types::agent::{AgentId, SessionId};
+use silicrew_types::control::{
     ControlScope, JourneyTransitionRecord, PolicyMatchRecord, ResponseMode, ScopeId,
     ToolAuthorizationRecord, TraceId, TurnTraceRecord,
 };
-use openparlant_types::error::{SiliCrewError, SiliCrewResult};
+use silicrew_types::error::{SiliCrewError, SiliCrewResult};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
@@ -812,7 +812,7 @@ impl ControlStore {
     /// Upsert a session binding (creates or updates).
     pub fn upsert_session_binding(
         &self,
-        binding: &openparlant_types::control::SessionBinding,
+        binding: &silicrew_types::control::SessionBinding,
     ) -> SiliCrewResult<()> {
         let now = now_rfc3339();
         match &self.db {
@@ -949,7 +949,7 @@ impl ControlStore {
     pub fn get_session_binding(
         &self,
         session_id: &str,
-    ) -> SiliCrewResult<Option<openparlant_types::control::SessionBinding>> {
+    ) -> SiliCrewResult<Option<silicrew_types::control::SessionBinding>> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
                 let conn = conn
@@ -1149,6 +1149,102 @@ impl ControlStore {
                     ));
                 }
                 Ok(out)
+            }
+        }
+    }
+
+    /// Fetch a single retriever by id.
+    pub fn get_retriever(&self, retriever_id: &str) -> SiliCrewResult<Option<serde_json::Value>> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                let row = conn.query_row(
+                    "SELECT retriever_id, scope_id, name, retriever_type, config_json, enabled
+                     FROM retrievers WHERE retriever_id = ?1",
+                    params![retriever_id],
+                    |row| {
+                        Ok(retriever_json(
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4)?,
+                            row.get::<_, i64>(5)? != 0,
+                        ))
+                    },
+                );
+                match row {
+                    Ok(value) => Ok(Some(value)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(memory_error(e)),
+                }
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let retriever_id = retriever_id.to_string();
+                block_on(async move {
+                    let row = sqlx::query(
+                        "SELECT retriever_id, scope_id, name, retriever_type, config_json, enabled
+                         FROM retrievers WHERE retriever_id = $1",
+                    )
+                    .bind(retriever_id)
+                    .fetch_optional(&*pool)
+                    .await?;
+
+                    Ok::<Option<serde_json::Value>, sqlx::Error>(row.map(|row| {
+                        retriever_json(
+                            row.try_get("retriever_id").unwrap_or_default(),
+                            row.try_get("scope_id").unwrap_or_default(),
+                            row.try_get("name").unwrap_or_default(),
+                            row.try_get("retriever_type").unwrap_or_default(),
+                            row.try_get("config_json")
+                                .unwrap_or_else(|_| "{}".to_string()),
+                            row.try_get("enabled").unwrap_or(false),
+                        )
+                    }))
+                })
+                .map_err(memory_error)
+            }
+        }
+    }
+
+    /// Delete a retriever and any associated bindings.
+    pub fn delete_retriever(&self, retriever_id: &str) -> SiliCrewResult<bool> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                conn.execute(
+                    "DELETE FROM retriever_bindings WHERE retriever_id = ?1",
+                    params![retriever_id],
+                )
+                .map_err(memory_error)?;
+                let rows = conn
+                    .execute(
+                        "DELETE FROM retrievers WHERE retriever_id = ?1",
+                        params![retriever_id],
+                    )
+                    .map_err(memory_error)?;
+                Ok(rows > 0)
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let retriever_id = retriever_id.to_string();
+                let rows = block_on(async move {
+                    sqlx::query("DELETE FROM retriever_bindings WHERE retriever_id = $1")
+                        .bind(&retriever_id)
+                        .execute(&*pool)
+                        .await?;
+                    sqlx::query("DELETE FROM retrievers WHERE retriever_id = $1")
+                        .bind(&retriever_id)
+                        .execute(&*pool)
+                        .await
+                })
+                .map_err(memory_error)?;
+                Ok(rows.rows_affected() > 0)
             }
         }
     }
@@ -1545,7 +1641,7 @@ impl ControlStore {
     /// Insert a new handoff record.
     pub fn create_handoff(
         &self,
-        handoff: &openparlant_types::control::HandoffRecord,
+        handoff: &silicrew_types::control::HandoffRecord,
     ) -> SiliCrewResult<()> {
         match &self.db {
             SharedDb::Sqlite(conn) => {
@@ -1606,7 +1702,7 @@ impl ControlStore {
     pub fn update_handoff_status(
         &self,
         handoff_id: &str,
-        status: &openparlant_types::control::HandoffStatus,
+        status: &silicrew_types::control::HandoffStatus,
     ) -> SiliCrewResult<bool> {
         let now = now_rfc3339();
         match &self.db {
@@ -2718,6 +2814,36 @@ impl ControlStore {
         }
     }
 
+    /// Delete a guideline relationship by id.
+    pub fn delete_guideline_relationship(&self, relationship_id: &str) -> SiliCrewResult<bool> {
+        match &self.db {
+            SharedDb::Sqlite(conn) => {
+                let conn = conn
+                    .lock()
+                    .map_err(|e| SiliCrewError::Internal(e.to_string()))?;
+                let rows = conn
+                    .execute(
+                        "DELETE FROM guideline_relationships WHERE relationship_id = ?1",
+                        params![relationship_id],
+                    )
+                    .map_err(memory_error)?;
+                Ok(rows > 0)
+            }
+            SharedDb::Postgres(pool) => {
+                let pool = Arc::clone(pool);
+                let relationship_id = relationship_id.to_string();
+                let rows = block_on(async move {
+                    sqlx::query("DELETE FROM guideline_relationships WHERE relationship_id = $1")
+                        .bind(relationship_id)
+                        .execute(&*pool)
+                        .await
+                })
+                .map_err(memory_error)?;
+                Ok(rows.rows_affected() > 0)
+            }
+        }
+    }
+
     /// Insert or update a journey state.
     pub fn upsert_journey_state(
         &self,
@@ -3455,8 +3581,8 @@ fn policy_match_record_from_row(
 
 fn session_binding_from_sqlite_row(
     row: &rusqlite::Row<'_>,
-) -> Result<openparlant_types::control::SessionBinding, rusqlite::Error> {
-    Ok(openparlant_types::control::SessionBinding {
+) -> Result<silicrew_types::control::SessionBinding, rusqlite::Error> {
+    Ok(silicrew_types::control::SessionBinding {
         binding_id: row.get(0)?,
         scope_id: ScopeId::new(row.get::<_, String>(1)?),
         channel_type: row.get(2)?,
@@ -3471,8 +3597,8 @@ fn session_binding_from_sqlite_row(
 
 fn session_binding_from_pg_row(
     row: &sqlx::postgres::PgRow,
-) -> SiliCrewResult<openparlant_types::control::SessionBinding> {
-    Ok(openparlant_types::control::SessionBinding {
+) -> SiliCrewResult<silicrew_types::control::SessionBinding> {
+    Ok(silicrew_types::control::SessionBinding {
         binding_id: row.try_get("binding_id").map_err(memory_error)?,
         scope_id: ScopeId::new(row.try_get::<String, _>("scope_id").map_err(memory_error)?),
         channel_type: row.try_get("channel_type").map_err(memory_error)?,
@@ -3922,8 +4048,8 @@ fn active_journey_json(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openparlant_memory::migration::run_migrations;
-    use openparlant_types::control::SessionBinding;
+    use silicrew_memory::migration::run_migrations;
+    use silicrew_types::control::SessionBinding;
     use rusqlite::Connection;
     use std::sync::{Arc, Mutex};
 
@@ -4279,5 +4405,53 @@ mod tests {
             .get_journey_transition("transition-a")
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn retriever_round_trip_and_delete() {
+        let store = test_store();
+        let retriever = serde_json::json!({
+            "retriever_id": "retriever-1",
+            "scope_id": "scope-a",
+            "name": "FAQ",
+            "retriever_type": "static",
+            "config_json": { "items": [{ "title": "Refund", "content": "Policy" }] },
+            "enabled": true,
+        });
+
+        store.upsert_retriever(&retriever).unwrap();
+        store
+            .insert_retriever_binding(&ScopeId::from("scope-a"), "retriever-1", "always", "always")
+            .unwrap();
+
+        let loaded = store.get_retriever("retriever-1").unwrap().unwrap();
+        assert_eq!(loaded.get("name").and_then(|v| v.as_str()), Some("FAQ"));
+
+        assert!(store.delete_retriever("retriever-1").unwrap());
+        assert!(store.get_retriever("retriever-1").unwrap().is_none());
+        assert!(store
+            .list_retriever_bindings(&ScopeId::from("scope-a"))
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn deleting_guideline_relationship_removes_record() {
+        let store = test_store();
+        store
+            .create_guideline_relationship(
+                "rel-1",
+                "scope-a",
+                "guideline-a",
+                "guideline-b",
+                "overrides",
+            )
+            .unwrap();
+
+        assert!(store.delete_guideline_relationship("rel-1").unwrap());
+        assert!(store
+            .list_guideline_relationships("scope-a")
+            .unwrap()
+            .is_empty());
     }
 }

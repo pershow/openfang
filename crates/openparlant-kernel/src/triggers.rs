@@ -6,8 +6,8 @@
 
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
-use openparlant_types::agent::AgentId;
-use openparlant_types::event::{Event, EventPayload, LifecycleEvent, SystemEvent};
+use silicrew_types::agent::AgentId;
+use silicrew_types::event::{Event, EventPayload, LifecycleEvent, SystemEvent};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 use uuid::Uuid;
@@ -377,7 +377,7 @@ fn describe_event(event: &Event) -> String {
                 tr.tool_id,
                 if tr.success { "succeeded" } else { "failed" },
                 tr.execution_time_ms,
-                openparlant_types::truncate_str(&tr.content, 200)
+                silicrew_types::truncate_str(&tr.content, 200)
             )
         }
         EventPayload::MemoryUpdate(delta) => {
@@ -459,7 +459,7 @@ fn describe_event(event: &Event) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openparlant_types::event::*;
+    use silicrew_types::event::*;
 
     #[test]
     fn test_register_trigger() {

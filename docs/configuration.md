@@ -31,7 +31,7 @@ Complete reference for `config.toml`, covering every configurable field in the O
 OpenParlant reads its configuration from a single TOML file:
 
 ```
-~/.openparlant/config.toml
+~/.silicrew/config.toml
 ```
 
 On Windows, `~` resolves to `C:\Users\<username>`. If the home directory cannot be determined, the system temp directory is used as a fallback.
@@ -50,7 +50,7 @@ On Windows, `~` resolves to `C:\Users\<username>`. If the home directory cannot 
 The simplest working configuration only needs an LLM provider API key set as an environment variable. With no config file at all, OpenParlant boots with Anthropic as the default provider:
 
 ```toml
-# ~/.openparlant/config.toml
+# ~/.silicrew/config.toml
 # Minimal: just override the model if you want something other than defaults.
 # Set ANTHROPIC_API_KEY in your environment.
 
@@ -80,8 +80,8 @@ api_key_env = ""
 # ============================================================
 
 # --- Top-level fields ---
-home_dir = "~/.openparlant"             # OpenParlant home directory
-data_dir = "~/.openparlant/data"        # SQLite databases and data files
+home_dir = "~/.silicrew"             # OpenParlant home directory
+data_dir = "~/.silicrew/data"        # SQLite databases and data files
 log_level = "info"                   # trace | debug | info | warn | error
 api_listen = "127.0.0.1:50051"      # HTTP/WS API bind address
 network_enabled = false              # Enable OFP peer-to-peer network
@@ -111,7 +111,7 @@ api_key_env = "GROQ_API_KEY"
 
 # --- Memory ---
 [memory]
-# sqlite_path = "~/.openparlant/data/openparlant.db"  # Auto-resolved if omitted
+# sqlite_path = "~/.silicrew/data/silicrew.db"  # Auto-resolved if omitted
 embedding_model = "all-MiniLM-L6-v2"
 consolidation_threshold = 10000
 decay_rate = 0.1
@@ -224,8 +224,8 @@ These fields sit at the root of `config.toml` (not inside any `[section]`).
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `home_dir` | path | `~/.openparlant` | OpenParlant home directory. Stores config, agents, skills. |
-| `data_dir` | path | `~/.openparlant/data` | Directory for SQLite databases and persistent data. |
+| `home_dir` | path | `~/.silicrew` | OpenParlant home directory. Stores config, agents, skills. |
+| `data_dir` | path | `~/.silicrew/data` | Directory for SQLite databases and persistent data. |
 | `log_level` | string | `"info"` | Log verbosity. One of: `trace`, `debug`, `info`, `warn`, `error`. |
 | `api_listen` | string | `"127.0.0.1:50051"` | Bind address for the HTTP/WebSocket/SSE API server. |
 | `network_enabled` | bool | `false` | Enable the OFP peer-to-peer network layer. |
@@ -280,7 +280,7 @@ Configures the SQLite-backed memory substrate, including vector embeddings and m
 
 ```toml
 [memory]
-# sqlite_path = "/custom/path/openparlant.db"
+# sqlite_path = "/custom/path/silicrew.db"
 embedding_model = "all-MiniLM-L6-v2"
 consolidation_threshold = 10000
 decay_rate = 0.1
@@ -288,7 +288,7 @@ decay_rate = 0.1
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `sqlite_path` | path or null | `null` | Explicit path to the SQLite database file. When `null`, defaults to `{data_dir}/openparlant.db`. |
+| `sqlite_path` | path or null | `null` | Explicit path to the SQLite database file. When `null`, defaults to `{data_dir}/silicrew.db`. |
 | `embedding_model` | string | `"all-MiniLM-L6-v2"` | Model name used for generating vector embeddings for semantic memory search. |
 | `consolidation_threshold` | u64 | `10000` | Number of stored memories before automatic consolidation is triggered to merge and prune old entries. |
 | `decay_rate` | f32 | `0.1` | Memory confidence decay rate. `0.0` = no decay (memories never fade), `1.0` = aggressive decay. Values between 0.0 and 1.0. |
@@ -508,7 +508,7 @@ allowed_users = []
 ```toml
 [channels.matrix]
 homeserver_url = "https://matrix.org"
-user_id = "@openparlant:matrix.org"
+user_id = "@silicrew:matrix.org"
 access_token_env = "MATRIX_ACCESS_TOKEN"
 allowed_rooms = []
 ```
@@ -516,7 +516,7 @@ allowed_rooms = []
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `homeserver_url` | string | `"https://matrix.org"` | Matrix homeserver URL. |
-| `user_id` | string | `""` | Bot user ID (e.g., `"@openparlant:matrix.org"`). |
+| `user_id` | string | `""` | Bot user ID (e.g., `"@silicrew:matrix.org"`). |
 | `access_token_env` | string | `"MATRIX_ACCESS_TOKEN"` | Env var holding the Matrix access token. |
 | `allowed_rooms` | list of strings | `[]` | Room IDs to listen in. Empty = all joined rooms. |
 | `default_agent` | string or null | `null` | Agent name to route messages to. |
@@ -589,9 +589,9 @@ allowed_channels = []
 [channels.irc]
 server = "irc.libera.chat"
 port = 6667
-nick = "openparlant"
+nick = "silicrew"
 # password_env = "IRC_PASSWORD"
-channels = ["#openparlant"]
+channels = ["#silicrew"]
 use_tls = false
 ```
 
@@ -599,9 +599,9 @@ use_tls = false
 |-------|------|---------|-------------|
 | `server` | string | `"irc.libera.chat"` | IRC server hostname. |
 | `port` | u16 | `6667` | IRC server port. |
-| `nick` | string | `"openparlant"` | Bot nickname. |
+| `nick` | string | `"silicrew"` | Bot nickname. |
 | `password_env` | string or null | `null` | Env var holding the server password (optional). |
-| `channels` | list of strings | `[]` | IRC channels to join (e.g., `["#openparlant", "#general"]`). |
+| `channels` | list of strings | `[]` | IRC channels to join (e.g., `["#silicrew", "#general"]`). |
 | `use_tls` | bool | `false` | Use TLS for the connection. |
 | `default_agent` | string or null | `null` | Agent name to route messages to. |
 
@@ -627,14 +627,14 @@ webhook_port = 8444
 [channels.twitch]
 oauth_token_env = "TWITCH_OAUTH_TOKEN"
 channels = ["mychannel"]
-nick = "openparlant"
+nick = "silicrew"
 ```
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `oauth_token_env` | string | `"TWITCH_OAUTH_TOKEN"` | Env var holding the Twitch OAuth token. |
 | `channels` | list of strings | `[]` | Twitch channels to join (without `#` prefix). |
-| `nick` | string | `"openparlant"` | Bot nickname in Twitch chat. |
+| `nick` | string | `"silicrew"` | Bot nickname in Twitch chat. |
 | `default_agent` | string or null | `null` | Agent name to route messages to. |
 
 #### `[channels.rocketchat]`
@@ -968,7 +968,7 @@ allowed_channels = []
 [channels.mumble]
 host = "mumble.example.com"
 port = 64738
-username = "openparlant"
+username = "silicrew"
 password_env = "MUMBLE_PASSWORD"
 channel = ""
 ```
@@ -977,7 +977,7 @@ channel = ""
 |-------|------|---------|-------------|
 | `host` | string | `""` | Mumble server hostname. |
 | `port` | u16 | `64738` | Mumble server port. |
-| `username` | string | `"openparlant"` | Bot username in Mumble. |
+| `username` | string | `"silicrew"` | Bot username in Mumble. |
 | `password_env` | string | `"MUMBLE_PASSWORD"` | Env var holding the Mumble server password. |
 | `channel` | string | `""` | Mumble channel to join. |
 | `default_agent` | string or null | `null` | Agent name to route messages to. |

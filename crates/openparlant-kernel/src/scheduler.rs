@@ -1,9 +1,9 @@
 //! Agent scheduler — manages agent execution and resource tracking.
 
 use dashmap::DashMap;
-use openparlant_types::agent::{AgentId, ResourceQuota};
-use openparlant_types::error::{SiliCrewError, SiliCrewResult};
-use openparlant_types::message::TokenUsage;
+use silicrew_types::agent::{AgentId, ResourceQuota};
+use silicrew_types::error::{SiliCrewError, SiliCrewResult};
+use silicrew_types::message::TokenUsage;
 use std::time::Instant;
 use tokio::task::JoinHandle;
 use tracing::debug;
